@@ -51,7 +51,7 @@ class NormModel(opt.OptionModelAnalyticABC):
             sigma: model volatility
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat sigma as forward price. False by default.
+            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns:
             Vanilla option price
