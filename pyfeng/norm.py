@@ -7,11 +7,11 @@ Created on Tue Sep 19 22:56:58 2017
 import numpy as np
 import scipy.stats as spst
 
-from . import option_model as opt
+from . import opt_abc as opt
 from . import bsm
 
 
-class Normal(opt.OptionModelAnalyticABC):
+class Norm(opt.OptAnalyticABC):
     """
     Bachelier (normal) model for option pricing.
     Underlying price is assumed to follow arithmetic Brownian motion.
@@ -104,7 +104,7 @@ class Normal(opt.OptionModelAnalyticABC):
         # eta = v / atanh(v) = 2v / log((1+v)/(1-v)) = 2v / log((2-v1)/v1)
         with np.errstate(divide='ignore', invalid='ignore'):
             eta = np.where(v1 < 0.999, 2*(1-v1)/(np.log((2.0-v1)/v1)), 1/(1 + v_sq*(1/3 + v_sq/5)))
-        h_a = np.sqrt(eta) * np.polyval(Normal.POLY_NU, eta) / np.polyval(Normal.POLY_DE, eta)
+        h_a = np.sqrt(eta) * np.polyval(Norm.POLY_NU, eta) / np.polyval(Norm.POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
         _sigma = np.where(time_val >= -self.IMPVOL_TOL, np.sqrt(np.pi/(2*texp)) * strd * h_a, np.nan)
 
@@ -184,6 +184,36 @@ class Normal(opt.OptionModelAnalyticABC):
 
     ####
     impvol = impvol_Choi2009
+
+    def vol_smile(self, strike, spot, texp, cp=1, model='bsm'):
+        """
+        Equivalent volatility smile for a given model
+
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            model: {'bsm' (default), 'bsm', 'bsm-approx', 'norm'}
+
+        Returns:
+            volatility smile under the specified model
+        """
+        if model.lower() == 'norm':
+            return self.sigma * np.ones_like(strike + spot + texp + cp)
+        if model.lower() == 'bsm':
+            price = self.price(strike, spot, texp, cp=cp)
+            return bsm.Bsm(None).impvol(price, strike, spot, texp, cp=cp)
+        elif model.lower() == 'bsm-approx':
+            fwd = spot * (1.0 if self.is_fwd else np.exp((self.intr - self.divr)*texp))
+            sigma_std = self.sigma / fwd
+            kk = strike / fwd
+            lnk = np.log(kk)
+            vol = sigma_std / np.sqrt(kk)
+            vol *= (1 + vol**2 * texp/24) / (1 + lnk**2/24)
+            return vol
+        else:
+            raise ValueError(f'Unknown model: {model}')
 
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
         disc_fac = np.exp(-texp * self.intr)

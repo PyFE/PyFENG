@@ -2,11 +2,12 @@ import numpy as np
 import scipy.stats as spst
 import warnings
 
-from . import option_model as opt
+from . import opt_abc as opt
 from . import norm
+from . import opt_smile_abc as smile
 
 
-class Bsm(opt.OptionModelAnalyticABC):
+class Bsm(opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
         Underlying price is assumed to follow geometric Brownian motion.
@@ -188,6 +189,39 @@ class Bsm(opt.OptionModelAnalyticABC):
     #### Class method
     impvol = impvol_newton
 
+    def vol_smile(self, strike, spot, texp, cp=1, model='norm'):
+        """
+        Equivalent volatility smile for a given model
+
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            model: {'norm' (default), 'norm-approx', 'norm-grunspan', 'bsm'}
+
+        Returns:
+            volatility smile under the specified model
+        """
+        if model.lower() == 'bsm':
+            return self.sigma * np.ones_like(strike + spot + texp + cp)
+        if model.lower() == 'norm':
+            price = self.price(strike, spot, texp, cp=cp)
+            return norm.Norm(None).impvol(price, strike, spot, texp, cp=cp)
+        elif model.lower() == 'norm-approx' or model.lower() == 'norm-grunspan':
+            fwd = spot * (1.0 if self.is_fwd else np.exp((self.intr - self.divr)*texp))
+            kk = strike / fwd
+            lnk = np.log(kk)
+            if model.lower() == 'norm-approx':
+                return self.sigma * fwd * np.sqrt(kk) * (1 + lnk**2/24) / (1 + self.sigma**2 * texp/24)
+            else:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    term1 = np.where(np.fabs(lnk) > 1e-8, (kk - 1)/lnk, 2/(3 - kk))
+                    term2 = np.where(np.fabs(lnk) > 1e-8, (np.log(term1) - lnk/2) / lnk**2, 1/24)
+                return self.sigma * fwd * term1 * (1 - term2 * self.sigma**2 * texp)
+        else:
+            raise ValueError(f'Unknown model: {model}')
+
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
         strike2 = strike if strike2 is None else strike2
         disc_fac = np.exp(-texp * self.intr)
@@ -270,7 +304,7 @@ class Bsm(opt.OptionModelAnalyticABC):
         return p
 
 
-class BsmDisp(Bsm):
+class BsmDisp(smile.OptSmileABC):
     """
     Displaced Black-Scholes-Merton model for option pricing.
     Displace price, D(F_t) = beta*F_t + (1-beta)*A is assumed to follow a geometric Brownian
@@ -292,7 +326,16 @@ class BsmDisp(Bsm):
     beta = 1  # equivalent to Black-Scholes
     bsm_model = None
 
-    def __init__(self, sigma, beta, pivot, *args, **kwargs):
+    def __init__(self, sigma, beta=1, pivot=0, *args, **kwargs):
+        """
+        Args:
+            sigma: model volatility
+            beta: beta. 1 by default
+            pivot: A. 0 by default
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
         super().__init__(sigma, *args, **kwargs)
         self.pivot = pivot
         self.beta = beta
@@ -340,39 +383,42 @@ class BsmDisp(Bsm):
             self.sigma = sigma
         return sigma
 
-    def to_norm_vol(self, strike, spot, texp, method='exact'):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+    def vol_smile(self, strike, spot, texp, cp=1, model='bsm'):
+        """
+        Equivalent volatility smile for a given model
 
-        if method.lower() == 'approx':
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            model: {'bsm', 'norm', 'bsm-approx', 'norm-approx'}
+
+        Returns:
+            volatility smile under the specified model
+        """
+        if model.lower() == 'norm-approx':
+            fwd = spot * (1.0 if self.is_fwd else np.exp((self.divr - self.intr)*texp))
             kkd = self.disp(strike) / self.disp(fwd)
             lnkd = np.log(kkd)
             sig_beta = self.beta * self.sigma
-            ivn = self.sigma * self.disp(fwd) * np.sqrt(kkd) * (1 + lnkd**2 / 24) / (1 + sig_beta**2 * texp / 24)
-        else:
-            price = self.price(strike, spot, texp)
-            ivn = norm.Normal(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
-        return ivn
-
-    def to_bsm_vol(self, strike, spot, texp, method='exact'):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac / disc_fac)
-
-        if method.lower() == 'approx':
+            vol = self.sigma * self.disp(fwd) * np.sqrt(kkd) * (1 + lnkd ** 2 / 24) / \
+                (1 + sig_beta ** 2 * texp / 24)
+        elif model.lower() == 'bsm-approx':
+            fwd = spot * (1.0 if self.is_fwd else np.exp((self.divr - self.intr)*texp))
             kk = strike / fwd
             lnk = np.log(kk)
             fwdd = self.disp(fwd)
             kkd = self.disp(strike) / fwdd
             lnkd = np.log(kkd)
             sig_beta = self.beta * self.sigma
-            ivbs = self.sigma*(fwdd/fwd)*np.sqrt(kkd/kk)
-            ivbs *= (1 + lnkd**2/24)/(1 + lnk**2/24) * (1 + ivbs**2*texp/24)/(1 + sig_beta**2*texp/24)
+            vol = self.sigma * (fwdd / fwd) * np.sqrt(kkd / kk)
+            vol *= (1 + lnkd ** 2 / 24) / (1 + lnk ** 2 / 24) * (1 + vol ** 2 * texp / 24) / \
+                (1 + sig_beta ** 2 * texp / 24)
         else:
-            price = self.price(strike, spot, texp)
-            ivbs = Bsm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
-        return ivbs
+            vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
+
+        return vol
 
     def price_barrier(self, strike, barrier, spot, *args, **kwargs):
         return (1/self.beta)*self.bsm_model.price_barrier(

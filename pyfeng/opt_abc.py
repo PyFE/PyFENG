@@ -4,7 +4,7 @@ import numpy as np
 import scipy.optimize as sopt
 
 
-class OptionModelABC(abc.ABC):
+class OptABC(abc.ABC):
     sigma, intr, divr = None, 0.0, 0.0
     is_fwd = False
 
@@ -329,7 +329,7 @@ class OptionModelABC(abc.ABC):
     theta = theta_numeric
 
 
-class OptionModelAnalyticABC(OptionModelABC):
+class OptAnalyticABC(OptABC):
     """
     Option model with analytic price and greeks are available
     """
