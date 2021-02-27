@@ -11,7 +11,7 @@ from . import option_model as opt
 from . import bsm
 
 
-class NormModel(opt.OptionModelAnalyticABC):
+class Normal(opt.OptionModelAnalyticABC):
     """
     Bachelier (normal) model for option pricing.
     Underlying price is assumed to follow arithmetic Brownian motion.
@@ -104,7 +104,7 @@ class NormModel(opt.OptionModelAnalyticABC):
         # eta = v / atanh(v) = 2v / log((1+v)/(1-v)) = 2v / log((2-v1)/v1)
         with np.errstate(divide='ignore', invalid='ignore'):
             eta = np.where(v1 < 0.999, 2*(1-v1)/(np.log((2.0-v1)/v1)), 1/(1 + v_sq*(1/3 + v_sq/5)))
-        h_a = np.sqrt(eta) * np.polyval(NormModel.POLY_NU, eta) / np.polyval(NormModel.POLY_DE, eta)
+        h_a = np.sqrt(eta) * np.polyval(Normal.POLY_NU, eta) / np.polyval(Normal.POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
         _sigma = np.where(time_val >= -self.IMPVOL_TOL, np.sqrt(np.pi/(2*texp)) * strd * h_a, np.nan)
 
@@ -215,4 +215,4 @@ class NormModel(opt.OptionModelAnalyticABC):
     """
     Inherit price_barrier method from BsmModel. The only change is from `barrier_params`
     """
-    price_barrier = bsm.BsmModel.price_barrier
+    price_barrier = bsm.Bsm.price_barrier

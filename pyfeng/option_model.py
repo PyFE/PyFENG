@@ -326,6 +326,7 @@ class OptionModelABC(abc.ABC):
     vega = vega_numeric
     vanna = vanna_numeric
     volga = volga_numeric
+    theta = theta_numeric
 
 
 class OptionModelAnalyticABC(OptionModelABC):

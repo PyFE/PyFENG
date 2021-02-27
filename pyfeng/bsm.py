@@ -6,7 +6,7 @@ from . import option_model as opt
 from . import norm
 
 
-class BsmModel(opt.OptionModelAnalyticABC):
+class Bsm(opt.OptionModelAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
         Underlying price is assumed to follow geometric Brownian motion.
@@ -131,7 +131,7 @@ class BsmModel(opt.OptionModelAnalyticABC):
         strike_std = strike / fwd  # strike / fwd
         price_std = price / disc_fac / fwd  # forward price / fwd
 
-        bsm_model = BsmModel(0, is_fwd=True)
+        bsm_model = Bsm(0, is_fwd=True)
         p_min = bsm_model.price(strike_std, 1.0, texp, cp)
         bsm_model.sigma = np.inf
         p_max = bsm_model.price(strike_std, 1.0, texp, cp)
@@ -139,7 +139,7 @@ class BsmModel(opt.OptionModelAnalyticABC):
 
         # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        ind_solve = (price_std - p_min > BsmModel.IMPVOL_TOL) & (p_max - price_std > BsmModel.IMPVOL_TOL)
+        ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (p_max - price_std > Bsm.IMPVOL_TOL)
 
         # initial guess = inflection point in sigma (volga=0)
         _sigma = np.ones_like(ind_solve) * np.sqrt(2*np.abs(np.log(strike_std))/texp)
@@ -158,11 +158,11 @@ class BsmModel(opt.OptionModelAnalyticABC):
                 #print(k, p_err_max, _sigma)
 
                 # ignore the error of the elements with ind_solve = False
-                if p_err_max < BsmModel.IMPVOL_TOL:
+                if p_err_max < Bsm.IMPVOL_TOL:
                     break
             #print(k)
 
-            if p_err_max >= BsmModel.IMPVOL_TOL:
+            if p_err_max >= Bsm.IMPVOL_TOL:
                 warn_msg = f'impvol_newton did not converged within {k} iterations: max error = {p_err_max}'
                 warnings.warn(warn_msg, Warning)
 
@@ -171,10 +171,10 @@ class BsmModel(opt.OptionModelAnalyticABC):
 
         # Though not error is above tolerance, if the price is close to min or max, set 0 or inf
         _sigma = np.where(
-            (np.abs(p_err) >= BsmModel.IMPVOL_TOL) & (np.abs(price_std - p_min) <= BsmModel.IMPVOL_TOL),
+            (np.abs(p_err) >= Bsm.IMPVOL_TOL) & (np.abs(price_std - p_min) <= Bsm.IMPVOL_TOL),
             0, _sigma)
         _sigma = np.where(
-            (np.abs(p_err) >= BsmModel.IMPVOL_TOL) & (np.abs(price_std - p_max) <= BsmModel.IMPVOL_TOL),
+            (np.abs(p_err) >= Bsm.IMPVOL_TOL) & (np.abs(price_std - p_max) <= Bsm.IMPVOL_TOL),
             np.inf, _sigma)
 
         if scalar_output:
@@ -270,7 +270,7 @@ class BsmModel(opt.OptionModelAnalyticABC):
         return p
 
 
-class DispBsmModel(BsmModel):
+class BsmDisp(Bsm):
     """
     Displaced Black-Scholes-Merton model for option pricing.
     Displace price, D(F_t) = beta*F_t + (1-beta)*A is assumed to follow a geometric Brownian
@@ -296,7 +296,7 @@ class DispBsmModel(BsmModel):
         super().__init__(sigma, *args, **kwargs)
         self.pivot = pivot
         self.beta = beta
-        self.bsm_model = BsmModel(sigma=beta*sigma)
+        self.bsm_model = Bsm(sigma=beta * sigma)
 
     '''
     @property
@@ -352,7 +352,7 @@ class DispBsmModel(BsmModel):
             ivn = self.sigma * self.disp(fwd) * np.sqrt(kkd) * (1 + lnkd**2 / 24) / (1 + sig_beta**2 * texp / 24)
         else:
             price = self.price(strike, spot, texp)
-            ivn = norm.NormModel(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
+            ivn = norm.Normal(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
         return ivn
 
     def to_bsm_vol(self, strike, spot, texp, method='exact'):
@@ -371,7 +371,7 @@ class DispBsmModel(BsmModel):
             ivbs *= (1 + lnkd**2/24)/(1 + lnk**2/24) * (1 + ivbs**2*texp/24)/(1 + sig_beta**2*texp/24)
         else:
             price = self.price(strike, spot, texp)
-            ivbs = BsmModel(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
+            ivbs = Bsm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd).impvol(price, strike, spot, texp)
         return ivbs
 
     def price_barrier(self, strike, barrier, spot, *args, **kwargs):
