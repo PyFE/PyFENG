@@ -260,8 +260,12 @@ class SabrHagan2002(SabrVolApproxABC):
     
 class SabrChoiWu2021H(SabrVolApproxABC):
     """
-    SABR model approximation based on CEV volatility based on Theorem 1 of Choi & Wu (2021)
+    The CEV volatility approximation of the SABR modelbased on Theorem 1 of Choi & Wu (2019)
 
+    References:
+        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
+        of the stochastic-alpha-beta-rho (SABR) model.
+        ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
     """
 
     def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False, vol_beta=None):
@@ -359,7 +363,12 @@ class SabrChoiWu2021H(SabrVolApproxABC):
 
 class SabrChoiWu2021P(SabrChoiWu2021H):
     """
-    SABR model approximation based on CEV volatility based on Theorem 1 of Choi & Wu (2021)
+    The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
+
+    References:
+        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
+        of the stochastic-alpha-beta-rho (SABR) model.
+        ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
     """
 
     def vol_for_price(self, strike, spot, texp):
