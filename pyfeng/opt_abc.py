@@ -29,15 +29,7 @@ class OptABC(abc.ABC):
         Model parameters in dictionary
         """
         params = {"sigma": self.sigma, "intr": self.intr, "divr": self.divr, "is_fwd": self.is_fwd}
-        params_extra = self.price_formula_kwargs()
-        return {**params, **params_extra}
-
-    def price_formula_kwargs(self):
-        """
-        Extra parameters to be passed to price_formula
-        Returns: dictionary
-        """
-        return {}
+        return params
 
     @abc.abstractmethod
     def price(self, strike, spot, texp, cp=1):
@@ -370,10 +362,7 @@ class OptAnalyticABC(OptABC):
         if self.THROW_NEGATIVE_TEXP:
             assert(~np.any(texp < 0))
 
-        return self.price_formula(
-            strike, spot, self.sigma, texp, cp,
-            intr=self.intr, divr=self.divr, is_fwd=self.is_fwd,
-            **self.price_formula_kwargs())
+        return self.price_formula(strike=strike, spot=spot, texp=texp, cp=cp, **self.params_kw())
 
     @abc.abstractmethod
     def delta(self, strike, spot, texp, cp=1):

@@ -7,9 +7,9 @@ from . import opt_abc as opt
 
 class OptSmileABC(opt.OptABC, abc.ABC):
     """
-    Abstract class to handle volatility smile
+    Abstract class to model with volatility smile
     """
-    def _vol_smile_model(self, model='bsm'):
+    def _m_smile(self, model='bsm'):
         if model.lower() == 'bsm':
             base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         elif model.lower() == 'norm':
@@ -27,12 +27,12 @@ class OptSmileABC(opt.OptABC, abc.ABC):
             spot: spot price
             texp: time to expiry
             cp: 1/-1 for call/put option
-            model: {'bsm', 'norm'} 'bsm' for Black-Scholes-Merton, 'norm' for Bachelier (normal)
+            model: {'bsm', 'norm'} 'bsm' (by default) for Black-Scholes-Merton, 'norm' for Bachelier
 
         Returns:
             volatility smile under the specified model
         """
-        base_model = self._vol_smile_model(model)
+        base_model = self._m_smile(model)
         price = self.price(strike, spot, texp, cp=cp)
         vol = base_model.impvol(price, strike, spot, texp, cp=cp)
         return vol
