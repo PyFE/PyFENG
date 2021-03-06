@@ -12,38 +12,28 @@ PyFENG: Python Financial ENGineering
 
 This a package for financial engineering in Python.
 
-bsm
+Bsm, BsmDisp
 ===================
 .. automodule:: pyfeng.bsm
    :members:
 
-cev
+Cev
 ===================
 .. automodule:: pyfeng.cev
    :members:
 
-norm
+Norm
 ===================
 .. automodule:: pyfeng.norm
    :members:
 
-nsvh
+Nsvh1
 ===================
 .. automodule:: pyfeng.nsvh
    :members:
 
-opt_abc
-===================
-.. automodule:: pyfeng.opt_abc
-   :members:
-
-opt_smile_abc
-===================
-.. automodule:: pyfeng.opt_smile_abc
-   :members:
-
-sabr
-===================
+SabrHagan2002, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P
+==============================================================
 .. automodule:: pyfeng.sabr
    :members:
 

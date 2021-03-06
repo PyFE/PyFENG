@@ -13,15 +13,16 @@ class Bsm(opt.OptAnalyticABC):
         Underlying price is assumed to follow geometric Brownian motion.
 
     Examples:
-        import pyfeng as pf
-        bsm = pf.BsmModel(sigma=0.2)
-        price = bsm.price(strike=105, spot=100, texp=1)
-        print(price)
-
-        sigma = np.array([0.2, 0.3, 0.5])
-        bsm = pf.BsmModel(sigma[:,None]) # sigma in axis=0
-        price = bsm.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
-        print(price)
+        >>> import pyfeng as pf
+        >>> bsm = pf.BsmModel(sigma=0.2)
+        >>> price = bsm.price(strike=105, spot=100, texp=1)
+        >>> print(price)
+        "Print result is here."
+        >>> sigma = np.array([0.2, 0.3, 0.5])
+        >>> bsm = pf.BsmModel(sigma[:,None]) # sigma in axis=0
+        >>> price = bsm.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
+        >>> print(price)
+        "Print result is here."
     """
 
     @staticmethod

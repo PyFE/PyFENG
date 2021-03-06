@@ -16,6 +16,7 @@ setup(
         "Bug Tracker": "https://github.com/PyFE/PyFENG/issues",
     },
     packages=['pyfeng'],
+    test_suite="tests",
     install_requires=[
         'numpy', 'scipy'
     ]

@@ -37,34 +37,42 @@
 <p>This a package for financial engineering in Python.</p>
 </div>
 <div class="section" id="module-pyfeng.bsm">
-<span id="bsm"></span><h1>bsm<a class="headerlink" href="#module-pyfeng.bsm" title="Permalink to this headline">¶</a></h1>
+<span id="bsm-bsmdisp"></span><h1>Bsm, BsmDisp<a class="headerlink" href="#module-pyfeng.bsm" title="Permalink to this headline">¶</a></h1>
 <dl class="py class">
 <dt id="pyfeng.bsm.Bsm">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.bsm.</span></code><code class="sig-name descname"><span class="pre">Bsm</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm" title="Permalink to this definition">¶</a></dt>
-<dd><dl>
+<dd><dl class="simple">
 <dt>Black-Scholes-Merton (BSM) model for option pricing.</dt><dd><p>Underlying price is assumed to follow geometric Brownian motion.</p>
 </dd>
-<dt>Examples:</dt><dd><p>import pyfeng as pf
-bsm = pf.BsmModel(sigma=0.2)
-price = bsm.price(strike=105, spot=100, texp=1)
-print(price)</p>
-<p>sigma = np.array([0.2, 0.3, 0.5])
-bsm = pf.BsmModel(sigma[:,None]) # sigma in axis=0
-price = bsm.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
-print(price)</p>
-</dd>
 </dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pyfeng</span> <span class="k">as</span> <span class="nn">pf</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">bsm</span> <span class="o">=</span> <span class="n">pf</span><span class="o">.</span><span class="n">BsmModel</span><span class="p">(</span><span class="n">sigma</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">price</span> <span class="o">=</span> <span class="n">bsm</span><span class="o">.</span><span class="n">price</span><span class="p">(</span><span class="n">strike</span><span class="o">=</span><span class="mi">105</span><span class="p">,</span> <span class="n">spot</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">texp</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">price</span><span class="p">)</span>
+<span class="go">&quot;Print result is here.&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">bsm</span> <span class="o">=</span> <span class="n">pf</span><span class="o">.</span><span class="n">BsmModel</span><span class="p">(</span><span class="n">sigma</span><span class="p">[:,</span><span class="kc">None</span><span class="p">])</span> <span class="c1"># sigma in axis=0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">price</span> <span class="o">=</span> <span class="n">bsm</span><span class="o">.</span><span class="n">price</span><span class="p">(</span><span class="n">strike</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">90</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">110</span><span class="p">]),</span> <span class="n">spot</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">texp</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">cp</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">price</span><span class="p">)</span>
+<span class="go">&quot;Print result is here.&quot;</span>
+</pre></div>
+</div>
 <dl class="py method">
 <dt id="pyfeng.bsm.Bsm.delta">
 <code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.delta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model delta (sensitivity to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>delta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>delta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -73,13 +81,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.Bsm.gamma">
 <code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.gamma" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model gamma (2nd derivative to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>gamma value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>gamma value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -88,15 +100,19 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.Bsm.impvol">
 <code class="sig-name descname"><span class="pre">impvol</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.impvol" title="Permalink to this definition">¶</a></dt>
 <dd><p>BSM implied volatility with Newton’s method</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option
-setval: if True, sigma is set with the solved implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -105,15 +121,19 @@ setval: if True, sigma is set with the solved implied volatility</p>
 <dt id="pyfeng.bsm.Bsm.impvol_newton">
 <code class="sig-name descname"><span class="pre">impvol_newton</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.impvol_newton" title="Permalink to this definition">¶</a></dt>
 <dd><p>BSM implied volatility with Newton’s method</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option
-setval: if True, sigma is set with the solved implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -122,15 +142,19 @@ setval: if True, sigma is set with the solved implied volatility</p>
 <dt id="pyfeng.bsm.Bsm.price_barrier">
 <code class="sig-name descname"><span class="pre">price_barrier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">barrier</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">io</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.price_barrier" title="Permalink to this definition">¶</a></dt>
 <dd><p>Barrier option price under the BSM model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-barrier: knock-in/out barrier price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-io: +1 for knock-in, -1 for knock-out</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>barrier</strong> – knock-in/out barrier price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>io</strong> – +1 for knock-in, -1 for knock-out</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Barrier option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Barrier option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -139,18 +163,22 @@ io: +1 for knock-in, -1 for knock-out</p>
 <dt id="pyfeng.bsm.Bsm.price_formula">
 <em class="property"><span class="pre">static</span> </em><code class="sig-name descname"><span class="pre">price_formula</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.price_formula" title="Permalink to this definition">¶</a></dt>
 <dd><p>Black-Scholes-Merton model call/put option pricing formula (static method)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-sigma: model volatility
-texp: time to expiry
-cp: 1/-1 for call/put option
-sigma: model volatility
-intr: interest rate (domestic interest rate)
-divr: dividend/convenience yield (foreign interest rate)
-is_fwd: if True, treat <cite>spot</cite> as forward price. False by default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>sigma</strong> – model volatility</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>sigma</strong> – model volatility</p></li>
+<li><p><strong>intr</strong> – interest rate (domestic interest rate)</p></li>
+<li><p><strong>divr</strong> – dividend/convenience yield (foreign interest rate)</p></li>
+<li><p><strong>is_fwd</strong> – if True, treat <cite>spot</cite> as forward price. False by default.</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Vanilla option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Vanilla option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -159,13 +187,17 @@ is_fwd: if True, treat <cite>spot</cite> as forward price. False by default.</p>
 <dt id="pyfeng.bsm.Bsm.theta">
 <code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.theta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model theta (sensitivity to time-to-maturity).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>theta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>theta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -174,13 +206,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.Bsm.vega">
 <code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.vega" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model vega (sensitivity to volatility).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vega value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vega value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -189,14 +225,18 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.Bsm.vol_smile">
 <code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'norm'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.Bsm.vol_smile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘norm’ (default), ‘norm-approx’, ‘norm-grunspan’, ‘bsm’}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>model</strong> – {‘norm’ (default), ‘norm-approx’, ‘norm-grunspan’, ‘bsm’}</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>volatility smile under the specified model</p>
 </dd>
 </dl>
 </dd></dl>
@@ -209,8 +249,8 @@ model: {‘norm’ (default), ‘norm-approx’, ‘norm-grunspan’, ‘bsm’}
 <dd><p>Displaced Black-Scholes-Merton model for option pricing.
 Displace price, D(F_t) = beta*F_t + (1-beta)*A is assumed to follow a geometric Brownian
 motion with volatility beta*sigma</p>
-<dl>
-<dt>Examples:</dt><dd><p>import pyfeng as pf
+<p class="rubric">Examples</p>
+<p>import pyfeng as pf
 dd = pf.DispBsmModel(sigma=0.2, pivot=100, beta=0.5)
 price = bsm.price(strike=105, spot=100, texp=1)
 print(price)</p>
@@ -218,19 +258,21 @@ print(price)</p>
 bsm = dd.BsmModel(sigma[:,None]) # sigma in axis=0
 price = dd.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
 print(price)</p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.bsm.BsmDisp.delta">
 <code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.delta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model delta (sensitivity to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>delta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>delta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -239,13 +281,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.BsmDisp.gamma">
 <code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.gamma" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model gamma (2nd derivative to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Delta with numerical derivative</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Delta with numerical derivative</p>
 </dd>
 </dl>
 </dd></dl>
@@ -256,14 +302,20 @@ cp: 1/-1 for call/put</p>
 <dd><dl class="simple">
 <dt>Implied volatility using Brent’s method.</dt><dd><p>Slow but robust implementation.</p>
 </dd>
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -272,13 +324,17 @@ setval: if True, sigma is set with the solved implied volatility</p>
 <dt id="pyfeng.bsm.BsmDisp.price">
 <code class="sig-name descname"><span class="pre">price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Vanilla option price.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vanilla option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vanilla option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -287,13 +343,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.BsmDisp.theta">
 <code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.theta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model thegta (sensitivity to time-to-maturity) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>theta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>theta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -302,13 +362,17 @@ cp: 1/-1 for call/put</p>
 <dt id="pyfeng.bsm.BsmDisp.vega">
 <code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.vega" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model vega (sensitivity to volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vega value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vega value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -317,14 +381,18 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.bsm.BsmDisp.vol_smile">
 <code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'bsm'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.bsm.BsmDisp.vol_smile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘bsm’, ‘norm’, ‘bsm-approx’, ‘norm-approx’}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>model</strong> – {‘bsm’, ‘norm’, ‘bsm-approx’, ‘norm-approx’}</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>volatility smile under the specified model</p>
 </dd>
 </dl>
 </dd></dl>
@@ -333,7 +401,7 @@ model: {‘bsm’, ‘norm’, ‘bsm-approx’, ‘norm-approx’}</p>
 
 </div>
 <div class="section" id="module-pyfeng.cev">
-<span id="cev"></span><h1>cev<a class="headerlink" href="#module-pyfeng.cev" title="Permalink to this headline">¶</a></h1>
+<span id="cev"></span><h1>Cev<a class="headerlink" href="#module-pyfeng.cev" title="Permalink to this headline">¶</a></h1>
 <dl class="py class">
 <dt id="pyfeng.cev.Cev">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.cev.</span></code><code class="sig-name descname"><span class="pre">Cev</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev" title="Permalink to this definition">¶</a></dt>
@@ -344,13 +412,17 @@ dS_t = (r - q) S_t dt + sigma S_t^beta dW_t, where dW_t is a standard Brownian m
 <dt id="pyfeng.cev.Cev.delta">
 <code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp_sign</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.delta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model delta (sensitivity to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>delta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>delta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -359,13 +431,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.cev.Cev.gamma">
 <code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp_sign</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.gamma" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model gamma (2nd derivative to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>gamma value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>gamma value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -374,12 +450,16 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.cev.Cev.mass_zero">
 <code class="sig-name descname"><span class="pre">mass_zero</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.mass_zero" title="Permalink to this definition">¶</a></dt>
 <dd><p>Probability mass at zero (absorbing boundary)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>spot: spot or forward
-texp: time to expiry
-log: log value if True</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>spot</strong> – spot or forward</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>log</strong> – log value if True</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>mass at zero.</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>mass at zero.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -393,16 +473,19 @@ log: log value if True</p>
 <dl class="py method">
 <dt id="pyfeng.cev.Cev.price_formula">
 <em class="property"><span class="pre">static</span> </em><code class="sig-name descname"><span class="pre">price_formula</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.price_formula" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="simple">
-<dt>Args:</dt><dd><p>strike:
-spot:
-texp:
-cp:
-sigma:
-beta:
-intr:
-divr:
-is_fwd:</p>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – </p></li>
+<li><p><strong>spot</strong> – </p></li>
+<li><p><strong>texp</strong> – </p></li>
+<li><p><strong>cp</strong> – </p></li>
+<li><p><strong>sigma</strong> – </p></li>
+<li><p><strong>beta</strong> – </p></li>
+<li><p><strong>intr</strong> – </p></li>
+<li><p><strong>divr</strong> – </p></li>
+<li><p><strong>is_fwd</strong> – </p></li>
+</ul>
 </dd>
 </dl>
 <p>Returns:</p>
@@ -412,13 +495,17 @@ is_fwd:</p>
 <dt id="pyfeng.cev.Cev.theta">
 <code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.theta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model theta (sensitivity to time-to-maturity).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>theta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>theta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -427,13 +514,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.cev.Cev.vega">
 <code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp_sign</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.cev.Cev.vega" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model vega (sensitivity to volatility).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vega value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vega value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -442,7 +533,7 @@ cp: 1/-1 for call/put option</p>
 
 </div>
 <div class="section" id="module-pyfeng.norm">
-<span id="norm"></span><h1>norm<a class="headerlink" href="#module-pyfeng.norm" title="Permalink to this headline">¶</a></h1>
+<span id="norm"></span><h1>Norm<a class="headerlink" href="#module-pyfeng.norm" title="Permalink to this headline">¶</a></h1>
 <p>Created on Tue Sep 19 22:56:58 2017
 &#64;author: jaehyuk</p>
 <dl class="py class">
@@ -450,24 +541,26 @@ cp: 1/-1 for call/put option</p>
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.norm.</span></code><code class="sig-name descname"><span class="pre">Norm</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bachelier (normal) model for option pricing.
 Underlying price is assumed to follow arithmetic Brownian motion.</p>
-<dl class="simple">
-<dt>Examples:</dt><dd><p>import pyfeng as pf
+<p class="rubric">Examples</p>
+<p>import pyfeng as pf
 norm = pf.NormModel(sigma=20)
 price = norm.price(strike=105, spot=100, texp=1)
 print(price)</p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.norm.Norm.delta">
 <code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.delta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model delta (sensitivity to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>delta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>delta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -476,13 +569,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.norm.Norm.gamma">
 <code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.gamma" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model gamma (2nd derivative to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>gamma value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>gamma value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -491,19 +588,25 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.norm.Norm.impvol">
 <code class="sig-name descname"><span class="pre">impvol</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.impvol" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bachelier implied volatility by Choi et al. (2007)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>References:</dt><dd><p>Choi, J., Kim, K., &amp; Kwak, M. (2009). Numerical Approximation of the Implied
+</dl>
+<p class="rubric">References</p>
+<p>Choi, J., Kim, K., &amp; Kwak, M. (2009). Numerical Approximation of the Implied
 Volatility Under Arithmetic Brownian Motion. Applied Mathematical Finance,
 16(3), 261–268. <a class="reference external" href="https://doi.org/10.1080/13504860802583436">https://doi.org/10.1080/13504860802583436</a></p>
-</dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -512,19 +615,25 @@ Volatility Under Arithmetic Brownian Motion. Applied Mathematical Finance,
 <dt id="pyfeng.norm.Norm.impvol_Choi2009">
 <code class="sig-name descname"><span class="pre">impvol_Choi2009</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.impvol_Choi2009" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bachelier implied volatility by Choi et al. (2007)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>References:</dt><dd><p>Choi, J., Kim, K., &amp; Kwak, M. (2009). Numerical Approximation of the Implied
+</dl>
+<p class="rubric">References</p>
+<p>Choi, J., Kim, K., &amp; Kwak, M. (2009). Numerical Approximation of the Implied
 Volatility Under Arithmetic Brownian Motion. Applied Mathematical Finance,
 16(3), 261–268. <a class="reference external" href="https://doi.org/10.1080/13504860802583436">https://doi.org/10.1080/13504860802583436</a></p>
-</dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -533,15 +642,19 @@ Volatility Under Arithmetic Brownian Motion. Applied Mathematical Finance,
 <dt id="pyfeng.norm.Norm.price_barrier">
 <code class="sig-name descname"><span class="pre">price_barrier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">barrier</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">io</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.price_barrier" title="Permalink to this definition">¶</a></dt>
 <dd><p>Barrier option price under the BSM model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-barrier: knock-in/out barrier price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-io: +1 for knock-in, -1 for knock-out</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>barrier</strong> – knock-in/out barrier price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>io</strong> – +1 for knock-in, -1 for knock-out</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Barrier option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Barrier option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -550,18 +663,22 @@ io: +1 for knock-in, -1 for knock-out</p>
 <dt id="pyfeng.norm.Norm.price_formula">
 <em class="property"><span class="pre">static</span> </em><code class="sig-name descname"><span class="pre">price_formula</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.price_formula" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bachelier model call/put option pricing formula (static method)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-sigma: model volatility
-texp: time to expiry
-cp: 1/-1 for call/put option
-sigma: model volatility
-intr: interest rate (domestic interest rate)
-divr: dividend/convenience yield (foreign interest rate)
-is_fwd: if True, treat <cite>spot</cite> as forward price. False by default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>sigma</strong> – model volatility</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>sigma</strong> – model volatility</p></li>
+<li><p><strong>intr</strong> – interest rate (domestic interest rate)</p></li>
+<li><p><strong>divr</strong> – dividend/convenience yield (foreign interest rate)</p></li>
+<li><p><strong>is_fwd</strong> – if True, treat <cite>spot</cite> as forward price. False by default.</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Vanilla option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Vanilla option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -570,13 +687,17 @@ is_fwd: if True, treat <cite>spot</cite> as forward price. False by default.</p>
 <dt id="pyfeng.norm.Norm.theta">
 <code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.theta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model theta (sensitivity to time-to-maturity).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>theta value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>theta value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -585,13 +706,17 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.norm.Norm.vega">
 <code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.vega" title="Permalink to this definition">¶</a></dt>
 <dd><p>Option model vega (sensitivity to volatility).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vega value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vega value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -600,14 +725,18 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.norm.Norm.vol_smile">
 <code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'bsm'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.norm.Norm.vol_smile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘bsm’ (default), ‘bsm’, ‘bsm-approx’, ‘norm’}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>model</strong> – {‘bsm’ (default), ‘bsm’, ‘bsm-approx’, ‘norm’}</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>volatility smile under the specified model</p>
 </dd>
 </dl>
 </dd></dl>
@@ -616,27 +745,29 @@ model: {‘bsm’ (default), ‘bsm’, ‘bsm-approx’, ‘norm’}</p>
 
 </div>
 <div class="section" id="module-pyfeng.nsvh">
-<span id="nsvh"></span><h1>nsvh<a class="headerlink" href="#module-pyfeng.nsvh" title="Permalink to this headline">¶</a></h1>
+<span id="nsvh1"></span><h1>Nsvh1<a class="headerlink" href="#module-pyfeng.nsvh" title="Permalink to this headline">¶</a></h1>
 <dl class="py class">
 <dt id="pyfeng.nsvh.Nsvh1">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.nsvh.</span></code><code class="sig-name descname"><span class="pre">Nsvh1</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rho</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.nsvh.Nsvh1" title="Permalink to this definition">¶</a></dt>
 <dd><p>Hyperbolic Normal Stochastic Volatility (NSVh) model with lambda=1 by Choi et al. (2019)</p>
-<dl class="simple">
-<dt>References:</dt><dd><p>Choi, J., Liu, C., &amp; Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
+<p class="rubric">References</p>
+<p>Choi, J., Liu, C., &amp; Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
 Journal of Futures Markets, 39(2), 186–204. <a class="reference external" href="https://doi.org/10.1002/fut.21967">https://doi.org/10.1002/fut.21967</a></p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.nsvh.Nsvh1.cdf">
 <code class="sig-name descname"><span class="pre">cdf</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.nsvh.Nsvh1.cdf" title="Permalink to this definition">¶</a></dt>
 <dd><p>Cumulative distribution function under NSVh (lambda=1) distribution.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp:
-cp: -1 for left-tail (CDF), -1 for right-tail (survival function)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – </p></li>
+<li><p><strong>cp</strong> – -1 for left-tail (CDF), -1 for right-tail (survival function)</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>CDF value</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>CDF value</p>
 </dd>
 </dl>
 </dd></dl>
@@ -645,395 +776,17 @@ cp: -1 for left-tail (CDF), -1 for right-tail (survival function)</p>
 <dt id="pyfeng.nsvh.Nsvh1.price">
 <code class="sig-name descname"><span class="pre">price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.nsvh.Nsvh1.price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Vanilla option price.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vanilla option price</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-</div>
-<div class="section" id="module-pyfeng.opt_abc">
-<span id="opt-abc"></span><h1>opt_abc<a class="headerlink" href="#module-pyfeng.opt_abc" title="Permalink to this headline">¶</a></h1>
-<dl class="py class">
-<dt id="pyfeng.opt_abc.OptABC">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.opt_abc.</span></code><code class="sig-name descname"><span class="pre">OptABC</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.delta">
-<code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.delta" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model delta (sensitivity to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>delta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.delta_numeric">
-<code class="sig-name descname"><span class="pre">delta_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.delta_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model delta (sensitivity to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>delta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.gamma">
-<code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.gamma" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model gamma (2nd derivative to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>Delta with numerical derivative</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.gamma_numeric">
-<code class="sig-name descname"><span class="pre">gamma_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.gamma_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model gamma (2nd derivative to price) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>Delta with numerical derivative</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.impvol">
-<code class="sig-name descname"><span class="pre">impvol</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.impvol" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="simple">
-<dt>Implied volatility using Brent’s method.</dt><dd><p>Slow but robust implementation.</p>
-</dd>
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
-</dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.impvol_brentq">
-<code class="sig-name descname"><span class="pre">impvol_brentq</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.impvol_brentq" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="simple">
-<dt>Implied volatility using Brent’s method.</dt><dd><p>Slow but robust implementation.</p>
-</dd>
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
-</dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.params_kw">
-<code class="sig-name descname"><span class="pre">params_kw</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.params_kw" title="Permalink to this definition">¶</a></dt>
-<dd><p>Model parameters in dictionary</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.pdf_numeric">
-<code class="sig-name descname"><span class="pre">pdf_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.pdf_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Probability density functin (PDF) at <cite>strike</cite></p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>probability densitiy</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.price">
-<em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.price" title="Permalink to this definition">¶</a></dt>
-<dd><p>Vanilla option price.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>vanilla option price</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.theta">
-<code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.theta" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model thegta (sensitivity to time-to-maturity) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>theta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.theta_numeric">
-<code class="sig-name descname"><span class="pre">theta_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.theta_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model thegta (sensitivity to time-to-maturity) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>theta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.vanna">
-<code class="sig-name descname"><span class="pre">vanna</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.vanna" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model vanna (cross-derivative to price and volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>vanna value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.vanna_numeric">
-<code class="sig-name descname"><span class="pre">vanna_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.vanna_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model vanna (cross-derivative to price and volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>vanna value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.vega">
-<code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.vega" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model vega (sensitivity to volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>vega value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.vega_numeric">
-<code class="sig-name descname"><span class="pre">vega_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.vega_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model vega (sensitivity to volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>vega value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.volga">
-<code class="sig-name descname"><span class="pre">volga</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.volga" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model volga (2nd derivative to volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>volga value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptABC.volga_numeric">
-<code class="sig-name descname"><span class="pre">volga_numeric</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptABC.volga_numeric" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model volga (2nd derivative to volatility) by finite difference</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put</p>
-</dd>
-<dt>Returns:</dt><dd><p>volga value</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt id="pyfeng.opt_abc.OptAnalyticABC">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.opt_abc.</span></code><code class="sig-name descname"><span class="pre">OptAnalyticABC</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model with analytic price and greeks are available</p>
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.delta">
-<em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">delta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.delta" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model delta (sensitivity to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>delta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.gamma">
-<em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">gamma</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.gamma" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model gamma (2nd derivative to price).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>gamma value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.price">
-<code class="sig-name descname"><span class="pre">price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.price" title="Permalink to this definition">¶</a></dt>
-<dd><p>Call/put option price</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>option price</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.price_formula">
-<em class="property"><span class="pre">abstract</span> <span class="pre">static</span> </em><code class="sig-name descname"><span class="pre">price_formula</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.price_formula" title="Permalink to this definition">¶</a></dt>
-<dd><p>Call/put option pricing formula (abstract/static method)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-sigma: model volatility
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>vanilla option price</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.theta">
-<em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">theta</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.theta" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model theta (sensitivity to time-to-maturity).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>theta value</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="pyfeng.opt_abc.OptAnalyticABC.vega">
-<em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">vega</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_abc.OptAnalyticABC.vega" title="Permalink to this definition">¶</a></dt>
-<dd><p>Option model vega (sensitivity to volatility).</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
-</dd>
-<dt>Returns:</dt><dd><p>vega value</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-</div>
-<div class="section" id="module-pyfeng.opt_smile_abc">
-<span id="opt-smile-abc"></span><h1>opt_smile_abc<a class="headerlink" href="#module-pyfeng.opt_smile_abc" title="Permalink to this headline">¶</a></h1>
-<dl class="py class">
-<dt id="pyfeng.opt_smile_abc.OptSmileABC">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.opt_smile_abc.</span></code><code class="sig-name descname"><span class="pre">OptSmileABC</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_smile_abc.OptSmileABC" title="Permalink to this definition">¶</a></dt>
-<dd><p>Abstract class to model with volatility smile</p>
-<dl class="py method">
-<dt id="pyfeng.opt_smile_abc.OptSmileABC.vol_smile">
-<code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'bsm'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.opt_smile_abc.OptSmileABC.vol_smile" title="Permalink to this definition">¶</a></dt>
-<dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, ‘norm’ for Bachelier</p>
-</dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vanilla option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1042,7 +795,7 @@ model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, 
 
 </div>
 <div class="section" id="module-pyfeng.sabr">
-<span id="sabr"></span><h1>sabr<a class="headerlink" href="#module-pyfeng.sabr" title="Permalink to this headline">¶</a></h1>
+<span id="sabrhagan2002-sabrlorig2017-sabrchoiwu2021h-sabrchoiwu2021p"></span><h1>SabrHagan2002, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P<a class="headerlink" href="#module-pyfeng.sabr" title="Permalink to this headline">¶</a></h1>
 <p>Created on Tue Oct 10
 &#64;author: jaehyuk</p>
 <dl class="py class">
@@ -1058,14 +811,18 @@ model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, 
 <dt id="pyfeng.sabr.SabrABC.vol_smile">
 <code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrABC.vol_smile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, ‘norm’ for Bachelier</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>model</strong> – {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, ‘norm’ for Bachelier</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>volatility smile under the specified model</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1076,22 +833,24 @@ model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, 
 <dt id="pyfeng.sabr.SabrChoiWu2021H">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.sabr.</span></code><code class="sig-name descname"><span class="pre">SabrChoiWu2021H</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rho</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vol_beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrChoiWu2021H" title="Permalink to this definition">¶</a></dt>
 <dd><p>The CEV volatility approximation of the SABR modelbased on Theorem 1 of Choi &amp; Wu (2019)</p>
-<dl class="simple">
-<dt>References:</dt><dd><p>Choi, J., &amp; Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
+<p class="rubric">References</p>
+<p>Choi, J., &amp; Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
 of the stochastic-alpha-beta-rho (SABR) model.
 ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123</p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.sabr.SabrChoiWu2021H.mass_zero">
 <code class="sig-name descname"><span class="pre">mass_zero</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrChoiWu2021H.mass_zero" title="Permalink to this definition">¶</a></dt>
 <dd><p>Mass at zero (probability of hitting the orizin)</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>spot: spot price
-texp: time to expiry
-log:</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>log</strong> – </p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>Mass at zero</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Mass at zero</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1100,12 +859,16 @@ log:</p>
 <dt id="pyfeng.sabr.SabrChoiWu2021H.vol_for_price">
 <code class="sig-name descname"><span class="pre">vol_for_price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrChoiWu2021H.vol_for_price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility of the SABR model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp: time to expiry</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>equivalent volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>equivalent volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1116,22 +879,24 @@ texp: time to expiry</p>
 <dt id="pyfeng.sabr.SabrChoiWu2021P">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.sabr.</span></code><code class="sig-name descname"><span class="pre">SabrChoiWu2021P</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rho</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vol_beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrChoiWu2021P" title="Permalink to this definition">¶</a></dt>
 <dd><p>The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi &amp; Wu (2019)</p>
-<dl class="simple">
-<dt>References:</dt><dd><p>Choi, J., &amp; Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
+<p class="rubric">References</p>
+<p>Choi, J., &amp; Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
 of the stochastic-alpha-beta-rho (SABR) model.
 ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123</p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.sabr.SabrChoiWu2021P.vol_for_price">
 <code class="sig-name descname"><span class="pre">vol_for_price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrChoiWu2021P.vol_for_price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility of the SABR model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp: time to expiry</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>equivalent volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>equivalent volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1156,12 +921,16 @@ you may use spop.root
 <dt id="pyfeng.sabr.SabrHagan2002.vol_for_price">
 <code class="sig-name descname"><span class="pre">vol_for_price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrHagan2002.vol_for_price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility of the SABR model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp: time to expiry</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>equivalent volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>equivalent volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1172,22 +941,24 @@ texp: time to expiry</p>
 <dt id="pyfeng.sabr.SabrLorig2017">
 <em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">pyfeng.sabr.</span></code><code class="sig-name descname"><span class="pre">SabrLorig2017</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rho</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_fwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrLorig2017" title="Permalink to this definition">¶</a></dt>
 <dd><p>Third-order BSM volatilty approximation of the SABR model by Lorig et al. (2017)</p>
-<dl class="simple">
-<dt>References:</dt><dd><p>Lorig, M., Pagliarani, S., &amp; Pascucci, A. (2017). Explicit Implied Volatilities
+<p class="rubric">References</p>
+<p>Lorig, M., Pagliarani, S., &amp; Pascucci, A. (2017). Explicit Implied Volatilities
 for Multifactor Local-Stochastic Volatility Models.
 Mathematical Finance, 27(3), 926–960. <a class="reference external" href="https://doi.org/10.1111/mafi.12105">https://doi.org/10.1111/mafi.12105</a></p>
-</dd>
-</dl>
 <dl class="py method">
 <dt id="pyfeng.sabr.SabrLorig2017.vol_for_price">
 <code class="sig-name descname"><span class="pre">vol_for_price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrLorig2017.vol_for_price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility of the SABR model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp: time to expiry</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>equivalent volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>equivalent volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1204,14 +975,20 @@ texp: time to expiry</p>
 <dd><dl class="simple">
 <dt>Implied volatility using Brent’s method.</dt><dd><p>Slow but robust implementation.</p>
 </dd>
-<dt>Args:</dt><dd><p>price: option price
-strike: strike price
-spot: spot (or forward) price
-texp: time to expiry
-cp: 1/-1 for call/put
-setval: if True, sigma is set with the solved implied volatility</p>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>price</strong> – option price</p></li>
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward) price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put</p></li>
+<li><p><strong>setval</strong> – if True, sigma is set with the solved implied volatility</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>implied volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>implied volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1220,13 +997,17 @@ setval: if True, sigma is set with the solved implied volatility</p>
 <dt id="pyfeng.sabr.SabrVolApproxABC.price">
 <code class="sig-name descname"><span class="pre">price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrVolApproxABC.price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Vanilla option price.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>vanilla option price</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>vanilla option price</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1235,12 +1016,16 @@ cp: 1/-1 for call/put option</p>
 <dt id="pyfeng.sabr.SabrVolApproxABC.vol_for_price">
 <em class="property"><span class="pre">abstract</span> </em><code class="sig-name descname"><span class="pre">vol_for_price</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrVolApproxABC.vol_for_price" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility of the SABR model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot (or forward)
-texp: time to expiry</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot (or forward)</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>equivalent volatility</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>equivalent volatility</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1249,14 +1034,18 @@ texp: time to expiry</p>
 <dt id="pyfeng.sabr.SabrVolApproxABC.vol_smile">
 <code class="sig-name descname"><span class="pre">vol_smile</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">texp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyfeng.sabr.SabrVolApproxABC.vol_smile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Equivalent volatility smile for a given model</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>strike: strike price
-spot: spot price
-texp: time to expiry
-cp: 1/-1 for call/put option
-model: {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, ‘norm’ for Bachelier</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strike</strong> – strike price</p></li>
+<li><p><strong>spot</strong> – spot price</p></li>
+<li><p><strong>texp</strong> – time to expiry</p></li>
+<li><p><strong>cp</strong> – 1/-1 for call/put option</p></li>
+<li><p><strong>model</strong> – {‘bsm’, ‘norm’} ‘bsm’ (by default) for Black-Scholes-Merton, ‘norm’ for Bachelier</p></li>
+</ul>
 </dd>
-<dt>Returns:</dt><dd><p>volatility smile under the specified model</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>volatility smile under the specified model</p>
 </dd>
 </dl>
 </dd></dl>
