@@ -8,8 +8,8 @@ import abc
 import copy
 import numpy as np
 import scipy.optimize as spop
-import scipy.stats as spst
-import scipy.special as spsp
+#import scipy.stats as spst
+#import scipy.special as spsp
 
 from . import opt_smile_abc as smile
 from . import bsm
@@ -205,7 +205,7 @@ class SabrHagan2002(SabrVolApproxABC):
         if texp <= 0.0:
             return 0.0
 
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
+        fwd, _, _ = self.fwd_df(self, spot)
         _alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
         betac2 = betac**2
 
@@ -290,7 +290,7 @@ class SabrChoiWu2021H(SabrVolApproxABC):
         vol_beta = self.beta if self.vol_beta is None else self.vol_beta
         vol_betac = 1.0 - vol_beta
 
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
+        fwd, _, _ = self._fwd_factor(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike
@@ -378,7 +378,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H):
         vol_beta = self.beta if self.vol_beta is None else self.vol_beta
         vol_betac = 1.0 - vol_beta
 
-        fwd = spot*(1.0 if self.is_fwd else np.exp(texp*(self.intr - self.divr)))
+        fwd, _, _ = self._fwd_factor(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike
@@ -485,7 +485,7 @@ class SabrLorig2017(SabrVolApproxABC):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        fwd = spot*(1.0 if self.is_fwd else np.exp(texp*(self.intr - self.divr)))
+        fwd, _, _ = self._fwd_factor(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike

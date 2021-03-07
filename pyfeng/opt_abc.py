@@ -31,6 +31,26 @@ class OptABC(abc.ABC):
         params = {"sigma": self.sigma, "intr": self.intr, "divr": self.divr, "is_fwd": self.is_fwd}
         return params
 
+    def _fwd_factor(self, spot, texp):
+        """
+        Discounting factor and forward
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+
+        Returns:
+            (forward, discounting factor, dividend factor)
+        """
+        df = np.exp(-texp * self.intr)
+        if self.is_fwd:
+            divf = 1
+            fwd = spot
+        else:
+            divf = np.exp(-texp * self.divr)
+            fwd = spot * divf / df
+        return fwd, df, divf
+
     @abc.abstractmethod
     def price(self, strike, spot, texp, cp=1):
         """
@@ -64,11 +84,10 @@ class OptABC(abc.ABC):
             implied volatility
         """
 
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
 
         kk = strike / fwd  # strike / fwd
-        price_std = price / disc_fac / fwd  # forward price / fwd
+        price_std = price / df / fwd  # forward price / fwd
 
         model = copy.copy(self)
         model.sigma = 1e-64

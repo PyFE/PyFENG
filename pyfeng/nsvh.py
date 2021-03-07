@@ -29,8 +29,7 @@ class Nsvh1(sabr.SabrABC):
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr)/disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)
@@ -45,7 +44,7 @@ class Nsvh1(sabr.SabrABC):
         price = 0.5*sig_sqrt/s_sqrt*vov_var\
             * ((1+self.rho)*ncdf_p - (1-self.rho)*ncdf_m - 2*self.rho*ncdf)\
             + (fwd-strike) * ncdf
-        price *= cp * disc_fac
+        price *= cp * df
         return price
 
     def cdf(self, strike, spot, texp, cp=-1):
@@ -61,7 +60,7 @@ class Nsvh1(sabr.SabrABC):
         Returns:
             CDF value
         """
-        fwd = spot * (1.0 if self.is_fwd else np.exp((self.intr - self.divr)*texp))
+        fwd, _, _ = self._fwd_factor(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)
