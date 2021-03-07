@@ -60,47 +60,40 @@ class Bsm(opt.OptAnalyticABC):
 
     def vega(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr)/disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
 
-        vega = disc_fac * fwd * spst.norm.pdf(d1) * np.sqrt(texp)  # formula according to wikipedia
+        vega = df * fwd * spst.norm.pdf(d1) * np.sqrt(texp)  # formula according to wikipedia
         return vega
 
     def delta(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
 
         delta = cp * spst.norm.cdf(cp * d1)  # formula according to wikipedia
-        delta *= disc_fac if self.is_fwd else div_fac
+        delta *= df if self.is_fwd else divf
         return delta
 
     def gamma(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), 100*np.finfo(float).eps)
         d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
 
-        gamma = disc_fac * spst.norm.pdf(d1)/fwd/sigma_std  # formula according to wikipedia
+        gamma = df * spst.norm.pdf(d1)/fwd/sigma_std  # formula according to wikipedia
         if not self.is_fwd:
-            gamma *= (div_fac/disc_fac)**2
+            gamma *= (divf/df)**2
         return gamma
 
     def theta(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), 100*np.finfo(float).eps)
         d1 = np.log(fwd / strike) / sigma_std
@@ -109,10 +102,10 @@ class Bsm(opt.OptAnalyticABC):
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
         theta = -0.5*spst.norm.pdf(d1)*fwd*self.sigma/np.sqrt(texp) - cp*self.intr*strike*spst.norm.cdf(cp*d2)
-        theta *= disc_fac
+        theta *= df
         return theta
 
-    def impvol_newton(self, price, strike, spot, texp, cp=1, setval=False):
+    def _impvol_newton(self, price, strike, spot, texp, cp=1, setval=False):
         """
         BSM implied volatility with Newton's method
 
@@ -127,11 +120,10 @@ class Bsm(opt.OptAnalyticABC):
         Returns:
             implied volatility
         """
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr)/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         strike_std = strike / fwd  # strike / fwd
-        price_std = price / disc_fac / fwd  # forward price / fwd
+        price_std = price / df / fwd  # forward price / fwd
 
         bsm_model = Bsm(0, is_fwd=True)
         p_min = bsm_model.price(strike_std, 1.0, texp, cp)
@@ -188,7 +180,7 @@ class Bsm(opt.OptAnalyticABC):
         return _sigma
 
     #### Class method
-    impvol = impvol_newton
+    impvol = _impvol_newton
 
     def vol_smile(self, strike, spot, texp, cp=1, model='norm'):
         """
@@ -210,7 +202,7 @@ class Bsm(opt.OptAnalyticABC):
             price = self.price(strike, spot, texp, cp=cp)
             return norm.Norm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == 'norm-approx' or model.lower() == 'norm-grunspan':
-            fwd = spot * (1.0 if self.is_fwd else np.exp((self.intr - self.divr)*texp))
+            fwd, _, _ = self._fwd_factor(spot, texp)
             kk = strike / fwd
             lnk = np.log(kk)
             if model.lower() == 'norm-approx':
@@ -225,8 +217,7 @@ class Bsm(opt.OptAnalyticABC):
 
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
         strike2 = strike if strike2 is None else strike2
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike2)/sigma_std
@@ -234,7 +225,7 @@ class Bsm(opt.OptAnalyticABC):
         d1 += 0.5*sigma_std
 
         price = fwd * spst.norm.cdf(cp * d1) - strike * spst.norm.cdf(cp * d2)
-        price *= cp*disc_fac
+        price *= cp*df
         return price
 
     def _barrier_params(self, barrier, spot):
@@ -399,14 +390,14 @@ class BsmDisp(smile.OptSmileABC):
             volatility smile under the specified model
         """
         if model.lower() == 'norm-approx':
-            fwd = spot * (1.0 if self.is_fwd else np.exp((self.divr - self.intr)*texp))
+            fwd, _, _ = self._fwd_factor(spot, texp)
             kkd = self.disp(strike) / self.disp(fwd)
             lnkd = np.log(kkd)
             sig_beta = self.beta * self.sigma
             vol = self.sigma * self.disp(fwd) * np.sqrt(kkd) * (1 + lnkd ** 2 / 24) / \
                 (1 + sig_beta ** 2 * texp / 24)
         elif model.lower() == 'bsm-approx':
-            fwd = spot * (1.0 if self.is_fwd else np.exp((self.divr - self.intr)*texp))
+            fwd, _, _ = self._fwd_factor(spot, texp)
             kk = strike / fwd
             lnk = np.log(kk)
             fwdd = self.disp(fwd)

@@ -45,7 +45,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
         Returns:
             mass at zero.
         """
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
+        fwd, _, _ = self._fwd_factor(spot, texp)
 
         betac = 1.0 - self.beta
         a = 0.5 / betac
@@ -107,9 +107,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
         return disc_fac * price
 
     def delta(self, strike, spot, texp, cp_sign=1):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac / disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
         betac_inv = 1 / (1 - self.beta)
 
         k_star = 1.0 / np.square(self.sigma / betac_inv) / texp
@@ -123,13 +121,11 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
             delta = 0.5 * (cp_sign - 1) + spst.ncx2.sf(x, -betac_inv, y) - 2 * x / betac_inv * \
                     (spst.ncx2.pdf(x, -betac_inv, y) - strike / fwd * spst.ncx2.pdf(y, 4 - betac_inv, x))
 
-        delta *= disc_fac if self.is_fwd else div_fac
+        delta *= df if self.is_fwd else divf
         return delta
 
     def gamma(self, strike, spot, texp, cp_sign=1):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac / disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
         betac_inv = 1 / (1 - self.beta)
 
         k_star = 1.0 / np.square(self.sigma / betac_inv) / texp
@@ -144,18 +140,16 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
                     strike / fwd * ((2 - betac_inv - x) * spst.ncx2.pdf(y, 4 - betac_inv, x) + \
                                     x * spst.ncx2.pdf(y, 6 - betac_inv, x))
 
-        gamma *= 2 * np.square(div_fac / betac_inv) / disc_fac * x / fwd
+        gamma *= 2 * (divf/betac_inv)**2 / df * x / fwd
 
         if self.is_fwd:
-            gamma *= np.square(disc_fac / div_fac)
+            gamma *= (df/divf)**2
 
         return gamma
 
     def vega(self, strike, spot, texp, cp_sign=1):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac / disc_fac)
-        spot = fwd * disc_fac / div_fac
+        fwd, df, divf = self._fwd_factor(spot, texp)
+        spot = fwd * df / divf
 
         betac_inv = 1 / (1 - self.beta)
 
@@ -170,8 +164,9 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
 
         sigma = self.sigma * spot ** (self.beta - 1)
 
-        vega *= disc_fac * 2 * x / sigma
+        vega *= df * 2 * x / sigma
         return vega
 
     def theta(self, strike, spot, texp, cp=1):
+        ### Need to implement this
         return self.theta_numeric(strike, spot, texp, cp=cp)

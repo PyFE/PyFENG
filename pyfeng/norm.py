@@ -23,7 +23,7 @@ class Norm(opt.OptAnalyticABC):
         print(price)
     """
 
-    # Coefficients for impvol_ChoiEtAl2007
+    # Coefficients for _impvol_Choi2009
     POLY_NU = [
         1.266458051348246e4, 2.493415285349361e4, 6.106322407867059e3, 1.848489695437094e3,
         5.988761102690991e2, 4.980340217855084e1, 2.100960795068497e1, 3.994961687345134e-1]
@@ -66,7 +66,7 @@ class Norm(opt.OptAnalyticABC):
         price = disc_fac * (cp*(fwd - strike)*spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
         return price
 
-    def impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
+    def _impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
         """
         Bachelier implied volatility by Choi et al. (2007)
 
@@ -86,9 +86,8 @@ class Norm(opt.OptAnalyticABC):
         Returns:
             implied volatility
         """
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / disc_fac)
-        price_fwd = price / disc_fac
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        price_fwd = price / df
         strike_std = cp*(fwd - strike)
 
         time_val = price_fwd - np.maximum(0, strike_std)  # option time value
@@ -115,49 +114,41 @@ class Norm(opt.OptAnalyticABC):
 
     def vega(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
-        vega = disc_fac * spst.norm.pdf(d) * np.sqrt(texp)  # formula according to lecture notes
+        vega = df * spst.norm.pdf(d) * np.sqrt(texp)  # formula according to lecture notes
         return vega
 
     def delta(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         delta = cp * spst.norm.cdf(cp * d)  # formula according to wikipedia
-        delta *= disc_fac if self.is_fwd else div_fac
+        delta *= df if self.is_fwd else divf
         return delta
 
     def gamma(self, strike, spot, texp, cp=1):
 
         # cp is not used
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
-        gamma = disc_fac * spst.norm.pdf(d)/sigma_std  # formula according to wikipedia
+        gamma = df * spst.norm.pdf(d)/sigma_std  # formula according to wikipedia
         if not self.is_fwd:
-            gamma *= (div_fac/disc_fac)**2
+            gamma *= (divf/df)**2
         return gamma
 
     def theta(self, strike, spot, texp, cp=1):
 
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
@@ -165,25 +156,23 @@ class Norm(opt.OptAnalyticABC):
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
         theta = sigma_std*spst.norm.pdf(d)
         theta = -0.5*theta/texp + self.intr*(theta - cp*strike*spst.norm.cdf(cp*d))
-        return disc_fac * theta
+        return df * theta
 
     def price_binary(self, strike, spot, texp, cp=1, opt_type='cash'):
-        disc_fac = np.exp(-texp * self.intr)
-        div_fac = np.exp(-texp * self.divr)
-        fwd = spot * (1.0 if self.is_fwd else div_fac/disc_fac)
+        fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         if opt_type.lower() == 'asset':
-            price = disc_fac * (cp * fwd * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
+            price = df * (cp * fwd * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
         else:
-            price = disc_fac * spst.norm.cdf(cp * d)
+            price = df * spst.norm.cdf(cp * d)
 
         return price
 
     ####
-    impvol = impvol_Choi2009
+    impvol = _impvol_Choi2009
 
     def vol_smile(self, strike, spot, texp, cp=1, model='bsm'):
         """
@@ -205,7 +194,7 @@ class Norm(opt.OptAnalyticABC):
             price = self.price(strike, spot, texp, cp=cp)
             return bsm.Bsm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == 'bsm-approx':
-            fwd = spot * (1.0 if self.is_fwd else np.exp((self.intr - self.divr)*texp))
+            fwd, _, _ = self._fwd_factor(spot, texp)
             sigma_std = self.sigma / fwd
             kk = strike / fwd
             lnk = np.log(kk)
@@ -216,15 +205,14 @@ class Norm(opt.OptAnalyticABC):
             raise ValueError(f'Unknown model: {model}')
 
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
-        disc_fac = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / disc_fac)
+        fwd, df, _ = self._fwd_factor(spot, texp)
         strike2 = strike if strike2 is None else strike2
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d2 = (fwd - strike2) / sigma_std
 
         price = cp*(fwd - strike)*spst.norm.cdf(cp * d2) + sigma_std*spst.norm.pdf(d2)
-        price *= disc_fac
+        price *= df
         return price
 
     def _barrier_params(self, barrier, spot):
