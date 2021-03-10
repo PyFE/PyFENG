@@ -14,18 +14,18 @@ PyFENG is the python implemention of the standard option pricing models in finan
 * It is implemented with python class.
 * It is intended for, but not limited to, academic use. By providing reference models, it saves researchers' time. 
 
-## Instllation
-``` python
+## Installation
+```sh
 pip install pyfeng
 ```
-Upgrade
-```
+For upgrade,
+```sh
 pip install --upgrade pyfeng
 ```
 
 ## Code Snippets
 `In [1]:`
-``` python
+```python
 import numpy as np
 import pyfeng as pf
 m = pf.Bsm(sigma=0.2, intr=0.05, divr=0.1)
@@ -37,7 +37,7 @@ array([15.71361973,  9.69250803,  5.52948546,  2.94558338,  1.48139131])
 ```
 
 `In [2]:`
-``` python
+```python
 sigma = np.array([0.2, 0.3, 0.5])[:, None]
 m = pf.Bsm(sigma, intr=0.05, divr=0.1) # sigma in axis=0
 m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
@@ -49,9 +49,8 @@ array([[ 5.75927238,  5.52948546,  2.94558338],
        [16.812035  , 17.10541288, 14.10354768]])
 ```
 
-
 ## Author
-* Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School)
+* Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
 
 ## Others
 * See also [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
