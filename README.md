@@ -51,7 +51,7 @@ array([[ 5.75927238,  5.52948546,  2.94558338],
 
 
 ## Author
-* Prof. [Jaehyuk Choi](https://www.jaehyukchoi.net/phbs_en/) (Peking University HSBC Business School)
+* Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School)
 
 ## Others
 * See also [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
