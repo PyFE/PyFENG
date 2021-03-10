@@ -10,19 +10,20 @@ from . import opt_smile_abc as smile
 class Bsm(opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
-        Underlying price is assumed to follow geometric Brownian motion.
+        Underlying price is assumed to follow a geometric Brownian motion.
 
     Examples:
+        >>> import numpy as np
         >>> import pyfeng as pf
-        >>> bsm = pf.BsmModel(sigma=0.2)
-        >>> price = bsm.price(strike=105, spot=100, texp=1)
-        >>> print(price)
-        "Print result is here."
-        >>> sigma = np.array([0.2, 0.3, 0.5])
-        >>> bsm = pf.BsmModel(sigma[:,None]) # sigma in axis=0
-        >>> price = bsm.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
-        >>> print(price)
-        "Print result is here."
+        >>> m = pf.Bsm(sigma=0.2, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([15.71361973,  9.69250803,  5.52948546,  2.94558338,  1.48139131])
+        >>> sigma = np.array([0.2, 0.3, 0.5])[:, None]
+        >>> m = pf.Bsm(sigma, intr=0.05, divr=0.1) # sigma in axis=0
+        >>> m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
+        array([[ 5.75927238,  5.52948546,  2.94558338],
+               [ 9.4592961 ,  9.3881245 ,  6.45745004],
+               [16.812035  , 17.10541288, 14.10354768]])
     """
 
     @staticmethod

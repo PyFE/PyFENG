@@ -195,6 +195,19 @@ class SabrVolApproxABC(SabrABC):
 class SabrHagan2002(SabrVolApproxABC):
     """
     SABR model with Hagan's implied volatility approximation for 0<beta<=1.
+
+    References:
+        Hagan, P. S., Kumar, D., Lesniewski, A. S., & Woodward, D. E. (2002). Managing Smile Risk.
+        Wilmott, September, 84–108.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.SabrHagan2002(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
+        array([0.21976016, 0.20922027, 0.200432  , 0.19311113, 0.18703486])
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
     """
     vol_beta = 1.0  # should not be changed
 
@@ -205,7 +218,7 @@ class SabrHagan2002(SabrVolApproxABC):
         if texp <= 0.0:
             return 0.0
 
-        fwd, _, _ = self.fwd_df(self, spot)
+        fwd, _, _ = self._fwd_factor(spot, texp)
         _alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
         betac2 = betac**2
 
@@ -266,6 +279,14 @@ class SabrChoiWu2021H(SabrVolApproxABC):
         Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
         of the stochastic-alpha-beta-rho (SABR) model.
         ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
+
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.SabrChoiWu2021H(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
+        array([2.07833214, 2.03698255, 2.00332   , 1.97692259, 1.95735019])
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([22.04897988, 14.56240351,  8.74169054,  4.72340753,  2.28876105])
     """
 
     def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False, vol_beta=None):
@@ -369,6 +390,15 @@ class SabrChoiWu2021P(SabrChoiWu2021H):
         Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
         of the stochastic-alpha-beta-rho (SABR) model.
         ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.SabrChoiWu2021P(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
+        array([2.07761123, 2.03665311, 2.00332   , 1.97718783, 1.95781579])
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([22.0470526 , 14.56114825,  8.74169054,  4.72447547,  2.29018838])
     """
 
     def vol_for_price(self, strike, spot, texp):

@@ -11,6 +11,13 @@ class Nsvh1(sabr.SabrABC):
     References:
         Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
         Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.Nsvh1(sigma=20, vov=0.2, rho=-0.3)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([22.45639334, 14.89800673,  8.88641613,  4.65917923,  2.10575204])
     """
 
     beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
