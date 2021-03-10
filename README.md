@@ -1,5 +1,5 @@
 # PyFENG: Python Financial ENGineering
-[![PyPI version](https://badge.fury.io/py/pyfeng.svg)](https://badge.fury.io/py/pyfeng)
+[![PyPI version](https://badge.fury.io/py/pyfeng.svg)](https://pypi.org/project/pyfeng/)
 
 PyFENG is the python implemention of the standard option pricing models in financial engineering.
   * Black-Scholes-Merton (and displaced diffusion)
