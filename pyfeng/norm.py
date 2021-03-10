@@ -17,18 +17,25 @@ class Norm(opt.OptAnalyticABC):
     Underlying price is assumed to follow arithmetic Brownian motion.
 
     Examples:
-        import pyfeng as pf
-        norm = pf.NormModel(sigma=20)
-        price = norm.price(strike=105, spot=100, texp=1)
-        print(price)
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.Norm(sigma=20, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([16.57233446, 10.34711401,  5.77827026,  2.83857367,  1.20910477])
+        >>> sigma = np.array([20, 30, 50])[:, None]
+        >>> m = pf.Norm(sigma, intr=0.05, divr=0.1) # sigma in axis=0
+        >>> m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
+        array([[ 6.41387836,  5.77827026,  2.83857367],
+               [10.48003559,  9.79822867,  6.3002881 ],
+               [18.67164469, 17.95246828, 13.98027179]])
     """
 
     # Coefficients for _impvol_Choi2009
-    POLY_NU = [
+    _POLY_NU = [
         1.266458051348246e4, 2.493415285349361e4, 6.106322407867059e3, 1.848489695437094e3,
         5.988761102690991e2, 4.980340217855084e1, 2.100960795068497e1, 3.994961687345134e-1]
 
-    POLY_DE = [
+    _POLY_DE = [
         1.174240599306013e1, -2.067719486400926e2, 3.608817108375034e3, 2.392008891720782e4,
         1.598919697679745e4, 1.323614537899738e3, 1.495105008310999e3, 3.093573936743112e1,
         4.990534153589422e1, 1.0]
@@ -103,7 +110,7 @@ class Norm(opt.OptAnalyticABC):
         # eta = v / atanh(v) = 2v / log((1+v)/(1-v)) = 2v / log((2-v1)/v1)
         with np.errstate(divide='ignore', invalid='ignore'):
             eta = np.where(v1 < 0.999, 2*(1-v1)/(np.log((2.0-v1)/v1)), 1/(1 + v_sq*(1/3 + v_sq/5)))
-        h_a = np.sqrt(eta) * np.polyval(Norm.POLY_NU, eta) / np.polyval(Norm.POLY_DE, eta)
+        h_a = np.sqrt(eta) * np.polyval(Norm._POLY_NU, eta) / np.polyval(Norm._POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
         _sigma = np.where(time_val >= -self.IMPVOL_TOL, np.sqrt(np.pi/(2*texp)) * strd * h_a, np.nan)
 

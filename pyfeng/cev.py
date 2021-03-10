@@ -11,6 +11,13 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
 
     Underlying price is assumed to follow CEV process:
     dS_t = (r - q) S_t dt + sigma S_t^beta dW_t, where dW_t is a standard Brownian motion.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.Cev(sigma=0.2, beta=0.5, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([16.11757214, 10.00786871,  5.64880408,  2.89028476,  1.34128656])
     """
     sigma = None
     beta = 0.5

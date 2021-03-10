@@ -1,6 +1,9 @@
 import unittest
 import copy
 import numpy as np
+import sys
+import os
+sys.path.insert(0, os.getcwd())
 import pyfeng as pf
 
 
@@ -102,4 +105,5 @@ class TestBsmMethods(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    print(f'Pyfeng loaded from {pf.__path__}')
     unittest.main()
