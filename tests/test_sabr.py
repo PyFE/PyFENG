@@ -9,7 +9,7 @@ import pyfeng as pf
 
 class TestSabr(unittest.TestCase):
 
-    def test_ChoiWu2021(self):
+    def test_UnCorrChoiWu2021(self):
         # Param Set 19: Table 7 (Case III.C) in Cai et al. (2017). https://doi.org/10.1287/opre.2017.1617
         param = {"sigma": 0.4, "vov": 0.6, "rho": 0, "beta": 0.3, 'n_quad': 9}
         fwd, texp = 0.05, 1
