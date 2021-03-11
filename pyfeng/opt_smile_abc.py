@@ -1,8 +1,9 @@
 import abc
-
+import numpy as np
 from . import bsm
 from . import norm
 from . import opt_abc as opt
+import scipy.stats as spst
 
 
 class OptSmileABC(opt.OptABC, abc.ABC):
@@ -36,3 +37,52 @@ class OptSmileABC(opt.OptABC, abc.ABC):
         price = self.price(strike, spot, texp, cp=cp)
         vol = base_model.impvol(price, strike, spot, texp, cp=cp)
         return vol
+
+
+class MassZeroABC(opt.OptABC, abc.ABC):
+    """
+        References:
+            De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with Positive Mass at Zero.
+            SIAM Journal on Financial Mathematics, 8(1), 709–737. https://doi.org/10.1137/14098065X
+    """
+
+    @abc.abstractmethod
+    def mass_zero(self, spot, texp):
+        pass
+
+    def vol_from_mass_zero(self, strike, spot, texp, mass=None):
+        """
+        Implied volatility from positive mass at zero from DMHJ (2017)
+        If mass == None, returns the Lee (2004) formula
+
+        Args:
+            strike:
+            spot:
+            texp:
+            mass: mass at zero
+
+        Returns:
+        """
+        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
+
+        # Perhaps we should return Nan for k >= 1
+        kk = strike / fwd
+        tmp = np.sqrt(2 * np.abs(np.log(kk)))
+        leading = tmp / np.sqrt(texp)
+        tmp2 = tmp * tmp
+        val = np.ones_like(kk)
+
+        if mass is None:
+            mass = self.mass_zero(spot, texp)
+
+        ninv = spst.norm.ppf(mass)
+        val += ninv / tmp + 0.5 * (ninv * ninv + 2) / tmp2 + 0.5 * ninv / (tmp * tmp2)
+
+        val *= leading
+        return val
+
+    def price_from_mass_zero(self, strike, spot, texp, cp=1, mass=None):
+        vol = self.vol_from_mass_zero(strike, spot, texp, mass=None)
+        base_model = bsm.Bsm(vol)
+        price = base_model.price(strike, spot, texp, cp=cp)
+        return price

@@ -2,6 +2,7 @@
 """
 Created on Tue Oct 10
 @author: jaehyuk
+
 """
 
 import abc
@@ -271,7 +272,7 @@ class SabrHagan2002(SabrVolApproxABC):
         return params
 
     
-class SabrChoiWu2021H(SabrVolApproxABC):
+class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
     """
     The CEV volatility approximation of the SABR modelbased on Theorem 1 of Choi & Wu (2019)
 
@@ -382,7 +383,7 @@ class SabrChoiWu2021H(SabrVolApproxABC):
         return t0
 
 
-class SabrChoiWu2021P(SabrChoiWu2021H):
+class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
     """
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 

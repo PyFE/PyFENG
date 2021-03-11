@@ -5,7 +5,7 @@ from . import opt_abc as opt
 from . import opt_smile_abc as smile
 
 
-class Cev(opt.OptAnalyticABC, smile.OptSmileABC):
+class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
     """
     Constant Elasticity of Variance (CEV) model.
 

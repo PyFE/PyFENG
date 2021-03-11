@@ -1,9 +1,10 @@
 import numpy as np
 from . import sabr
 import scipy.special as spsp
+from . import opt_smile_abc as smile
 
 
-class SabrUncorrChoiWu2021(sabr.SabrABC):
+class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
     """
     The uncorrelated SABR (rho=0) model pricing by approximating the integrated variance with
     a log-normal distribution.
