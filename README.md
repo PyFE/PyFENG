@@ -29,7 +29,7 @@ pip install --upgrade pyfeng
 import numpy as np
 import pyfeng as pf
 m = pf.Bsm(sigma=0.2, intr=0.05, divr=0.1)
-m.price(np.arange(80, 121, 10), 100, 1.2)
+m.price(strike=np.arange(80, 121, 10), spot=100, texp=1.2)
 ```
 `Out [1]:`
 ```
@@ -38,15 +38,14 @@ array([15.71361973,  9.69250803,  5.52948546,  2.94558338,  1.48139131])
 
 `In [2]:`
 ```python
-sigma = np.array([0.2, 0.3, 0.5])[:, None]
+sigma = np.array([0.2], [0.5])
 m = pf.Bsm(sigma, intr=0.05, divr=0.1) # sigma in axis=0
-m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
+m.price(strike=np.array([90, 95, 100]), spot=100, texp=1.2, cp=np.array([-1,1,1]))
 ```
 `Out [2]:`
 ```
-array([[ 5.75927238,  5.52948546,  2.94558338],
-       [ 9.4592961 ,  9.3881245 ,  6.45745004],
-       [16.812035  , 17.10541288, 14.10354768]])
+array([[ 5.75927238,  7.38869609,  5.52948546],
+       [16.812035  , 18.83878533, 17.10541288]])
 ```
 
 ## Author

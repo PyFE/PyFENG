@@ -31,9 +31,22 @@ class OptABC(abc.ABC):
         params = {"sigma": self.sigma, "intr": self.intr, "divr": self.divr, "is_fwd": self.is_fwd}
         return params
 
+    def forward(self, spot, texp):
+        """
+        Forward price
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+
+        Returns:
+            forward price
+        """
+        return spot if self.is_fwd else spot * np.exp((self.intr - self.divr)*texp)
+
     def _fwd_factor(self, spot, texp):
         """
-        Discounting factor and forward
+        Forward, discount factor, dividend factor
 
         Args:
             spot: spot price
@@ -220,7 +233,6 @@ class OptABC(abc.ABC):
 
         Returns:
             vega value
-
         """
         h = self._vega_shock(strike, spot, texp, cp)
         model = copy.copy(self)

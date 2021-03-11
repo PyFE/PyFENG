@@ -19,6 +19,7 @@ from . import cev
 
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
+    _base_beta = None
 
     def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
         """
@@ -49,6 +50,24 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
+    def _m_base(self, vol):
+        """
+        The model of the vol_for_price
+
+        Args:
+            vol:
+
+        Returns: model
+        """
+        vol_beta = self.beta if self._base_beta is None else self._base_beta
+
+        if abs(vol_beta - 1.0) < 0.001:
+            return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
+        elif abs(vol_beta) < 0.001:
+            return norm.Norm(vol, intr=self.intr, divr=self.divr)
+        else:
+            return cev.Cev(vol, beta=vol_beta, intr=self.intr, divr=self.divr)
+
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
             model = 'bsm' if self.beta > 0.0 else 'norm' if self.beta == 0 else None
@@ -61,7 +80,6 @@ class SabrVolApproxABC(SabrABC):
     Abstract class for SABR models with volatility approximation (asymptotic expansion)
     """
     approx_order = 1  # order in texp: 0: leading order, 1: first order, -1: reserved for 2/(1+exp(-2*eps)) smoothing 
-    vol_beta = None
 
     @staticmethod
     def _vv(zz, rho):
@@ -141,34 +159,16 @@ class SabrVolApproxABC(SabrABC):
         """
         pass
     
-    def _m_vol(self, vol):
-        """
-        The model of the vol_for_price
-
-        Args:
-            vol:
-
-        Returns: model
-        """
-        vol_beta = self.beta if self.vol_beta is None else self.vol_beta
-
-        if abs(vol_beta - 1.0) < 0.001:
-            return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
-        elif abs(vol_beta) < 0.001:
-            return norm.Norm(vol, intr=self.intr, divr=self.divr)
-        else:
-            return cev.Cev(vol, beta=vol_beta, intr=self.intr, divr=self.divr)
-    
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)
-        m_vol = self._m_vol(vol)
+        m_vol = self._m_base(vol)
         price = m_vol.price(strike, spot, texp, cp=cp)
         return price
 
     def impvol(self, price, strike, spot, texp, cp=1, setval=False):
         model = copy.copy(self)
 
-        vol = self._m_vol().impvol(price, strike, spot, texp, cp=cp)
+        vol = self._m_base().impvol(price, strike, spot, texp, cp=cp)
 
         def iv_func(_sigma):
             model.sigma = _sigma
@@ -184,7 +184,7 @@ class SabrVolApproxABC(SabrABC):
         if model is None:
             model = 'bsm' if self.beta > 0.0 else 'norm' if self.beta == 0 else None
 
-        vol_beta = self.beta if self.vol_beta is None else self.vol_beta
+        vol_beta = self.beta if self._base_beta is None else self._base_beta
         if (model.lower() == 'bsm' and vol_beta == 1.0) or (model.lower() == 'norm' and vol_beta == 0.0):
             vol = self.vol_for_price(strike, spot, texp)
         else:
@@ -209,7 +209,7 @@ class SabrHagan2002(SabrVolApproxABC):
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
         array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
     """
-    vol_beta = 1.0  # should not be changed
+    _base_beta = 1.0  # should not be changed
 
     def vol_for_price(self, strike, spot, texp):
         # fwd, spot, sigma may be either scalar or np.array.
@@ -254,7 +254,7 @@ class SabrHagan2002(SabrVolApproxABC):
         if is_vol:
             vol3 = price_or_vol3
         else:
-            vol3 = self._m_vol().impvol(price_or_vol3, strike3, spot, texp)
+            vol3 = self._m_base().impvol(price_or_vol3, strike3, spot, texp)
 
         def iv_func(x):
             model.sigma = np.exp(x[0])
@@ -507,7 +507,7 @@ class SabrLorig2017(SabrVolApproxABC):
         Mathematical Finance, 27(3), 926–960. https://doi.org/10.1111/mafi.12105
     """
 
-    vol_beta = 1.0  # should not be changed
+    _base_beta = 1.0  # should not be changed
     lv_factor = 1.0
     approx_order = 3
 
