@@ -63,23 +63,20 @@ class MassZeroABC(opt.OptABC, abc.ABC):
 
         Returns:
         """
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
 
         # Perhaps we should return Nan for k >= 1
-        kk = strike / fwd
-        tmp = np.sqrt(2 * np.abs(np.log(kk)))
-        leading = tmp / np.sqrt(texp)
-        tmp2 = tmp * tmp
-        val = np.ones_like(kk)
-
         if mass is None:
             mass = self.mass_zero(spot, texp)
 
-        ninv = spst.norm.ppf(mass)
-        val += ninv / tmp + 0.5 * (ninv * ninv + 2) / tmp2 + 0.5 * ninv / (tmp * tmp2)
+        fwd = self.forward(spot, texp)
+        kk = strike / fwd
+        tmp = np.sqrt(2 * np.abs(np.log(kk)))
+        leading = tmp / np.sqrt(texp)
 
-        val *= leading
-        return val
+        qq = spst.norm.ppf(mass)
+        vol = 1 + (qq + 0.5*((2 + qq**2) + qq/tmp)/tmp)/tmp
+        vol *= leading
+        return vol
 
     def price_from_mass_zero(self, strike, spot, texp, cp=1, mass=None):
         vol = self.vol_from_mass_zero(strike, spot, texp, mass=None)
