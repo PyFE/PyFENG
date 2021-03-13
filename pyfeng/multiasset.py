@@ -1,4 +1,4 @@
-import scipy.stats as ss
+import scipy.stats as scst
 import numpy as np
 from . import bsm
 from . import norm
@@ -109,11 +109,9 @@ class BsmRainbow2(opt.OptMaABC):
 
         rho12 = np.array([self.rho*sig[1]-sig[0], self.rho*sig[0]-sig[1]])/spd_rho
 
-        low = np.array([-10, -10])
-        mu0 = np.array([0, 0])
-
-        cor_m1 = rho12[0]*np.ones((2, 2)) + (1-rho12[0])*np.eye(2)
-        cor_m2 = rho12[1]*np.ones((2, 2)) + (1-rho12[1])*np.eye(2)
+        mu0 = np.zeros(2)
+        cor_m1 = rho12[0] + (1-rho12[0])*np.eye(2)
+        cor_m2 = rho12[1] + (1-rho12[1])*np.eye(2)
 
         strike = np.atleast_1d(strike)
         n_strike = len(strike)
@@ -121,9 +119,9 @@ class BsmRainbow2(opt.OptMaABC):
         price = np.zeros_like(strike, float)
         for k in range(n_strike):
             xx_ = xx + np.log(strike[k])/sig_std
-            term1, i1 = fwd[0] * (ss.norm.cdf(yy[0]) - ss.mvn.mvnun(low, np.array([xx_[0], yy[0]]), mu0, cor_m1))
-            term2, i2 = fwd[1] * (ss.norm.cdf(yy[1]) - ss.mvn.mvnun(low, np.array([xx_[1], yy[1]]), mu0, cor_m2))
-            term3, i3 = strike[k] * np.array(ss.mvn.mvnun(low, xx_ + sig_std, mu0, self.cor_m))
+            term1 = fwd[0] * (scst.norm.cdf(yy[0]) - scst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1))
+            term2 = fwd[1] * (scst.norm.cdf(yy[1]) - scst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2))
+            term3 = strike[k] * np.array(scst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m))
 
             assert(term1 + term2 + term3 >= strike[k])
             price[k] = (term1 + term2 + term3 - strike[k])
