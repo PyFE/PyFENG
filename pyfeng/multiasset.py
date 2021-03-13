@@ -16,16 +16,15 @@ class BsmSpreadKirk(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd1 = spot[0] * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / df)
-        fwd2 = spot[1] * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / df)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
 
         strike_m = np.minimum(strike, 0)
         strike_p = np.maximum(strike, 0)
 
-        sig1 = self.sigma[0] * fwd1 / (fwd1 - strike_m)
-        sig2 = self.sigma[1] * fwd2 / (fwd2 + strike_p)
+        sig1 = self.sigma[0] * fwd[0] / (fwd[0] - strike_m)
+        sig2 = self.sigma[1] * fwd[1] / (fwd[1] + strike_p)
         sig_spd = np.sqrt(sig1*(sig1 - 2.0*self.rho*sig2) + sig2**2)
-        price = bsm.Bsm.price_formula(fwd2+strike_p, fwd1-strike_m, sig_spd, texp, cp=cp, is_fwd=True)
+        price = bsm.Bsm.price_formula(fwd[1]+strike_p, fwd[0]-strike_m, sig_spd, texp, cp=cp, is_fwd=True)
         return df * price
 
 
@@ -48,7 +47,7 @@ class NormBasket(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-self.divr*texp)/df)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
         fwd_basket = np.sum(self.weight * fwd)
         vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
 
@@ -79,7 +78,7 @@ class BsmBasketLevy1992(NormBasket):
     """
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-self.divr*texp)/df)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
         weight_fwd = self.weight * fwd
         m1 = np.sum(weight_fwd)
         m2 = weight_fwd @ np.exp(self.cov_m * texp) @ weight_fwd
@@ -91,10 +90,18 @@ class BsmBasketLevy1992(NormBasket):
 
 
 class BsmRainbow2(opt.OptMaABC):
+    """
+    Option on the max of two assets.
+    Payout = max( max(F_1, F_2) - K, 0 )
+
+    References:
+        Rubinstein, M. (1991). Somewhere Over the Rainbow. Risk, 1991(11), 63–66.
+
+    """
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
         df = np.exp(-texp * self.intr)
-        fwd = spot * (1.0 if self.is_fwd else np.exp(-texp * self.divr) / df)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
 
         sig_std = sig * np.sqrt(texp)
         spd_rho = np.sqrt(np.dot(sig, sig) - 2*self.rho*sig[0]*sig[1])
@@ -113,6 +120,7 @@ class BsmRainbow2(opt.OptMaABC):
         cor_m1 = rho12[0] + (1-rho12[0])*np.eye(2)
         cor_m2 = rho12[1] + (1-rho12[1])*np.eye(2)
 
+        strike_isscalar = np.isscalar(strike)
         strike = np.atleast_1d(strike)
         n_strike = len(strike)
 
@@ -128,4 +136,4 @@ class BsmRainbow2(opt.OptMaABC):
 
         price *= df
 
-        return price if n_strike > 1 else price[0]
+        return price[0] if strike_isscalar else price

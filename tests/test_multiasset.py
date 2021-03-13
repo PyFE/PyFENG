@@ -45,6 +45,15 @@ class TestMultiAsset(unittest.TestCase):
             result[k] = np.round(m.price(100, fwd, texp), 2)
         np.testing.assert_almost_equal(result, result2)
 
+    def test_BsmRainbow2(self):
+        o2 = np.ones(2)
+        m = pf.BsmRainbow2(0.2*o2, cor=0, divr=0.1, intr=0.05)
+        result2 = np.array([6.655098004, 11.195681033, 16.92856557])
+        result = np.zeros_like(result2)
+        fwds = [90, 100, 110]
+        for k in range(len(fwds)):
+            result[k] = m.price(100, fwds[k]*o2, 3)
+
 
 if __name__ == '__main__':
     print(f'Pyfeng loaded from {pf.__path__}')
