@@ -458,3 +458,40 @@ class OptAnalyticABC(OptABC):
             theta value
         """
         pass
+
+
+class OptMaABC(OptABC, abc.ABC):
+
+    n_asset = 1
+    rho = None
+    cor_m = np.diag([1.0])
+    cov_m = np.diag([1.0])
+    chol_m = np.diag([1.0])
+
+    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+
+        Args:
+            sigma: vector of model volatility
+            cor: correlation. If scalar, all off-diagonal values are set with corr. If matrix, used as it is.
+            intr: interest rate (domestic interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        sigma = np.array(sigma)
+        self.n_asset = len(sigma)
+
+        super().__init__(sigma, intr, divr, is_fwd)
+        assert self.n_asset > 1  # if single asset, use BSM
+
+        if np.isscalar(cor):
+            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (1 - cor) * np.eye(self.n_asset)
+            self.rho = cor
+        else:
+            assert cor.shape == (self.n_asset, self.n_asset)
+            self.cor_m = cor
+            if self.n_asset == 2:
+                self.rho = cor[0, 1]
+
+        self.cov_m = sigma * self.cor_m * sigma[:, None]
+        self.chol_m = np.linalg.cholesky(self.cov_m)
