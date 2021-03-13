@@ -67,16 +67,16 @@ class OptABC(abc.ABC):
     @abc.abstractmethod
     def price(self, strike, spot, texp, cp=1):
         """
-        Vanilla option price.
+        Call/put option price.
 
         Args:
-            strike: strike price
-            spot: spot price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
+            strike: strike price.
+            spot: spot (or forward) price.
+            texp: time to expiry.
+            cp: 1/-1 for call/put option.
 
         Returns:
-            vanilla option price
+            option price
         """
         pass
 
@@ -363,7 +363,7 @@ class OptAnalyticABC(OptABC):
     @abc.abstractmethod
     def price_formula(strike, spot, sigma, texp, cp=1, *args, **kwargs):
         """
-        Call/put option pricing formula (abstract/static method)
+Call/put option pricing formula (abstract/static method)
 
         Args:
             strike: strike price
@@ -378,18 +378,6 @@ class OptAnalyticABC(OptABC):
         pass
 
     def price(self, strike, spot, texp, cp=1):
-        """
-        Call/put option price
-
-        Args:
-            strike: strike price
-            spot: spot (or forward) price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
-
-        Returns:
-            option price
-        """
         if self.THROW_NEGATIVE_TEXP:
             assert(~np.any(texp < 0))
 
@@ -472,10 +460,11 @@ class OptMaABC(OptABC, abc.ABC):
         """
 
         Args:
-            sigma: vector of model volatility
-            cor: correlation. If scalar, all off-diagonal values are set with corr. If matrix, used as it is.
+            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
+            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
+                If scalar, correlation matrix is constructed with all same off-diagonal values.
             intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
         sigma = np.array(sigma)
@@ -495,3 +484,19 @@ class OptMaABC(OptABC, abc.ABC):
 
         self.cov_m = sigma * self.cor_m * sigma[:, None]
         self.chol_m = np.linalg.cholesky(self.cov_m)
+
+    def price(self, strike, spot, texp, cp=1):
+        """
+        Call/put option price.
+
+        Args:
+            strike: strike price.
+            spot: spot (or forward) prices for assets.
+                Asset dimension should be the last, e.g. (n_asset, ) or (N, n_asset)
+            texp: time to expiry.
+            cp: 1/-1 for call/put option.
+
+        Returns:
+            option price
+        """
+        pass

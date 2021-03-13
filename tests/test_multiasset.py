@@ -22,18 +22,25 @@ class TestMultiAsset(unittest.TestCase):
     def test_BsmBasketLevy1992(self):
         """
         Test case in Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004)
-        Table 2 (Varying K) and 1 (Varying correlation)
+        Table 2 (Varying K), 3 (Varying fwd) and 1 (Varying correlation)
         """
         texp = 5
         rho = 0.5
-        sigma = np.ones(4) * 0.4
-        fwd = 100 * np.ones(4)
-        strike = np.arange(50, 151, 10)
+        o4 = np.ones(4)
+        sigma = o4 * 0.4
+        fwd = o4 * 100
+        p_grid = np.arange(50, 151, 10)
 
         # Table 2
         m = pf.BsmBasketLevy1992(sigma, rho)
-        result = np.round(m.price(strike, fwd, texp), 2)
+        result = np.round(m.price(p_grid, fwd, texp), 2)
         result2 = np.array([54.34, 47.52, 41.57, 36.40, 31.92, 28.05, 24.70, 21.80, 19.28, 17.10, 15.19])
+        np.testing.assert_almost_equal(result, result2)
+
+        # Table 3
+        m = pf.BsmBasketLevy1992(sigma, rho)
+        result = np.round(m.price(100, p_grid[:, None]*o4, texp), 2)
+        result2 = np.array([4.34,  7.52, 11.57, 16.40, 21.92, 28.05, 34.70, 41.80, 49.28, 57.10, 65.19])
         np.testing.assert_almost_equal(result, result2)
 
         # Table 1

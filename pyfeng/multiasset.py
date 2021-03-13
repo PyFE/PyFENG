@@ -14,17 +14,20 @@ class BsmSpreadKirk(opt.OptMaABC):
         (First, pp. 71–78). Risk Publications.
     """
 
+    weight = np.array([1, -1])
+
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
         fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        assert fwd.shape[-1] == self.n_asset
 
-        strike_m = np.minimum(strike, 0)
-        strike_p = np.maximum(strike, 0)
+        fwd1 = fwd[..., 0] - np.minimum(strike, 0)
+        fwd2 = fwd[..., 1] + np.maximum(strike, 0)
 
-        sig1 = self.sigma[0] * fwd[0] / (fwd[0] - strike_m)
-        sig2 = self.sigma[1] * fwd[1] / (fwd[1] + strike_p)
+        sig1 = self.sigma[0] * fwd[..., 0] / fwd1
+        sig2 = self.sigma[1] * fwd[..., 1] / fwd2
         sig_spd = np.sqrt(sig1*(sig1 - 2.0*self.rho*sig2) + sig2**2)
-        price = bsm.Bsm.price_formula(fwd[1]+strike_p, fwd[0]-strike_m, sig_spd, texp, cp=cp, is_fwd=True)
+        price = bsm.Bsm.price_formula(fwd2, fwd1, sig_spd, texp, cp=cp, is_fwd=True)
         return df * price
 
 
@@ -36,6 +39,19 @@ class NormBasket(opt.OptMaABC):
     weight = None
 
     def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Args:
+            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
+            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
+                If scalar, correlation matrix is constructed with all same off-diagonal values.
+            weight: asset weights, If None, equally weighted as 1/n_asset
+                If scalar, equal weights of the value
+                If 1-D array, uses as it is. (n_asset, )
+            intr: interest rate (domestic interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+
         super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
         if weight is None:
             self.weight = np.ones(self.n_asset) / self.n_asset
@@ -48,7 +64,9 @@ class NormBasket(opt.OptMaABC):
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
         fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
-        fwd_basket = np.sum(self.weight * fwd)
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd_basket = fwd @ self.weight
         vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
 
         price = norm.Norm.price_formula(
@@ -59,8 +77,7 @@ class NormBasket(opt.OptMaABC):
 class NormSpread(opt.OptMaABC):
     """
     Spread option pricing under the Bachelier model.
-    This is a special case of NormBasket with weight = (1, -1)
-    """
+    This is a special case of NormBasket with weight = (1, -1)    """
     weight = np.array([1, -1])
 
     price = NormBasket.price
@@ -79,9 +96,11 @@ class BsmBasketLevy1992(NormBasket):
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
         fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
-        weight_fwd = self.weight * fwd
-        m1 = np.sum(weight_fwd)
-        m2 = weight_fwd @ np.exp(self.cov_m * texp) @ weight_fwd
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd_basket = fwd * self.weight
+        m1 = np.sum(fwd_basket, axis=-1)
+        m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
 
         sig = np.sqrt(np.log(m2/(m1**2))/texp)
         price = bsm.Bsm.price_formula(
@@ -102,6 +121,7 @@ class BsmRainbow2(opt.OptMaABC):
         sig = self.sigma
         df = np.exp(-texp * self.intr)
         fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        assert fwd.shape[-1] == self.n_asset
 
         sig_std = sig * np.sqrt(texp)
         spd_rho = np.sqrt(np.dot(sig, sig) - 2*self.rho*sig[0]*sig[1])
