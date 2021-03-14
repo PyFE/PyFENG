@@ -358,17 +358,6 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         return vol
 
     def mass_zero(self, spot, texp, log=False):
-        """
-        Mass at zero (probability of hitting the orizin)
-
-        Args:
-            spot: spot price
-            texp: time to expiry
-            log:
-
-        Returns:
-            Mass at zero
-        """
         assert(self.vol_beta is None)
         vol_cev = self.vol_for_price(0.0, spot, texp)
         cev_m = cev.Cev(sigma=vol_cev, beta=self.beta)
@@ -376,8 +365,19 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         #print(vol_cev, mass)
         return mass
 
-    def mass_zero_t0(self, spot):
-        alpha, betac, rhoc, rho2, _ = self._variables(spot, 1.0)
+    def mass_zero_t0(self, spot, texp):
+        """
+        Limit value of -T log(M_T) as T -> 0, where M_T is the mass at zero.
+            See Corollary 3.1 of Choi & Wu (2019)
+
+        Args:
+            spot: spot (or forward) price
+
+        Returns:
+            - lim_{T->0} T log(M_T)
+        """
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, _ = self._variables(fwd, texp)
         hh = self._hh(-self.vov / (alpha * betac), self.rho)
         t0 = 0.5/(betac*alpha*hh)**2
         return t0

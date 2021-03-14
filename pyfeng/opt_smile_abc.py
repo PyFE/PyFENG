@@ -47,13 +47,24 @@ class MassZeroABC(opt.OptABC, abc.ABC):
     """
 
     @abc.abstractmethod
-    def mass_zero(self, spot, texp):
+    def mass_zero(self, spot, texp, log=False):
+        """
+        Probability mass at zero (absorbing boundary)
+
+        Args:
+            spot: spot or forward
+            texp: time to expiry
+            log: log value if True
+
+        Returns:
+            (log) mass at zero
+        """
         pass
 
     def vol_from_mass_zero(self, strike, spot, texp, mass=None):
         """
         Implied volatility from positive mass at zero from DMHJ (2017)
-        If mass == None, returns the Lee (2004) formula
+        If mass is given, use the given value. If None (by default), compute model implied value.
 
         Args:
             strike:
@@ -62,6 +73,12 @@ class MassZeroABC(opt.OptABC, abc.ABC):
             mass: mass at zero
 
         Returns:
+            implied BSM volatility
+
+        References:
+              De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with
+              Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737.
+              https://doi.org/10.1137/14098065X
         """
 
         # Perhaps we should return Nan for k >= 1
@@ -79,7 +96,7 @@ class MassZeroABC(opt.OptABC, abc.ABC):
         return vol
 
     def price_from_mass_zero(self, strike, spot, texp, cp=1, mass=None):
-        vol = self.vol_from_mass_zero(strike, spot, texp, mass=None)
+        vol = self.vol_from_mass_zero(strike, spot, texp, mass=mass)
         base_model = bsm.Bsm(vol)
         price = base_model.price(strike, spot, texp, cp=cp)
         return price

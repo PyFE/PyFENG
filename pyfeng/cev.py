@@ -41,18 +41,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         return {**params, **extra}  # Py 3.9, params | extra
 
     def mass_zero(self, spot, texp, log=False):
-        """
-        Probability mass at zero (absorbing boundary)
-
-        Args:
-            spot: spot or forward
-            texp: time to expiry
-            log: log value if True
-
-        Returns:
-            mass at zero.
-        """
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd = self.forward(spot, texp)
 
         betac = 1.0 - self.beta
         a = 0.5 / betac
@@ -67,6 +56,22 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
             return log_mass
         else:
             return spst.gamma.sf(x=x, a=a)
+
+    def mass_zero_t0(self, spot, texp):
+        """
+        Limit value of -T log(M_T) as T -> 0, where M_T is the mass at zero.
+
+        Args:
+            spot: spot (or forward) price
+
+        Returns:
+            - lim_{T->0} T log(M_T)
+        """
+        fwd = self.forward(spot, texp)
+        betac = 1.0 - self.beta
+        alpha = self.sigma/np.power(fwd, betac)
+        t0 = 0.5/(betac*alpha)**2
+        return t0
 
     @staticmethod
     def price_formula(strike, spot, texp, cp=1, sigma=None, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
