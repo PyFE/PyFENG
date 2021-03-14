@@ -42,26 +42,29 @@ class OptABC(abc.ABC):
         Returns:
             forward price
         """
-        return spot if self.is_fwd else spot * np.exp((self.intr - self.divr)*texp)
+        if self.is_fwd:
+            return np.array(spot)
+        else:
+            return np.array(spot) * np.exp((self.intr - self.divr)*np.array(texp))
 
     def _fwd_factor(self, spot, texp):
         """
         Forward, discount factor, dividend factor
 
         Args:
-            spot: spot price
+            spot: spot (or forward) price
             texp: time to expiry
 
         Returns:
             (forward, discounting factor, dividend factor)
         """
-        df = np.exp(-texp * self.intr)
+        df = np.exp(-self.intr * np.array(texp))
         if self.is_fwd:
             divf = 1
-            fwd = spot
+            fwd = np.array(spot)
         else:
-            divf = np.exp(-texp * self.divr)
-            fwd = spot * divf / df
+            divf = np.exp(-self.divr * np.array(texp))
+            fwd = np.array(spot) * divf / df
         return fwd, df, divf
 
     @abc.abstractmethod

@@ -41,23 +41,26 @@ class OptSmileABC(opt.OptABC, abc.ABC):
 
 class MassZeroABC(opt.OptABC, abc.ABC):
     """
-        References:
-            De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with Positive Mass at Zero.
-            SIAM Journal on Financial Mathematics, 8(1), 709–737. https://doi.org/10.1137/14098065X
+    Implied volatility from positive mass at zero from DMHJ (2017)
+
+    References:
+          De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with
+          Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737.
+          https://doi.org/10.1137/14098065X
     """
 
     @abc.abstractmethod
     def mass_zero(self, spot, texp, log=False):
         """
-        Probability mass at zero (absorbing boundary)
+        Probability mass absorbed at the zero boundary (K=0)
 
         Args:
-            spot: spot or forward
+            spot: spot (or forward) price
             texp: time to expiry
             log: log value if True
 
         Returns:
-            (log) mass at zero
+            (log) probability mass at zero
         """
         pass
 
@@ -67,10 +70,10 @@ class MassZeroABC(opt.OptABC, abc.ABC):
         If mass is given, use the given value. If None (by default), compute model implied value.
 
         Args:
-            strike:
-            spot:
-            texp:
-            mass: mass at zero
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            mass: probability mass at zero (None by default)
 
         Returns:
             implied BSM volatility
