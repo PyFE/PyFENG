@@ -13,6 +13,12 @@ class TestMultiAsset(unittest.TestCase):
         result2 = np.array([22.1563225, 17.1844182, 12.9897421, 9.6414167, 6.9994207])
         np.testing.assert_almost_equal(result, result2)
 
+    def test_BsmSpreadBjerksund2014(self):
+        m = pf.BsmSpreadBjerksund2014((0.2, 0.3), cor=-0.5)
+        result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        result2 = np.array([22.1317202, 17.1830425, 12.9897421, 9.5443194, 6.8061260])
+        np.testing.assert_almost_equal(result, result2)
+
     def test_NormSpread(self):
         m = pf.NormSpread((20, 30), cor=-0.5, intr=0.05)
         result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)

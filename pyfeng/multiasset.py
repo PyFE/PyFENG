@@ -12,6 +12,13 @@ class BsmSpreadKirk(opt.OptMaABC):
     References:
         Kirk, E. (1995). Correlation in the energy markets. In Managing Energy Price Risk
         (First, pp. 71–78). Risk Publications.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.BsmSpreadKirk((0.2, 0.3), cor=-0.5)
+        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        array([22.15632247, 17.18441817, 12.98974214,  9.64141666,  6.99942072])
     """
 
     weight = np.array([1, -1])
@@ -28,6 +35,51 @@ class BsmSpreadKirk(opt.OptMaABC):
         sig2 = self.sigma[1] * fwd[..., 1] / fwd2
         sig_spd = np.sqrt(sig1*(sig1 - 2.0*self.rho*sig2) + sig2**2)
         price = bsm.Bsm.price_formula(fwd2, fwd1, sig_spd, texp, cp=cp, is_fwd=True)
+        return df * price
+
+
+class BsmSpreadBjerksund2014(opt.OptMaABC):
+    """
+    Bjerksund & Stensland (2014)'s approximation for spread option.
+
+    References:
+        Bjerksund, P., & Stensland, G. (2014). Closed form spread option valuation.
+        Quantitative Finance, 14(10), 1785–1794. https://doi.org/10.1080/14697688.2011.617775
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.BsmSpreadBjerksund2014((0.2, 0.3), cor=-0.5)
+        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        array([22.13172022, 17.18304247, 12.98974214,  9.54431944,  6.80612597])
+    """
+
+    weight = np.array([1, -1])
+
+    def price(self, strike, spot, texp, cp=1):
+        df = np.exp(-texp * self.intr)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd1 = fwd[..., 0]
+        fwd2 = fwd[..., 1]
+
+        std11 = self.sigma[0]**2 * texp
+        std12 = self.sigma[0]*self.sigma[1] * texp
+        std22 = self.sigma[1]**2 * texp
+
+        aa = fwd2 + strike
+        bb = fwd2/aa
+        std = np.sqrt(std11 - 2*bb*self.rho*std12 + bb**2*std22)
+
+        d3 = np.log(fwd1/aa)
+        d1 = (d3 + 0.5*std11 - bb*(self.rho*std12 - 0.5*bb*std22)) / std
+        d2 = (d3 - 0.5*std11 + self.rho*std12 + bb*(0.5*bb - 1)*std22) / std
+        d3 = (d3 - 0.5*std11 + 0.5*bb**2*std22) / std
+
+        price = cp*(fwd1*scst.norm.cdf(cp*d1) - fwd2*scst.norm.cdf(cp*d2)
+                    - strike*scst.norm.cdf(cp*d3))
+
         return df * price
 
 
@@ -77,7 +129,15 @@ class NormBasket(opt.OptMaABC):
 class NormSpread(opt.OptMaABC):
     """
     Spread option pricing under the Bachelier model.
-    This is a special case of NormBasket with weight = (1, -1)    """
+    This is a special case of NormBasket with weight = (1, -1)
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.NormSpread((20, 30), cor=-0.5, intr=0.05)
+        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
+    """
     weight = np.array([1, -1])
 
     price = NormBasket.price
@@ -92,6 +152,20 @@ class BsmBasketLevy1992(NormBasket):
 
         Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
         Wilmott Magazine, 2004(7), 82–89.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> texp = 5
+        >>> rho = 0.5
+        >>> sigma = 0.4 * np.ones(4)
+        >>> fwd = 100 * np.ones(4)
+        >>> strike = np.arange(50, 151, 10)
+        >>> m = pf.BsmBasketLevy1992(sigma, rho)
+        >>> m.price(strike, fwd, texp)
+        array([54.34281026, 47.521086  , 41.56701301, 36.3982413 , 31.92312156,
+               28.05196621, 24.70229571, 21.800801  , 19.28360474, 17.09570196,
+               15.19005654])
     """
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
