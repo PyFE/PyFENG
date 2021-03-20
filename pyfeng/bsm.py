@@ -46,15 +46,16 @@ class Bsm(opt.OptAnalyticABC):
             Vanilla option price
         """
         disc_fac = np.exp(-texp * intr)
-        fwd = spot * (1.0 if is_fwd else np.exp(-texp * divr) / disc_fac)
+        fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / disc_fac)
 
-        sigma_std = np.maximum(sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(np.array(sigma) * np.sqrt(texp), np.finfo(float).eps)
 
         # don't directly compute d1 just in case sigma_std is infty
         d1 = np.log(fwd / strike) / sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
 
+        cp = np.array(cp)
         price = fwd * spst.norm.cdf(cp * d1) - strike * spst.norm.cdf(cp * d2)
         price *= cp * disc_fac
         return price
