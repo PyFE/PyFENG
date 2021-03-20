@@ -31,39 +31,55 @@ class OptABC(abc.ABC):
         params = {"sigma": self.sigma, "intr": self.intr, "divr": self.divr, "is_fwd": self.is_fwd}
         return params
 
-    def _fwd_factor(self, spot, texp):
+    def forward(self, spot, texp):
         """
-        Discounting factor and forward
+        Forward price
 
         Args:
             spot: spot price
+            texp: time to expiry
+
+        Returns:
+            forward price
+        """
+        if self.is_fwd:
+            return np.array(spot)
+        else:
+            return np.array(spot) * np.exp((self.intr - self.divr)*np.array(texp))
+
+    def _fwd_factor(self, spot, texp):
+        """
+        Forward, discount factor, dividend factor
+
+        Args:
+            spot: spot (or forward) price
             texp: time to expiry
 
         Returns:
             (forward, discounting factor, dividend factor)
         """
-        df = np.exp(-texp * self.intr)
+        df = np.exp(-self.intr * np.array(texp))
         if self.is_fwd:
             divf = 1
-            fwd = spot
+            fwd = np.array(spot)
         else:
-            divf = np.exp(-texp * self.divr)
-            fwd = spot * divf / df
+            divf = np.exp(-self.divr * np.array(texp))
+            fwd = np.array(spot) * divf / df
         return fwd, df, divf
 
     @abc.abstractmethod
     def price(self, strike, spot, texp, cp=1):
         """
-        Vanilla option price.
+        Call/put option price.
 
         Args:
-            strike: strike price
-            spot: spot price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
+            strike: strike price.
+            spot: spot (or forward) price.
+            texp: time to expiry.
+            cp: 1/-1 for call/put option.
 
         Returns:
-            vanilla option price
+            option price
         """
         pass
 
@@ -220,7 +236,6 @@ class OptABC(abc.ABC):
 
         Returns:
             vega value
-
         """
         h = self._vega_shock(strike, spot, texp, cp)
         model = copy.copy(self)
@@ -351,7 +366,7 @@ class OptAnalyticABC(OptABC):
     @abc.abstractmethod
     def price_formula(strike, spot, sigma, texp, cp=1, *args, **kwargs):
         """
-        Call/put option pricing formula (abstract/static method)
+Call/put option pricing formula (abstract/static method)
 
         Args:
             strike: strike price
@@ -366,18 +381,6 @@ class OptAnalyticABC(OptABC):
         pass
 
     def price(self, strike, spot, texp, cp=1):
-        """
-        Call/put option price
-
-        Args:
-            strike: strike price
-            spot: spot (or forward) price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
-
-        Returns:
-            option price
-        """
         if self.THROW_NEGATIVE_TEXP:
             assert(~np.any(texp < 0))
 
@@ -444,5 +447,59 @@ class OptAnalyticABC(OptABC):
 
         Returns:
             theta value
+        """
+        pass
+
+
+class OptMaABC(OptABC, abc.ABC):
+
+    n_asset = 1
+    rho = None
+    cor_m = np.diag([1.0])
+    cov_m = np.diag([1.0])
+    chol_m = np.diag([1.0])
+
+    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+
+        Args:
+            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
+            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
+                If scalar, correlation matrix is constructed with all same off-diagonal values.
+            intr: interest rate (domestic interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        sigma = np.array(sigma)
+        self.n_asset = len(sigma)
+
+        super().__init__(sigma, intr, divr, is_fwd)
+        assert self.n_asset > 1  # if single asset, use BSM
+
+        if np.isscalar(cor):
+            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (1 - cor) * np.eye(self.n_asset)
+            self.rho = cor
+        else:
+            assert cor.shape == (self.n_asset, self.n_asset)
+            self.cor_m = cor
+            if self.n_asset == 2:
+                self.rho = cor[0, 1]
+
+        self.cov_m = sigma * self.cor_m * sigma[:, None]
+        self.chol_m = np.linalg.cholesky(self.cov_m)
+
+    def price(self, strike, spot, texp, cp=1):
+        """
+        Call/put option price.
+
+        Args:
+            strike: strike price.
+            spot: spot (or forward) prices for assets.
+                Asset dimension should be the last, e.g. (n_asset, ) or (N, n_asset)
+            texp: time to expiry.
+            cp: 1/-1 for call/put option.
+
+        Returns:
+            option price
         """
         pass
