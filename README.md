@@ -40,7 +40,7 @@ array([15.71361973,  9.69250803,  5.52948546,  2.94558338,  1.48139131])
 ```python
 sigma = np.array([[0.2], [0.5]])
 m = pf.Bsm(sigma, intr=0.05, divr=0.1) # sigma in axis=0
-m.price(strike=np.array([90, 95, 100]), spot=100, texp=1.2, cp=np.array([-1,1,1]))
+m.price(strike=[90, 95, 100], spot=100, texp=1.2, cp=[-1,1,1])
 ```
 `Out [2]:`
 ```

@@ -63,14 +63,14 @@ class Norm(opt.OptAnalyticABC):
         Returns:
             Vanilla option price
         """
+        df = np.exp(-texp * intr)
+        fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / df)
 
-        disc_fac = np.exp(-texp * intr)
-        fwd = spot * (1.0 if is_fwd else np.exp(-texp * divr) / disc_fac)
-
-        sigma_std = np.maximum(sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(np.array(sigma) * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
-        price = disc_fac * (cp*(fwd - strike)*spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
+        cp = np.array(cp)
+        price = df * (cp*(fwd - strike)*spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
         return price
 
     def _impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
@@ -94,8 +94,8 @@ class Norm(opt.OptAnalyticABC):
             implied volatility
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
-        price_fwd = price / df
-        strike_std = cp*(fwd - strike)
+        price_fwd = np.array(price) / df
+        strike_std = np.array(cp)*(fwd - strike)
 
         time_val = price_fwd - np.maximum(0, strike_std)  # option time value
         strd = 2*price_fwd - strike_std  # straddle value (=call + put)
