@@ -156,13 +156,9 @@ class BsmBasketLevy1992(NormBasket):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> texp = 5
-        >>> rho = 0.5
-        >>> sigma = 0.4 * np.ones(4)
-        >>> fwd = 100 * np.ones(4)
         >>> strike = np.arange(50, 151, 10)
-        >>> m = pf.BsmBasketLevy1992(sigma, rho)
-        >>> m.price(strike, fwd, texp)
+        >>> m = pf.BsmBasketLevy1992(sigma=0.4*np.ones(4), cor=0.5)
+        >>> m.price(strike, spot=100*np.ones(4), texp=5)
         array([54.34281026, 47.521086  , 41.56701301, 36.3982413 , 31.92312156,
                28.05196621, 24.70229571, 21.800801  , 19.28360474, 17.09570196,
                15.19005654])
@@ -182,15 +178,28 @@ class BsmBasketLevy1992(NormBasket):
         return df * price
 
 
-class BsmRainbow2(opt.OptMaABC):
+class BsmMax2(opt.OptMaABC):
     """
     Option on the max of two assets.
-    Payout = max( max(F_1, F_2) - K, 0 )
+    Payout = max( max(F_1, F_2) - K, 0 ) for all or  max( K - max(F_1, F_2), 0 ) for put option
 
     References:
         Rubinstein, M. (1991). Somewhere Over the Rainbow. Risk, 1991(11), 63–66.
 
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.BsmMax2(0.2*np.ones(2), cor=0, divr=0.1, intr=0.05)
+        >>> m.price(strike=[90, 100, 110], spot=100*np.ones(2), texp=3)
+        array([15.86717049, 11.19568103,  7.71592217])
     """
+
+    m_switch = None
+
+    def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
+        self.m_switch = BsmSpreadKirk(sigma, cor, is_fwd=True)
+
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
         df = np.exp(-texp * self.intr)
@@ -216,8 +225,12 @@ class BsmRainbow2(opt.OptMaABC):
 
         strike_isscalar = np.isscalar(strike)
         strike = np.atleast_1d(strike)
+        cp = cp * np.ones_like(strike)
         n_strike = len(strike)
 
+        # this is the price of max(S1, S2) = max(S1-S2, 0) + S2
+        # Used that Kirk approximation strike = 0 is Margrabe's switch option price
+        parity = 0 if np.all(cp > 0) else self.m_switch.price(0, fwd, texp) + fwd[1]
         price = np.zeros_like(strike, float)
         for k in range(n_strike):
             xx_ = xx + np.log(strike[k])/sig_std
@@ -228,6 +241,8 @@ class BsmRainbow2(opt.OptMaABC):
             assert(term1 + term2 + term3 >= strike[k])
             price[k] = (term1 + term2 + term3 - strike[k])
 
+            if cp[k] < 0:
+                price[k] += strike[k] - parity
         price *= df
 
         return price[0] if strike_isscalar else price
