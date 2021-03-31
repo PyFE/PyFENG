@@ -45,7 +45,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta
-        alpha = self.sigma / np.power(fwd, betac) if self.beta > 0.0 else self.sigma
+        alpha = self.sigma / np.power(fwd, betac) #if self.beta > 0.0 else self.sigma
         rho2 = self.rho * self.rho
         rhoc = np.sqrt(1.0 - rho2)
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
@@ -62,9 +62,9 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         """
         vol_beta = self.beta if self._base_beta is None else self._base_beta
 
-        if abs(vol_beta - 1.0) < 0.001:
+        if vol_beta == 1.0:
             return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
-        elif abs(vol_beta) < 0.001:
+        elif vol_beta == 0.0:
             return norm.Norm(vol, intr=self.intr, divr=self.divr)
         else:
             return cev.Cev(vol, beta=vol_beta, intr=self.intr, divr=self.divr)
@@ -181,7 +181,7 @@ class SabrVolApproxABC(SabrABC):
             self.sigma = sigma
         return sigma
 
-    def vol_smile(self, strike, spot, texp, model=None, cp=1):
+    def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
             model = 'bsm' if self.beta > 0.0 else 'norm' if self.beta == 0 else None
 
@@ -189,7 +189,7 @@ class SabrVolApproxABC(SabrABC):
         if (model.lower() == 'bsm' and vol_beta == 1.0) or (model.lower() == 'norm' and vol_beta == 0.0):
             vol = self.vol_for_price(strike, spot, texp)
         else:
-            vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
+            vol = super().vol_smile(strike, spot, texp, cp=cp, model=model)
         return vol
 
 
