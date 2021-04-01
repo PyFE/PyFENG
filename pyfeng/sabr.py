@@ -270,29 +270,27 @@ class SabrHagan2002(SabrVolApproxABC):
         if texp <= 0.0:
             return 0.0
         fwd, _, _ = self._fwd_factor(spot, texp)
-        _alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
         betac2 = betac**2
 
-        #kk = strike / fwd  # standardized strike
+        log_kk = np.log(fwd/strike)
+        log_kk2 = log_kk*log_kk
+        pow_kk = np.power(strike/fwd, betac/2)
 
-        powFwdStrk = np.power(fwd*strike, betac/2)
-        logFwdStrk = np.log(fwd/strike)
-        logFwdStrk2 = logFwdStrk*logFwdStrk
-
-        pre1 = powFwdStrk*(1 + betac2/24*logFwdStrk2*(1 + betac2/80*logFwdStrk2))
+        pre1 = pow_kk*(1 + betac2/24*log_kk2*(1 + betac2/80*log_kk2))
 
         term02 = (2 - 3*rho2)/24 * self.vov**2
-        term11 = self.vov*self.rho*self.beta/4/powFwdStrk
-        term20 = betac2/24/powFwdStrk**2
+        term11 = alpha*self.vov*self.rho*self.beta/4/pow_kk
+        term20 = (betac*alpha/pow_kk)**2 / 24
 
         if self.approx_order == 0:
             vol = 1.0
         else:
-            vol = 1.0 + texp*(term02 + self.sigma*(term11 + self.sigma*term20))
+            vol = 1.0 + texp*(term02 + term11 + term20)
 
-        zz = powFwdStrk*logFwdStrk*self.vov/np.maximum(self.sigma, np.finfo(float).eps)  # need to make sure sig > 0
+        zz = pow_kk*log_kk*self.vov/np.maximum(alpha, np.finfo(float).eps)
         hh = self._hh(-zz, self.rho)  # note we pass -zz becaues hh(zz) definition is different
-        vol *= self.sigma*hh/pre1   # bsm vol
+        vol *= alpha*hh/pre1   # bsm vol
         return vol
 
     def calibrate3(self, price_or_vol3, strike3, spot, texp=None, cp=1, setval=False, is_vol=True):
@@ -398,13 +396,11 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         #else:
         #    raise ValueError('Cannot handle this vol_beta different from beta')
 
-        order1 = term20 + term11 + term02
-
         ## Return
         if self.approx_order == 0:
             vol = 1.0
         else:
-            vol = 1.0 + order1*texp
+            vol = 1.0 + texp*(term20 + term11 + term02)
 
         pre_fac = alpha * np.power(fwd, vol_betac) * qq_ratio
         vol *= pre_fac*hh
