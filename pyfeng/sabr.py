@@ -7,10 +7,10 @@ Created on Tue Oct 10
 
 import abc
 import copy
+import os
+import pandas as pd
 import numpy as np
 import scipy.optimize as spop
-#import scipy.stats as spst
-#import scipy.special as spsp
 
 from . import opt_smile_abc as smile
 from . import bsm
@@ -62,18 +62,68 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         """
         vol_beta = self.beta if self._base_beta is None else self._base_beta
 
-        if vol_beta == 1.0:
+        if np.isclose(vol_beta, 1):
             return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
-        elif vol_beta == 0.0:
+        elif np.isclose(vol_beta, 0):
             return norm.Norm(vol, intr=self.intr, divr=self.divr)
         else:
             return cev.Cev(vol, beta=vol_beta, intr=self.intr, divr=self.divr)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
-            model = 'bsm' if self.beta > 0.0 else 'norm' if self.beta == 0 else None
+            model = 'norm' if np.isclose(self.beta, 0) else 'bsm' if self.beta > 0.0 else None
 
         return super().vol_smile(strike, spot, texp, cp=1, model=model)
+
+    @classmethod
+    def init_benchmark(cls, set_no=None):
+        """
+        Initiate a SABR model with stored benchmark parameter sets
+
+        Args:
+            set_no: set number
+
+        Returns:
+            Dataframe of all test cases if set_no = None
+            (model, Dataframe of result, params) if set_no is specified
+
+        References:
+            Antonov, Alexander, Konikov, M., & Spector, M. (2013). SABR spreads its wings. Risk, 2013(Aug), 58–63.
+            Antonov, Alexandre, Konikov, M., & Spector, M. (2019). Modern SABR Analytics. Springer International Publishing. https://doi.org/10.1007/978-3-030-10656-0
+            Antonov, Alexandre, & Spector, M. (2012). Advanced analytics for the SABR model. Available at SSRN. https://ssrn.com/abstract=2026350
+            Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model. Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
+            Korn, R., & Tang, S. (2013). Exact analytical solution for the normal SABR model. Wilmott Magazine, 2013(7), 64–69. https://doi.org/10.1002/wilm.10235
+            Lewis, A. L. (2016). Option valuation under stochastic volatility II: With Mathematica code. Finance Press.
+            von Sydow, L., ..., Haentjens, T., & Waldén, J. (2018). BENCHOP - SLV: The BENCHmarking project in Option Pricing – Stochastic and Local Volatility problems. International Journal of Computer Mathematics, 1–14. https://doi.org/10.1080/00207160.2018.1544368
+        """
+        this_dir, _ = os.path.split(__file__)
+        file = os.path.join(this_dir, 'data/sabr_benchmark.xlsx')
+        df_param = pd.read_excel(file, sheet_name='Param', index_col='Sheet')
+
+        if set_no is None:
+            return df_param
+        else:
+            df_val = pd.read_excel(file, sheet_name=set_no)
+            param = df_param.loc[set_no]
+            args_model = {k: param[k] for k in ('sigma', 'vov', 'rho', 'beta')}
+            args_pricing = {k: param[k] for k in ('texp', 'spot')}
+
+            assert(df_val.columns[0] == 'k' or df_val.columns[0] == 'K')
+            args_pricing['strike'] = df_val.values[:, 0]
+            if df_val.columns[0] == 'k':
+                args_pricing['strike'] *= param['fwd']
+
+            val = df_val[param['col_name']].values
+            is_iv = param['col_name'].startswith('IV')
+
+            m = cls(**args_model)
+
+            param_dict = {
+                'args_pricing': args_pricing,
+                'ref': param['Reference'], 'val': val, 'is_iv': is_iv
+            }
+
+            return m, df_val, param_dict
 
 
 class SabrVolApproxABC(SabrABC):
@@ -183,10 +233,11 @@ class SabrVolApproxABC(SabrABC):
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
-            model = 'bsm' if self.beta > 0.0 else 'norm' if self.beta == 0 else None
+            model = 'norm' if np.isclose(self.beta, 0) else 'bsm' if self.beta > 0.0 else None
 
         vol_beta = self.beta if self._base_beta is None else self._base_beta
-        if (model.lower() == 'bsm' and vol_beta == 1.0) or (model.lower() == 'norm' and vol_beta == 0.0):
+        if (model.lower() == 'bsm' and np.isclose(vol_beta, 1)) or \
+                (model.lower() == 'norm' and np.isclose(vol_beta, 0)):
             vol = self.vol_for_price(strike, spot, texp)
         else:
             vol = super().vol_smile(strike, spot, texp, cp=cp, model=model)
@@ -218,7 +269,6 @@ class SabrHagan2002(SabrVolApproxABC):
 
         if texp <= 0.0:
             return 0.0
-
         fwd, _, _ = self._fwd_factor(spot, texp)
         _alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
         betac2 = betac**2
@@ -231,16 +281,19 @@ class SabrHagan2002(SabrVolApproxABC):
 
         pre1 = powFwdStrk*(1 + betac2/24*logFwdStrk2*(1 + betac2/80*logFwdStrk2))
 
-        pre2alp0 = (2 - 3*rho2)*self.vov*self.vov/24
-        pre2alp1 = self.vov*self.rho*self.beta/4/powFwdStrk
-        pre2alp2 = betac2/24/(powFwdStrk*powFwdStrk)
+        term02 = (2 - 3*rho2)/24 * self.vov**2
+        term11 = self.vov*self.rho*self.beta/4/powFwdStrk
+        term20 = betac2/24/powFwdStrk**2
 
-        pre2 = 1.0 + texp*(pre2alp0 + self.sigma*(pre2alp1 + pre2alp2*self.sigma))
+        if self.approx_order == 0:
+            vol = 1.0
+        else:
+            vol = 1.0 + texp*(term02 + self.sigma*(term11 + self.sigma*term20))
 
         zz = powFwdStrk*logFwdStrk*self.vov/np.maximum(self.sigma, np.finfo(float).eps)  # need to make sure sig > 0
-        HH = self._hh(-zz, self.rho)  # note we pass -zz becaues hh(zz) definition is different
-        bsmvol = self.sigma*HH*pre2/pre1   # bsm vol
-        return bsmvol
+        hh = self._hh(-zz, self.rho)  # note we pass -zz becaues hh(zz) definition is different
+        vol *= self.sigma*hh/pre1   # bsm vol
+        return vol
 
     def calibrate3(self, price_or_vol3, strike3, spot, texp=None, cp=1, setval=False, is_vol=True):
         """
@@ -332,7 +385,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         term11 = self.rho*self.beta/4 * self.vov*alpha * self._int_inv_locvol(kk, betac)
 
         # term20: O(alpha^2)
-        if self.vol_beta is None or self.beta == vol_beta:
+        if self.vol_beta is None or np.isclose(self.beta, vol_beta):
             term20 = 0.0
         else:
             with np.errstate(divide='ignore', invalid='ignore'):

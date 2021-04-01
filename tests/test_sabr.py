@@ -9,6 +9,25 @@ import pyfeng as pf
 
 class TestSabr(unittest.TestCase):
 
+    def test_Hagan2002(self):
+        for k in list(range(1, 19)) + [22, 23]:
+            m, df, rv = pf.SabrHagan2002.init_benchmark(k)
+            ref = rv['ref']
+            #print(f'Sheet {k:02d}: {ref}')
+            v1 = np.round(m.vol_for_price(**rv['args_pricing']), 4)
+            v2 = df['IV Hagan'].values
+            np.testing.assert_almost_equal(v1, v2)
+
+    def test_PaulotBsm(self):
+        for k in list(range(1, 19)):
+            m, df, rv = pf.SabrChoiWu2021P.init_benchmark(k)
+            m.vol_beta = 1.0
+            ref = rv['ref']
+            #print(f'Sheet {k:02d}: {ref}')
+            v1 = np.round(m.vol_for_price(**rv['args_pricing']), 4)
+            v2 = df['IV HL-P'].values
+            np.testing.assert_almost_equal(v1, v2)
+
     def test_UnCorrChoiWu2021(self):
         # Param Set 19: Table 7 (Case III.C) in Cai et al. (2017). https://doi.org/10.1287/opre.2017.1617
         param = {"sigma": 0.4, "vov": 0.6, "rho": 0, "beta": 0.3, 'n_quad': 9}
