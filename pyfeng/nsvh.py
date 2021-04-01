@@ -55,19 +55,7 @@ class Nsvh1(sabr.SabrABC):
         return price
 
     def cdf(self, strike, spot, texp, cp=-1):
-        """
-        Cumulative distribution function under NSVh (lambda=1) distribution.
-
-        Args:
-            strike: strike price
-            spot: spot (or forward)
-            texp:
-            cp: -1 for left-tail (CDF), -1 for right-tail (survival function)
-
-        Returns:
-            CDF value
-        """
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd = self.forward(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)

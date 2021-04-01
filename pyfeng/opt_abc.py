@@ -450,6 +450,22 @@ Call/put option pricing formula (abstract/static method)
         """
         pass
 
+    @abc.abstractmethod
+    def cdf(self, strike, spot, texp, cp=-1):
+        """
+        Cumulative distribution function of the final asset price.
+
+        Args:
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            cp: -1 (default) for left-tail CDF, -1 for right-tail CDF (i.e., survival function)
+
+        Returns:
+            CDF value
+        """
+        pass
+
 
 class OptMaABC(OptABC, abc.ABC):
 

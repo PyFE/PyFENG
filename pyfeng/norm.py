@@ -140,6 +140,14 @@ class Norm(opt.OptAnalyticABC):
         delta *= df if self.is_fwd else divf
         return delta
 
+    def cdf(self, strike, spot, texp, cp=1):
+
+        fwd = self.forward(spot, texp)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        d = (fwd - strike) / sigma_std
+        cdf = spst.norm.cdf(cp * d)  # formula according to wikipedia
+        return cdf
+
     def gamma(self, strike, spot, texp, cp=1):
 
         # cp is not used
