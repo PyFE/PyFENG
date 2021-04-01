@@ -103,7 +103,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         if set_no is None:
             return df_param
         else:
-            df_val = pd.read_excel(file, sheet_name=set_no)
+            df_val = pd.read_excel(file, sheet_name=str(set_no))
             param = df_param.loc[set_no]
             args_model = {k: param[k] for k in ('sigma', 'vov', 'rho', 'beta')}
             args_pricing = {k: param[k] for k in ('texp', 'spot')}
