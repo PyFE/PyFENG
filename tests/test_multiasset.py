@@ -67,6 +67,34 @@ class TestMultiAsset(unittest.TestCase):
         for k in range(len(fwds)):
             result[k] = m.price(100, fwds[k]*o2, 3)
 
+    def test_BsmNormNdMc(self):
+        spot = np.ones(4)*100
+        sigma = np.ones(4)*0.4
+        texp = 5
+        # Basket Option with equal weight
+        payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
+        strikes = np.arange(80, 121, 10)
+
+        # Test BsmNd
+        m = pf.BsmNdMc(sigma, cor=0.5, rn_seed=1234)
+        m.simulate(tobs=[texp], n_path=20000)
+        p = []
+        for strike in strikes:
+           p.append(m.price_european(spot, texp, payoff))
+        p = np.array(p)
+        p2 = np.array([36.31612946, 31.80861014, 27.91269315, 24.55319506, 21.62677625])
+        np.testing.assert_almost_equal(p, p2)
+
+        # Test NormNd
+        m = pf.NormNdMc(sigma*spot, cor=0.5, rn_seed=1234)
+        m.simulate(tobs=[texp], n_path=20000)
+        p = []
+        for strike in strikes:
+           p.append(m.price_european(spot, texp, payoff))
+        p = np.array(p)
+        p2 = np.array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
+        np.testing.assert_almost_equal(p, p2)
+
 
 if __name__ == '__main__':
     print(f'Pyfeng loaded from {pf.__path__}')

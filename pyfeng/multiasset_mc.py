@@ -11,14 +11,14 @@ class BsmNdMc(opt.OptMaABC):
         >>> spot = np.ones(4)*100
         >>> sigma = np.ones(4)*0.4
         >>> texp = 5
-        >>> m = pf.BsmNdMc(spot, sigma, cor=0.5, rn_seed=1234)
-        >>> m.simulate(t_obs=[texp], n_path=20000)
         >>> payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
         >>> strikes = np.arange(80, 121, 10)
-        >>> price = []
+        >>> m = pf.BsmNdMc(sigma, cor=0.5, rn_seed=1234)
+        >>> m.simulate(tobs=[texp], n_path=20000)
+        >>> p = []
         >>> for strike in strikes:
-        >>>    price.append(m.price_european(spot, texp, payoff))
-        >>> np.array(price)
+        >>>    p.append(m.price_european(spot, texp, payoff))
+        >>> np.array(p)
         array([36.31612946, 31.80861014, 27.91269315, 24.55319506, 21.62677625])
     """
 
@@ -134,16 +134,16 @@ class NormNdMc(BsmNdMc):
     Examples:
         >>> import pyfeng as pf
         >>> spot = np.ones(4)*100
-        >>> sigma = np.ones(4)*40
+        >>> sigma = np.ones(4)*0.4
         >>> texp = 5
-        >>> m = pf.NormNdMc(spot, sigma, cor=0.5, rn_seed=1234)
-        >>> m.simulate(t_obs=[texp], n_path=20000)
         >>> payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
         >>> strikes = np.arange(80, 121, 10)
-        >>> price = []
+        >>> m = pf.NormNdMc(sigma*spot, cor=0.5, rn_seed=1234)
+        >>> m.simulate(tobs=[texp], n_path=20000)
+        >>> p = []
         >>> for strike in strikes:
-        >>>    price.append(m.price_european(spot, texp, payoff))
-        >>> np.array(price)
+        >>>    p.append(m.price_european(spot, texp, payoff))
+        >>> np.array(p)
         array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
     """
 
