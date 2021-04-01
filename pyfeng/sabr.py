@@ -182,7 +182,7 @@ class SabrVolApproxABC(SabrABC):
         """
         rho2 = rho * rho
         # initalization with expansion for for small |zz|
-        xx_zz = 1 - zz * ((rho / 2) - zz * ((1 / 2 * rho2 - 1 / 6) - 1 / 8 * (5 * rho2 - 3) * rho * zz))
+        xx_zz = 1 - (zz/2)*(rho - zz*(rho2 - 1/3 - (5*rho2 - 3)/4*rho*zz))
 
         yy = SabrVolApproxABC._vv(zz, rho)
         eps = 1e-5
