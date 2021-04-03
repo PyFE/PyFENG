@@ -22,24 +22,48 @@ class Nsvh1(sabr.SabrABC):
 
     beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, intr=0.0, divr=0.0, is_fwd=False):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
             vov: volatility of volatility
             rho: correlation between price and volatility
+            beta: elasticity parameter. should be 0 or None.
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
         # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f'Ignoring beta = {beta}...')
+        self._atmvol = atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def _sig0_from_atmvol(self, texp):
+        s_sqrt = self.vov * np.sqrt(texp)
+        vov_var = np.exp(0.5 * s_sqrt**2)
+        rhoc = np.sqrt(1 - self.rho**2)
+
+        d = (np.arctanh(self.rho) - np.arcsinh(self.rho*vov_var/rhoc)) / s_sqrt
+        ncdf_p = spst.norm.cdf(d + s_sqrt)
+        ncdf_m = spst.norm.cdf(d - s_sqrt)
+        ncdf = spst.norm.cdf(d)
+
+        price = 0.5/self.vov*vov_var * ((1+self.rho)*ncdf_p - (1-self.rho)*ncdf_m - 2*self.rho*ncdf)
+        sig0 = self.sigma*np.sqrt(texp/2/np.pi)/price
+        return sig0
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
-        sig_sqrt = self.sigma * np.sqrt(texp)
+        if self._atmvol:
+            sig0 = self._sig0_from_atmvol(texp)
+        else:
+            sig0 = self.sigma
+
+        sig_sqrt = sig0 * np.sqrt(texp)
+
         vov_var = np.exp(0.5 * s_sqrt**2)
         rhoc = np.sqrt(1 - self.rho**2)
 
@@ -55,19 +79,7 @@ class Nsvh1(sabr.SabrABC):
         return price
 
     def cdf(self, strike, spot, texp, cp=-1):
-        """
-        Cumulative distribution function under NSVh (lambda=1) distribution.
-
-        Args:
-            strike: strike price
-            spot: spot (or forward)
-            texp:
-            cp: -1 for left-tail (CDF), -1 for right-tail (survival function)
-
-        Returns:
-            CDF value
-        """
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd = self.forward(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)

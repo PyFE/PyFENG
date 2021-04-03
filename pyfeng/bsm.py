@@ -81,6 +81,15 @@ class Bsm(opt.OptAnalyticABC):
         delta *= df if self.is_fwd else divf
         return delta
 
+    def cdf(self, strike, spot, texp, cp=1):
+
+        fwd, df, divf = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        d2 = np.log(fwd / strike) / sigma_std - 0.5 * sigma_std
+        cdf = spst.norm.cdf(cp * d2)  # formula according to wikipedia
+        return cdf
+
     def gamma(self, strike, spot, texp, cp=1):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
@@ -355,6 +364,10 @@ class BsmDisp(smile.OptSmileABC):
 
     def delta(self, strike, spot, *args, **kwargs):
         return self.bsm_model.delta(
+            self.disp(strike), self.disp(spot), *args, **kwargs)
+
+    def cdf(self, strike, spot, *args, **kwargs):
+        return self.bsm_model.cdf(
             self.disp(strike), self.disp(spot), *args, **kwargs)
 
     def vega(self, strike, spot, *args, **kwargs):
