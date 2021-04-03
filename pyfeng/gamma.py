@@ -7,11 +7,12 @@ from . import opt_smile_abc as smile
 
 class Invgam(smile.OptSmileABC, opt.OptABC):
     """
-    Option pricing model with inverse gamma (reciprocal gamma) distribution.
+    Option pricing model with the inverse gamma (reciprocal gamma) distribution.
 
     The parameters (alpha, beta) is from Wikipedia. https://en.wikipedia.org/wiki/Inverse-gamma_distribution
-    Note that the n-th moment of the inverse gamma RV is beta^n/(alpha-1) ... (alpha-n).
-    Alpha and beta is calibrated to match the first two moments of the lognormal distribution with volatility sigma.
+    Note that the n-th moment of the inverse gamma RV is beta^n / (alpha-1)*...*(alpha-n).
+    Alpha and beta is calibrated to match the first two moments of the lognormal distribution with volatility sigma
+    so that the option price is similar to that of the BSM model with volatility sigma.
 
     Examples:
         >>> import numpy as np
