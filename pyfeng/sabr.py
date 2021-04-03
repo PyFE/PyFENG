@@ -28,7 +28,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             sigma: model volatility at t=0
             vov: volatility of volatility
             rho: correlation between price and volatility
-            beta: elasticity parameter. 0.5 by default
+            beta: elasticity parameter. 1.0 by default
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
@@ -53,21 +53,22 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
     def _m_base(self, vol):
         """
-        The model of the vol_for_price
+        Create base model based on _base_beta value: Norm for 0, Cev for (0,1), and Bsm for 1
+        If _base_beta is None, use base instead.
 
         Args:
-            vol:
+            vol: base model volatility
 
         Returns: model
         """
-        vol_beta = self.beta if self._base_beta is None else self._base_beta
+        base_beta = self._base_beta or self.beta
 
-        if np.isclose(vol_beta, 1):
+        if np.isclose(base_beta, 1):
             return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
-        elif np.isclose(vol_beta, 0):
+        elif np.isclose(base_beta, 0):
             return norm.Norm(vol, intr=self.intr, divr=self.divr)
         else:
-            return cev.Cev(vol, beta=vol_beta, intr=self.intr, divr=self.divr)
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
@@ -111,7 +112,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             assert(df_val.columns[0] == 'k' or df_val.columns[0] == 'K')
             args_pricing['strike'] = df_val.values[:, 0]
             if df_val.columns[0] == 'k':
-                args_pricing['strike'] *= param['fwd']
+                args_pricing['strike'] *= param['spot']
 
             val = df_val[param['col_name']].values
             is_iv = param['col_name'].startswith('IV')
@@ -235,7 +236,7 @@ class SabrVolApproxABC(SabrABC):
         if model is None:
             model = 'norm' if np.isclose(self.beta, 0) else 'bsm' if self.beta > 0.0 else None
 
-        vol_beta = self.beta if self._base_beta is None else self._base_beta
+        vol_beta = self._base_beta or self.beta
         if (model.lower() == 'bsm' and np.isclose(vol_beta, 1)) or \
                 (model.lower() == 'norm' and np.isclose(vol_beta, 0)):
             vol = self.vol_for_price(strike, spot, texp)
@@ -322,7 +323,54 @@ class SabrHagan2002(SabrVolApproxABC):
 
         return params
 
-    
+
+class SabrNorm(SabrVolApproxABC):
+    """
+    Noram SABR model (beta=0) with normal volatility approximation.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.SabrNorm(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
+        array([0.21976016, 0.20922027, 0.200432  , 0.19311113, 0.18703486])
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
+    """
+    _base_beta = 0  # should not be changed
+    _atmvol = False
+
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, atmvol=False):
+        """
+        Args:
+            sigma: model volatility at t=0
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            beta: elasticity parameter. should be 0 or None.
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f'Ignoring beta = {beta}...')
+        self._atmvol = atmvol
+        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def vol_for_price(self, strike, spot, texp):
+        fwd = self.forward(spot, texp)
+
+        if self.approx_order == 0 or self._atmvol:
+            vol = 1.0
+        else:
+            vol = 1.0 + texp*(2 - 3*self.rho**2)/24 * self.vov**2
+
+        zz = self.vov/self.sigma*(strike-fwd)
+        hh = self._hh(zz, self.rho)
+        vol *= self.sigma * hh
+        return vol
+
+
 class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
     """
     The CEV volatility approximation of the SABR modelbased on Theorem 1 of Choi & Wu (2019)
@@ -347,20 +395,20 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
             sigma: model volatility at t=0
             vov: volatility of volatility
             rho: correlation between price and volatility
-            beta: elasticity parameter. 0.5 by default
+            beta: elasticity parameter. 1.0 by default
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
             vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
         """
-        self.vol_beta = vol_beta
+        self._base_beta = vol_beta
         super().__init__(sigma, vov, rho, beta, intr, divr, is_fwd)
 
     def vol_for_price(self, strike, spot, texp):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        vol_beta = self.beta if self.vol_beta is None else self.vol_beta
+        vol_beta = self._base_beta or self.beta
         vol_betac = 1.0 - vol_beta
 
         fwd, _, _ = self._fwd_factor(spot, texp)
@@ -370,7 +418,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
         vov_over_alpha_safe = self.vov/np.maximum(alpha, np.finfo(float).eps)
         tmp = self._int_inv_locvol(kk, self.beta)
-        qq_ratio = 1.0 if self.vol_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
+        qq_ratio = 1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
 
         qq = tmp * (kk-1.0)
         zz = vov_over_alpha_safe * qq  # zeta = (vov/sigma0) q
@@ -383,7 +431,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         term11 = self.rho*self.beta/4 * self.vov*alpha * self._int_inv_locvol(kk, betac)
 
         # term20: O(alpha^2)
-        if self.vol_beta is None or np.isclose(self.beta, vol_beta):
+        if np.isclose(self.beta, vol_beta):
             term20 = 0.0
         else:
             with np.errstate(divide='ignore', invalid='ignore'):
@@ -391,7 +439,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
                 term20 = np.where(
                     np.fabs(qq) < 1e-6,
                     (np.square(betac) - np.square(vol_betac)) / 24 * np.square(alpha),
-                    (0.5*(self.beta-self.vol_beta)*np.log(kk) - np.log(qq_ratio)) * np.square(alpha)/qq
+                    (0.5*(self.beta-self._base_beta)*np.log(kk) - np.log(qq_ratio)) * np.square(alpha)/qq
                 )
         #else:
         #    raise ValueError('Cannot handle this vol_beta different from beta')
@@ -407,11 +455,10 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         return vol
 
     def mass_zero(self, spot, texp, log=False):
-        assert(self.vol_beta is None)
+        assert(self._base_beta is None)
         vol_cev = self.vol_for_price(0.0, spot, texp)
         cev_m = cev.Cev(sigma=vol_cev, beta=self.beta)
         mass = cev_m.mass_zero(spot, texp, log=log)
-        #print(vol_cev, mass)
         return mass
 
     def mass_zero_t0(self, spot, texp):
@@ -455,7 +502,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        vol_beta = self.beta if self.vol_beta is None else self.vol_beta
+        vol_beta = self._base_beta or self.beta
         vol_betac = 1.0 - vol_beta
 
         fwd, _, _ = self._fwd_factor(spot, texp)
@@ -472,7 +519,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
 
         # qq_ratio = qq_vol_beta / qq_beta
         tmp = self._int_inv_locvol(kk, self.beta)
-        qq_ratio = 1.0 if self.vol_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
+        qq_ratio = 1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
 
         zz = vov_over_alpha_safe * tmp * (kk - 1.0)  # zeta = (vov/sigma0) q
         hh = self._hh(zz, self.rho)
@@ -517,7 +564,11 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             gg_diff = self.rho*self.beta/(rhoc*betac) * (gg2 - gg1)
 
         zz2_safe = np.maximum(np.square(zz), np.finfo(float).eps)
-        tmp = 0 if self.vol_beta is None else 0.5*(self.beta-self.vol_beta)*np.log(kk) - np.log(qq_ratio)
+
+        if np.isclose(self.beta, vol_beta):
+            tmp = 0.0
+        else:
+            tmp = 0.5*(self.beta-self._base_beta)*np.log(kk) - np.log(qq_ratio)
 
         """
         with np.errstate(divide='ignore', invalid='ignore'):
@@ -525,7 +576,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             term20 = np.where(
                 np.fabs(qq) < 1e-6,
                 (np.square(betac) - np.square(vol_betac)) / 24 * np.square(alpha),
-                (0.5 * (self.beta - self.vol_beta) * np.log(kk) - np.log(qq_ratio)) * np.square(alpha) / qq
+                (0.5 * (self.beta - self._base_beta) * np.log(kk) - np.log(qq_ratio)) * np.square(alpha) / qq
             )
         """
         order1 = np.square(self.vov*hh)/zz2_safe *\
