@@ -366,14 +366,16 @@ class OptAnalyticABC(OptABC):
     @abc.abstractmethod
     def price_formula(strike, spot, sigma, texp, cp=1, *args, **kwargs):
         """
-Call/put option pricing formula (abstract/static method)
+        Call/put option pricing formula (abstract/static method)
 
         Args:
             strike: strike price
-            spot: spot (or forward)
+            spot: spot (or forward) price
             sigma: model volatility
             texp: time to expiry
             cp: 1/-1 for call/put option
+            *args:
+            **kwargs:
 
         Returns:
             vanilla option price

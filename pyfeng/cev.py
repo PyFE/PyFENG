@@ -74,7 +74,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         return t0
 
     @staticmethod
-    def price_formula(strike, spot, texp, cp=1, sigma=None, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
+    def price_formula(strike, spot, texp, sigma=None, cp=1, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
         """
 
         Args:
