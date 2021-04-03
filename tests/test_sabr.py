@@ -12,17 +12,36 @@ class TestSabr(unittest.TestCase):
     def test_Hagan2002(self):
         for k in list(range(1, 19)) + [22, 23]:
             m, df, rv = pf.SabrHagan2002.init_benchmark(k)
-            ref = rv['ref']
+            #ref = rv['ref']
             #print(f'Sheet {k:02d}: {ref}')
             v1 = np.round(m.vol_for_price(**rv['args_pricing']), 4)
             v2 = df['IV Hagan'].values
             np.testing.assert_almost_equal(v1, v2)
 
+    def test_SabrNorm(self):
+        for k in [22, 23]:
+            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            v1 = m.price(**rv['args_pricing'])
+            m, df, rv = pf.SabrChoiWu2021H.init_benchmark(k)
+            v2 = m.price(**rv['args_pricing'])
+            np.testing.assert_almost_equal(v1, v2)
+
+    def test_SabrNormATM(self):
+        for k in [22, 23]:
+            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            m._atmvol = True
+            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
+            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
+
+            m, df, rv = pf.Nsvh1.init_benchmark(k)
+            m._atmvol = True
+            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
+            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
+
     def test_PaulotBsm(self):
         for k in list(range(1, 19)):
             m, df, rv = pf.SabrChoiWu2021P.init_benchmark(k)
-            m.vol_beta = 1.0
-            ref = rv['ref']
+            m._base_beta = 1.0  # For Paulot's BS volatility approximation
             #print(f'Sheet {k:02d}: {ref}')
             v1 = np.round(m.vol_for_price(**rv['args_pricing']), 4)
             v2 = df['IV HL-P'].values
@@ -30,13 +49,9 @@ class TestSabr(unittest.TestCase):
 
     def test_UnCorrChoiWu2021(self):
         # Param Set 19: Table 7 (Case III.C) in Cai et al. (2017). https://doi.org/10.1287/opre.2017.1617
-        param = {"sigma": 0.4, "vov": 0.6, "rho": 0, "beta": 0.3, 'n_quad': 9}
-        fwd, texp = 0.05, 1
-        strike = np.array([0.4, 0.8, 1, 1.2, 1.6, 2.0]) * fwd
-
-        m = pf.SabrUncorrChoiWu2021(**param)
-        mass = m.mass_zero(fwd, texp)
-        p = m.price(strike, fwd, texp)
+        m, df, rv = pf.SabrUncorrChoiWu2021.init_benchmark(19)
+        mass = m.mass_zero(rv['args_pricing']['spot'], rv['args_pricing']['texp'])
+        p = m.price(**rv['args_pricing'])
 
         mass2 = 0.7623543217183134
         p2 = np.array([
