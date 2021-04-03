@@ -2,6 +2,7 @@ import scipy.stats as scst
 import numpy as np
 from . import bsm
 from . import norm
+from . import gamma
 from . import opt_abc as opt
 
 
@@ -175,6 +176,43 @@ class BsmBasketLevy1992(NormBasket):
         sig = np.sqrt(np.log(m2/(m1**2))/texp)
         price = bsm.Bsm.price_formula(
             strike, m1, sig, texp, cp=cp, is_fwd=True)
+        return df * price
+
+
+class BsmBasketMilevsky1998(NormBasket):
+    """
+    Basket option pricing with the inverse gamma distribution of Milevsky & Posner (1998)
+
+    References:
+        Milevsky, M. A., & Posner, S. E. (1998). A Closed-Form Approximation for Valuing Basket Options.
+        The Journal of Derivatives, 5(4), 54–61. https://doi.org/10.3905/jod.1998.408005
+
+        Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
+        Wilmott Magazine, 2004(7), 82–89.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(50, 151, 10)
+        >>> m = pf.BsmBasketMilevsky1998(sigma=0.4*np.ones(4), cor=0.5)
+        >>> m.price(strike, spot=100*np.ones(4), texp=5)
+        array([51.93069524, 44.40986   , 38.02596564, 32.67653542, 28.21560931,
+               24.49577509, 21.38543199, 18.77356434, 16.56909804, 14.69831445,
+               13.10186928])
+    """
+    def price(self, strike, spot, texp, cp=1):
+        df = np.exp(-texp * self.intr)
+        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd_basket = fwd * self.weight
+        m1 = np.sum(fwd_basket, axis=-1)
+        m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
+
+        alpha = 1/(m2/m1**2-1) + 2
+        beta = (alpha-1)*m1
+
+        price = gamma.Invgam.price_formula(strike, m1, texp, alpha, beta, cp=cp, is_fwd=True)
         return df * price
 
 

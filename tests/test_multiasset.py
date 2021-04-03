@@ -40,13 +40,13 @@ class TestMultiAsset(unittest.TestCase):
         # Table 2
         m = pf.BsmBasketLevy1992(sigma, rho)
         result = np.round(m.price(p_grid, fwd, texp), 2)
-        result2 = np.array([54.34, 47.52, 41.57, 36.40, 31.92, 28.05, 24.70, 21.80, 19.28, 17.10, 15.19])
+        result2 = np.array([54.34, 47.52, 41.57, 36.4, 31.92, 28.05, 24.7, 21.8, 19.28, 17.1, 15.19])
         np.testing.assert_almost_equal(result, result2)
 
         # Table 3
         m = pf.BsmBasketLevy1992(sigma, rho)
         result = np.round(m.price(100, p_grid[:, None]*o4, texp), 2)
-        result2 = np.array([4.34,  7.52, 11.57, 16.40, 21.92, 28.05, 34.70, 41.80, 49.28, 57.10, 65.19])
+        result2 = np.array([4.34, 7.52, 11.57, 16.4, 21.92, 28.05, 34.7, 41.8, 49.28, 57.1, 65.19])
         np.testing.assert_almost_equal(result, result2)
 
         # Table 1
@@ -55,6 +55,40 @@ class TestMultiAsset(unittest.TestCase):
         rhos = [0.1, 0.3, 0.5, 0.7, 0.8, 0.95]
         for k in range(len(rhos)):
             m = pf.BsmBasketLevy1992(sigma, rhos[k])
+            result[k] = np.round(m.price(100, fwd, texp), 2)
+        np.testing.assert_almost_equal(result, result2)
+
+    def test_BsmBasketMilevsky1998(self):
+        """
+        Test case in Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004)
+        Table 2 (Varying K), 3 (Varying fwd) and 1 (Varying correlation)
+        """
+        texp = 5
+        rho = 0.5
+        o4 = np.ones(4)
+        sigma = o4 * 0.4
+        fwd = o4 * 100
+        p_grid = np.arange(50, 151, 10)
+
+        # Table 2
+        m = pf.BsmBasketMilevsky1998(sigma, rho)
+        result = np.round(m.price(p_grid, fwd, texp), 2)
+        # Replaced 38.01 (Krekel et al., 2004) with 38.03
+        result2 = np.array([51.93, 44.41, 38.03, 32.68, 28.22, 24.5, 21.39, 18.77, 16.57, 14.7, 13.1])
+        np.testing.assert_almost_equal(result, result2)
+
+        # Table 3
+        m = pf.BsmBasketMilevsky1998(sigma, rho)
+        result = np.round(m.price(100, p_grid[:, None]*o4, texp), 2)
+        result2 = np.array([3.93, 6.56, 9.95, 14.1, 18.97, 24.5, 30.63, 37.32, 44.49, 52.08, 60.05])
+        np.testing.assert_almost_equal(result, result2)
+
+        # Table 1
+        result2 = np.array([20.25, 22.54, 24.5, 26.18, 26.93, 27.97])
+        result = np.zeros_like(result2)
+        rhos = [0.1, 0.3, 0.5, 0.7, 0.8, 0.95]
+        for k in range(len(rhos)):
+            m = pf.BsmBasketMilevsky1998(sigma, rhos[k])
             result[k] = np.round(m.price(100, fwd, texp), 2)
         np.testing.assert_almost_equal(result, result2)
 
