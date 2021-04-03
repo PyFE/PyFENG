@@ -366,14 +366,16 @@ class OptAnalyticABC(OptABC):
     @abc.abstractmethod
     def price_formula(strike, spot, sigma, texp, cp=1, *args, **kwargs):
         """
-Call/put option pricing formula (abstract/static method)
+        Call/put option pricing formula (abstract/static method)
 
         Args:
             strike: strike price
-            spot: spot (or forward)
+            spot: spot (or forward) price
             sigma: model volatility
             texp: time to expiry
             cp: 1/-1 for call/put option
+            *args:
+            **kwargs:
 
         Returns:
             vanilla option price
@@ -447,6 +449,22 @@ Call/put option pricing formula (abstract/static method)
 
         Returns:
             theta value
+        """
+        pass
+
+    @abc.abstractmethod
+    def cdf(self, strike, spot, texp, cp=-1):
+        """
+        Cumulative distribution function of the final asset price.
+
+        Args:
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            cp: -1 (default) for left-tail CDF, -1 for right-tail CDF (i.e., survival function)
+
+        Returns:
+            CDF value
         """
         pass
 
