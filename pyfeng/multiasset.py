@@ -212,7 +212,7 @@ class BsmBasketMilevsky1998(NormBasket):
         alpha = 1/(m2/m1**2-1) + 2
         beta = (alpha-1)*m1
 
-        price = gamma.Invgam.price_formula(strike, m1, texp, alpha, beta, cp=cp, is_fwd=True)
+        price = gamma.InvGam.price_formula(strike, m1, texp, alpha, beta, cp=cp, is_fwd=True)
         return df * price
 
 

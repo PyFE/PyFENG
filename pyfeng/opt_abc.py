@@ -482,19 +482,23 @@ class OptMaABC(OptABC, abc.ABC):
 
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
+            cor: correlation. If matrix with shape (n_asset, n_asset), used as it is.
                 If scalar, correlation matrix is constructed with all same off-diagonal values.
             intr: interest rate (domestic interest rate)
             divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
-        sigma = np.array(sigma)
+        sigma = np.atleast_1d(sigma)
         self.n_asset = len(sigma)
 
         super().__init__(sigma, intr, divr, is_fwd)
-        assert self.n_asset > 1  # if single asset, use BSM
 
-        if np.isscalar(cor):
+        if self.n_asset == 1:
+            if cor is not None:
+                print(f'Ignoring cor={cor} for a single asset')
+            self.rho = None
+            self.cor_m = np.array([[1.0]])
+        elif np.isscalar(cor):
             self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (1 - cor) * np.eye(self.n_asset)
             self.rho = cor
         else:
