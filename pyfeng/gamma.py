@@ -1,11 +1,9 @@
 import scipy.stats as spst
-import scipy.special as spsp
 import numpy as np
-from . import opt_abc as opt
 from . import opt_smile_abc as smile
 
 
-class Invgam(smile.OptSmileABC, opt.OptABC):
+class InvGam(smile.OptSmileABC):
     """
     Option pricing model with the inverse gamma (reciprocal gamma) distribution.
 
@@ -17,9 +15,9 @@ class Invgam(smile.OptSmileABC, opt.OptABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.Invgam(sigma=0.2, intr=0.05, divr=0.1)
+        >>> m = pf.InvGam(sigma=0.2, intr=0.05, divr=0.1)
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
-        array([21.34327542, 13.99490086,  8.60288219,  5.02287171,  2.82349989])
+        array([15.49803779,  9.53595458,  5.49889751,  3.02086661,  1.60505654])
     """
     sigma = None
 

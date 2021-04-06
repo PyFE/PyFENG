@@ -29,12 +29,12 @@ class TestSabr(unittest.TestCase):
     def test_SabrNormATM(self):
         for k in [22, 23]:
             m, df, rv = pf.SabrNorm.init_benchmark(k)
-            m._atmvol = True
+            m.is_atmvol = True
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
 
             m, df, rv = pf.Nsvh1.init_benchmark(k)
-            m._atmvol = True
+            m.is_atmvol = True
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
 

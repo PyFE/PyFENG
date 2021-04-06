@@ -21,8 +21,9 @@ class Nsvh1(sabr.SabrABC):
     """
 
     beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
+    is_atmvol = False
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, atmvol=False):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -32,11 +33,12 @@ class Nsvh1(sabr.SabrABC):
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
+            is_atmvol: If True, use `sigma` as the ATM normal vol
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
             print(f'Ignoring beta = {beta}...')
-        self._atmvol = atmvol
+        self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def _sig0_from_atmvol(self, texp):
@@ -57,7 +59,7 @@ class Nsvh1(sabr.SabrABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
 
         s_sqrt = self.vov * np.sqrt(texp)
-        if self._atmvol:
+        if self.is_atmvol:
             sig0 = self._sig0_from_atmvol(texp)
         else:
             sig0 = self.sigma
