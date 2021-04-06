@@ -14,7 +14,11 @@
    norm
    nsvh
    sabr
+   sabr_int
+   gamma
    multiasset
+   multiasset_mc
+
 
 Indices and tables
 ==================
