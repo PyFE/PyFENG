@@ -220,7 +220,7 @@ class SabrVolApproxABC(SabrABC):
     def impvol(self, price, strike, spot, texp, cp=1, setval=False):
         model = copy.copy(self)
 
-        vol = self._m_base().impvol(price, strike, spot, texp, cp=cp)
+        vol = self._m_base(None).impvol(price, strike, spot, texp, cp=cp)
 
         def iv_func(_sigma):
             model.sigma = _sigma
@@ -294,7 +294,7 @@ class SabrHagan2002(SabrVolApproxABC):
         vol *= alpha*hh/pre1   # bsm vol
         return vol
 
-    def calibrate3(self, price_or_vol3, strike3, spot, texp=None, cp=1, setval=False, is_vol=True):
+    def calibrate3(self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True):
         """
         Given option prices or normal vols at 3 strikes, compute the sigma, vov, rho to fit the data
         If prices are given (is_vol=False) convert the prices to vol first.
@@ -307,15 +307,16 @@ class SabrHagan2002(SabrVolApproxABC):
         if is_vol:
             vol3 = price_or_vol3
         else:
-            vol3 = self._m_base().impvol(price_or_vol3, strike3, spot, texp)
+            vol3 = self._m_base(None).impvol(price_or_vol3, strike3, spot, texp, cp=cp)
 
         def iv_func(x):
             model.sigma = np.exp(x[0])
             model.vov = np.exp(x[1])
             model.rho = np.tanh(x[2])
-            return model.vol_for_price(strike3, spot, texp=texp) - vol3
+            err = model.vol_for_price(strike3, spot, texp=texp) - vol3
+            return err
 
-        sol = spop.root(iv_func, np.array([vol3[1], -1, 0.0]))
+        sol = spop.root(iv_func, np.array([np.log(vol3[1]), -1, 0.0]))
         params = {"sigma": np.exp(sol.x[0]), "vov": np.exp(sol.x[1]), "rho": np.tanh(sol.x[2])}
 
         if setval:
@@ -338,9 +339,9 @@ class SabrNorm(SabrVolApproxABC):
         array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
     """
     _base_beta = 0  # should not be changed
-    _atmvol = False
+    is_atmvol = False
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, atmvol=False):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -350,17 +351,18 @@ class SabrNorm(SabrVolApproxABC):
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
+            is_atmvol: If True, use `sigma` as the ATM normal vol
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
             print(f'Ignoring beta = {beta}...')
-        self._atmvol = atmvol
+        self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
 
-        if self.approx_order == 0 or self._atmvol:
+        if self.approx_order == 0 or self.is_atmvol:
             vol = 1.0
         else:
             vol = 1.0 + texp*(2 - 3*self.rho**2)/24 * self.vov**2
