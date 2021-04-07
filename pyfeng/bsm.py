@@ -10,7 +10,8 @@ from . import opt_smile_abc as smile
 class Bsm(opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
-        Underlying price is assumed to follow a geometric Brownian motion.
+
+    Underlying price is assumed to follow a geometric Brownian motion.
 
     Examples:
         >>> import numpy as np
