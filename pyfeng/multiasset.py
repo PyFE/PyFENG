@@ -149,9 +149,8 @@ class BsmBasketLevy1992(NormBasket):
     Basket option pricing with the log-normal approximation of Levy & Turnbull (1992)
 
     References:
-        Levy, E., & Turnbull, S. (1992). Average intelligence. Risk, 1992(2), 53–57.
-
-        Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
+        - Levy, E., & Turnbull, S. (1992). Average intelligence. Risk, 1992(2), 53–57.
+        - Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
         Wilmott Magazine, 2004(7), 82–89.
 
     Examples:
