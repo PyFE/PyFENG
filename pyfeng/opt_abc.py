@@ -85,8 +85,7 @@ class OptABC(abc.ABC):
 
     def impvol_brentq(self, price, strike, spot, texp, cp=1, setval=False):
         """
-        Implied volatility using Brent's method.
-            Slow but robust implementation.
+        Implied volatility using Brent's method. Slow but robust implementation.
 
         Args:
             price: option price

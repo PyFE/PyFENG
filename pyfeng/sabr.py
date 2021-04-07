@@ -53,8 +53,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
     def _m_base(self, vol):
         """
-        Create base model based on _base_beta value: Norm for 0, Cev for (0,1), and Bsm for 1
-        If _base_beta is None, use base instead.
+        Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
+        If `_base_beta` is None, use `base` instead.
 
         Args:
             vol: base model volatility
@@ -89,13 +89,13 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             (model, Dataframe of result, params) if set_no is specified
 
         References:
-            Antonov, Alexander, Konikov, M., & Spector, M. (2013). SABR spreads its wings. Risk, 2013(Aug), 58–63.
-            Antonov, Alexandre, Konikov, M., & Spector, M. (2019). Modern SABR Analytics. Springer International Publishing. https://doi.org/10.1007/978-3-030-10656-0
-            Antonov, Alexandre, & Spector, M. (2012). Advanced analytics for the SABR model. Available at SSRN. https://ssrn.com/abstract=2026350
-            Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model. Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
-            Korn, R., & Tang, S. (2013). Exact analytical solution for the normal SABR model. Wilmott Magazine, 2013(7), 64–69. https://doi.org/10.1002/wilm.10235
-            Lewis, A. L. (2016). Option valuation under stochastic volatility II: With Mathematica code. Finance Press.
-            von Sydow, L., ..., Haentjens, T., & Waldén, J. (2018). BENCHOP - SLV: The BENCHmarking project in Option Pricing – Stochastic and Local Volatility problems. International Journal of Computer Mathematics, 1–14. https://doi.org/10.1080/00207160.2018.1544368
+            - Antonov, Alexander, Konikov, M., & Spector, M. (2013). SABR spreads its wings. Risk, 2013(Aug), 58–63.
+            - Antonov, Alexandre, Konikov, M., & Spector, M. (2019). Modern SABR Analytics. Springer International Publishing. https://doi.org/10.1007/978-3-030-10656-0
+            - Antonov, Alexandre, & Spector, M. (2012). Advanced analytics for the SABR model. Available at SSRN. https://ssrn.com/abstract=2026350
+            - Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model. Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
+            - Korn, R., & Tang, S. (2013). Exact analytical solution for the normal SABR model. Wilmott Magazine, 2013(7), 64–69. https://doi.org/10.1002/wilm.10235
+            - Lewis, A. L. (2016). Option valuation under stochastic volatility II: With Mathematica code. Finance Press.
+            - von Sydow, L., ..., Haentjens, T., & Waldén, J. (2018). BENCHOP - SLV: The BENCHmarking project in Option Pricing – Stochastic and Local Volatility problems. International Journal of Computer Mathematics, 1–14. https://doi.org/10.1080/00207160.2018.1544368
         """
         this_dir, _ = os.path.split(__file__)
         file = os.path.join(this_dir, 'data/sabr_benchmark.xlsx')
@@ -296,11 +296,20 @@ class SabrHagan2002(SabrVolApproxABC):
 
     def calibrate3(self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True):
         """
-        Given option prices or normal vols at 3 strikes, compute the sigma, vov, rho to fit the data
+        Given option prices or implied vols at 3 strikes, compute the sigma, vov, rho to fit the data using `scipy.optimize.root`.
         If prices are given (is_vol=False) convert the prices to vol first.
-        Then use multi-dimensional root solving
-        you may use spop.root
-        # https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.root.html#scipy.optimize.root
+
+        Args:
+            price_or_vol3: 3 prices or 3 volatilities (depending on `is_vol`)
+            strike3: 3 strike prices
+            spot: spot price
+            texp: time to expiry
+            cp: cp
+            setval: if True, set sigma, vov, rho values
+            is_vol: if True, `price_or_vol3` are volatilities.
+
+        Returns:
+            Dictionary of `sigma`, `vov`, and `rho`.
         """
         model = copy.copy(self)
 
@@ -375,12 +384,10 @@ class SabrNorm(SabrVolApproxABC):
 
 class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
     """
-    The CEV volatility approximation of the SABR modelbased on Theorem 1 of Choi & Wu (2019)
+    The CEV volatility approximation of the SABR model based on Theorem 1 of Choi & Wu (2019)
 
     References:
-        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
-        of the stochastic-alpha-beta-rho (SABR) model.
-        ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
+        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
         >>> import numpy as np
         >>> import pyfeng as pf
@@ -465,14 +472,14 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
     def mass_zero_t0(self, spot, texp):
         """
-        Limit value of -T log(M_T) as T -> 0, where M_T is the mass at zero.
-            See Corollary 3.1 of Choi & Wu (2019)
+        Limit value of -T log(M_T) as T -> 0, where M_T is the mass at zero. See Corollary 3.1 of Choi & Wu (2019)
 
         Args:
             spot: spot (or forward) price
+            texp: time to expiry
 
         Returns:
-            - lim_{T->0} T log(M_T)
+            -lim_{T->0} T log(M_T)
         """
         fwd = self.forward(spot, texp)
         alpha, betac, rhoc, rho2, _ = self._variables(fwd, texp)
@@ -486,9 +493,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 
     References:
-        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
-        of the stochastic-alpha-beta-rho (SABR) model.
-        ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
+        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
     Examples:
         >>> import numpy as np
