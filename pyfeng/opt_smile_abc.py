@@ -44,9 +44,7 @@ class MassZeroABC(opt.OptABC, abc.ABC):
     Implied volatility asymptotics of De Marco et al. (2017) given the positive mass at zero.
 
     References:
-          De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with
-          Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737.
-          https://doi.org/10.1137/14098065X
+          - De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737. https://doi.org/10.1137/14098065X
     """
 
     @abc.abstractmethod

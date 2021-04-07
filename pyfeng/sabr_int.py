@@ -23,13 +23,8 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
                0.02992918])
 
     References:
-        - Choi, J., & Wu, L. (2021). A note on the option price and `Mass at zero in the uncorrelated
-        SABR model and implied volatility asymptotics’. Quantitative Finance (Forthcoming).
-        https://doi.org/10.1080/14697688.2021.1876908
-        - Gulisashvili, A., Horvath, B., & Jacquier, A. (2018). Mass at zero
-        in the uncorrelated SABR model and implied volatility asymptotics.
-        Quantitative Finance, 18(10), 1753–1765.
-        https://doi.org/10.1080/14697688.2018.1432883
+        - Choi, J., & Wu, L. (2021). A note on the option price and `Mass at zero in the uncorrelated SABR model and implied volatility asymptotics’. Quantitative Finance (Forthcoming). https://doi.org/10.1080/14697688.2021.1876908
+        - Gulisashvili, A., Horvath, B., & Jacquier, A. (2018). Mass at zero in the uncorrelated SABR model and implied volatility asymptotics. Quantitative Finance, 18(10), 1753–1765. https://doi.org/10.1080/14697688.2018.1432883
     """
 
     _base_beta = None

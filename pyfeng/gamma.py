@@ -39,6 +39,7 @@ class InvGam(smile.OptSmileABC):
         Computes the inverse gamma distribution parameters (alpha, beta) from sigma, spot, texp.
 
             m1 = beta/(alpha-1)
+
             m2/m1^2 = exp(sigma^2 T) = (alpha-1)/(alpha-2)
 
         Args:
