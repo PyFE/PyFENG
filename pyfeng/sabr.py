@@ -296,11 +296,20 @@ class SabrHagan2002(SabrVolApproxABC):
 
     def calibrate3(self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True):
         """
-        Given option prices or normal vols at 3 strikes, compute the sigma, vov, rho to fit the data
+        Given option prices or implied vols at 3 strikes, compute the sigma, vov, rho to fit the data using `scipy.optimize.root`.
         If prices are given (is_vol=False) convert the prices to vol first.
-        Then use multi-dimensional root solving
-        you may use spop.root
-        # https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.root.html#scipy.optimize.root
+
+        Args:
+            price_or_vol3: 3 prices or 3 volatilities (depending on `is_vol`)
+            strike3: 3 strike prices
+            spot: spot price
+            texp: time to expiry
+            cp: cp
+            setval: if True, set sigma, vov, rho values
+            is_vol: if True, `price_or_vol3` are volatilities.
+
+        Returns:
+            Dictionary of `sigma`, `vov`, and `rho`.
         """
         model = copy.copy(self)
 
@@ -378,9 +387,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
     The CEV volatility approximation of the SABR model based on Theorem 1 of Choi & Wu (2019)
 
     References:
-        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
-        of the stochastic-alpha-beta-rho (SABR) model.
-        ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
+        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
         >>> import numpy as np
         >>> import pyfeng as pf
@@ -486,9 +493,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 
     References:
-        Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility
-        of the stochastic-alpha-beta-rho (SABR) model.
-        ArXiv:1911.13123 [q-Fin]. http://arxiv.org/abs/1911.13123
+        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
     Examples:
         >>> import numpy as np

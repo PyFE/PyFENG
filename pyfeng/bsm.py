@@ -310,20 +310,23 @@ class Bsm(opt.OptAnalyticABC):
 
 class BsmDisp(smile.OptSmileABC):
     """
-    Displaced Black-Scholes-Merton model for option pricing.
-    Displace price, D(F_t) = beta*F_t + (1-beta)*A is assumed to follow a geometric Brownian
-    motion with volatility beta*sigma
+    Displaced Black-Scholes-Merton model for option pricing. Displace price,
+
+        D(F_t) = beta*F_t + (1-beta)*A
+
+    is assumed to follow a geometric Brownian motion with volatility `beta*sigma`.
 
     Examples:
-        import pyfeng as pf
-        dd = pf.DispBsmModel(sigma=0.2, pivot=100, beta=0.5)
-        price = bsm.price(strike=105, spot=100, texp=1)
-        print(price)
-
-        sigma = np.array([0.2, 0.3, 0.5])
-        bsm = dd.BsmModel(sigma[:,None]) # sigma in axis=0
-        price = dd.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
-        print(price)
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.BsmDisp(sigma=0.2, beta=0.5, pivot=100, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> sigma = np.array([0.2, 0.3, 0.5])[:, None]
+        >>> m = pf.BsmDisp(sigma, beta=0.5, pivot=100, intr=0.05, divr=0.1) # sigma in axis=0
+        >>> m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
+        array([[ 5.75927238,  5.52948546,  2.94558338],
+               [ 9.4592961 ,  9.3881245 ,  6.45745004],
+               [16.812035  , 17.10541288, 14.10354768]])
     """
 
     pivot = None
