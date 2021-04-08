@@ -329,9 +329,9 @@ class BsmDisp(smile.OptSmileABC):
                [16.812035  , 17.10541288, 14.10354768]])
     """
 
-    pivot = None
     beta = 1  # equivalent to Black-Scholes
-    bsm_model = None
+    pivot = 0
+    _m_bsm = None
 
     def __init__(self, sigma, beta=1, pivot=0, *args, **kwargs):
         """
@@ -343,10 +343,10 @@ class BsmDisp(smile.OptSmileABC):
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
-        super().__init__(sigma, *args, **kwargs)
         self.pivot = pivot
         self.beta = beta
-        self.bsm_model = Bsm(sigma=beta * sigma)
+        self._m_bsm = Bsm(sigma=beta*sigma, *args, **kwargs)
+        super(BsmDisp, self).__init__(sigma, *args, **kwargs)
 
     '''
     @property
@@ -356,40 +356,80 @@ class BsmDisp(smile.OptSmileABC):
     @sigma.setter
     def sigma(self, sigma):
         self.sigma = sigma
-        self.bsm_model.sigma = self.beta*sigma
+        self._m_bsm.sigma = self.beta*sigma
+        
+    @property
+    def is_fwd(self):
+        return self.is_fwd
+
+    @is_fwd.setter
+    def is_fwd(self, is_fwd):
+        print('is_fwd')
+        self.is_fwd = is_fwd
+        self._m_bsm.is_fwd = is_fwd
     '''
 
-    def disp(self, x):
-        return self.beta*x + (1-self.beta)*self.pivot
+    def disp_spot(self, spot):
+        """
+        Displaced spot
 
-    def price(self, strike, spot, *args, **kwargs):
-        return (1/self.beta)*self.bsm_model.price(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+        Args:
+            spot: spot (or forward) price
 
-    def delta(self, strike, spot, *args, **kwargs):
-        return self.bsm_model.delta(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+        Returns:
+            Displaces spot
+        """
+        return self.beta*spot + (1-self.beta)*self.pivot
 
-    def cdf(self, strike, spot, *args, **kwargs):
-        return self.bsm_model.cdf(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+    def disp_strike(self, strike, texp):
+        """
+        Displaced strike
 
-    def vega(self, strike, spot, *args, **kwargs):
-        return self.bsm_model.vega(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+        Args:
+            strike: strike price
+            texp: time to expiry
 
-    def gamma(self, strike, spot, *args, **kwargs):
+        Returns:
+            Displace strike
+        """
+        return self.beta*strike + (1-self.beta)*self.forward(self.pivot, texp)
+
+    def price(self, strike, spot, texp, cp=1):
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return (1/self.beta)*self._m_bsm.price(strike, spot, texp, cp=cp)
+
+    def delta(self, strike, spot, texp, cp=1):
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return self._m_bsm.delta(strike, spot, texp, cp=cp)
+
+    def cdf(self, strike, spot, texp, cp=1):
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return self._m_bsm.cdf(strike, spot, texp, cp=cp)
+
+    def vega(self, strike, spot, texp, cp=1):
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return self._m_bsm.vega(strike, spot, texp, cp=cp)
+
+    def gamma(self, strike, spot, texp, cp=1):
         # need to mutiply beta because of (beta*sigma) appearing in the denominator of the bsm gamma
-        return self.beta * self.bsm_model.gamma(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return self.beta * self._m_bsm.gamma(strike, spot, texp, cp=cp)
 
-    def theta(self, strike, spot, *args, **kwargs):
-        return (1/self.beta)*self.bsm_model.theta(
-            self.disp(strike), self.disp(spot), *args, **kwargs)
+    def theta(self, strike, spot, texp, cp=1):
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        return (1/self.beta)*self._m_bsm.theta(
+            strike, spot, texp, cp=cp)
 
     def impvol(self, price_in, strike, spot, texp, cp=1, setval=False):
-        sigma = (1/self.beta)*self.bsm_model.impvol(
-            self.beta*price_in, self.disp(strike), self.disp(spot), texp, cp=cp, setval=setval)
+        spot = self.disp_spot(spot)
+        strike = self.disp_strike(strike, texp)
+        sigma = (1/self.beta)*self._m_bsm.impvol(self.beta*price_in, strike, spot, texp, cp=cp, setval=setval)
         if setval:
             self.sigma = sigma
         return sigma
@@ -409,28 +449,29 @@ class BsmDisp(smile.OptSmileABC):
             volatility smile under the specified model
         """
         if model.lower() == 'norm-approx':
-            fwd, _, _ = self._fwd_factor(spot, texp)
-            kkd = self.disp(strike) / self.disp(fwd)
+            fwdd = self.forward(self.disp_spot(spot), texp)
+            kkd = self.disp_strike(strike, texp) / fwdd
             lnkd = np.log(kkd)
             sig_beta = self.beta * self.sigma
-            vol = self.sigma * self.disp(fwd) * np.sqrt(kkd) * (1 + lnkd ** 2 / 24) / \
-                (1 + sig_beta ** 2 * texp / 24)
+            vol = self.sigma * fwdd * np.sqrt(kkd) * (1 + lnkd**2/24) / (1 + sig_beta**2 * texp/24)
         elif model.lower() == 'bsm-approx':
-            fwd, _, _ = self._fwd_factor(spot, texp)
+            fwd = self.forward(spot, texp)
             kk = strike / fwd
             lnk = np.log(kk)
-            fwdd = self.disp(fwd)
-            kkd = self.disp(strike) / fwdd
+
+            fwdd = self.forward(self.disp_spot(spot), texp)
+            kkd = self.disp_strike(strike, texp) / fwdd
             lnkd = np.log(kkd)
+
             sig_beta = self.beta * self.sigma
-            vol = self.sigma * (fwdd / fwd) * np.sqrt(kkd / kk)
-            vol *= (1 + lnkd ** 2 / 24) / (1 + lnk ** 2 / 24) * (1 + vol ** 2 * texp / 24) / \
-                (1 + sig_beta ** 2 * texp / 24)
+            vol = self.sigma * (fwdd/fwd) * np.sqrt(kkd/kk)
+            vol *= (1 + lnkd**2/24) / (1 + lnk**2/24) * (1 + vol**2 * texp/24) / (1 + sig_beta**2 * texp/24)
         else:
             vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
 
         return vol
 
-    def price_barrier(self, strike, barrier, spot, *args, **kwargs):
-        return (1/self.beta)*self.bsm_model.price_barrier(
-            self.disp(strike), self.disp(barrier), self.disp(spot), *args, **kwargs)
+    def price_barrier(self, strike, barrier, spot, texp, cp=1):
+        fwd = self.forward(spot, texp)
+        return (1/self.beta)*self._m_bsm.price_barrier(
+            self.disp_spot(strike), self.disp_strike(barrier, strike), self.disp_spot(fwd), texp, cp=cp)
