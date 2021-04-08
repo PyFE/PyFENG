@@ -418,7 +418,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
     def impvol(self, price_in, strike, spot, texp, cp=1, setval=False):
         spot = self.disp_spot(spot)
         strike = self.disp_strike(strike, texp)
-        sigma = (1/self.beta)*super().impvol(self.beta*price_in, strike, spot, texp, cp=cp, setval=setval)
+        sigma = (1/self.beta)*super().impvol(self.beta*price_in, strike, spot, texp, cp=cp, setval=False)
         if setval:
             self.sigma = sigma
         return sigma
