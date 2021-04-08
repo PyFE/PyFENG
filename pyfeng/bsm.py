@@ -321,12 +321,13 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         >>> import pyfeng as pf
         >>> m = pf.BsmDisp(sigma=0.2, beta=0.5, pivot=100, intr=0.05, divr=0.1)
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
-        >>> sigma = np.array([0.2, 0.3, 0.5])[:, None]
-        >>> m = pf.BsmDisp(sigma, beta=0.5, pivot=100, intr=0.05, divr=0.1) # sigma in axis=0
-        >>> m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
-        array([[ 5.75927238,  5.52948546,  2.94558338],
-               [ 9.4592961 ,  9.3881245 ,  6.45745004],
-               [16.812035  , 17.10541288, 14.10354768]])
+        array([15.9543935 ,  9.7886658 ,  5.4274197 ,  2.71430505,  1.22740381])
+        >>> beta = np.array([0.2, 0.6, 1])[:, None]
+        >>> m = pf.BsmDisp(0.2, beta=beta, pivot=100) # beta in axis=0
+        >>> m.vol_smile(np.arange(80, 121, 10), 100, 1.2)
+        array([[0.21915778, 0.20904587, 0.20038559, 0.19286293, 0.18625174],
+               [0.20977955, 0.20461468, 0.20025691, 0.19652101, 0.19327567],
+               [0.2       , 0.2       , 0.2       , 0.2       , 0.2       ]])
     """
 
     beta = 1  # equivalent to Black-Scholes
