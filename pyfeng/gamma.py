@@ -64,3 +64,42 @@ class InvGam(smile.OptSmileABC):
         x = strike/beta
         cdf = np.where(cp > 0, spst.gamma.cdf(1/x, a=alpha), spst.gamma.sf(1/x, a=alpha))
         return cdf
+
+
+class InvGauss(smile.OptSmileABC):
+    """
+    Option pricing model with the inverse Gaussian (IG) distribution.
+
+    The IG distribution with (gamma, delta) is modeled by scipy.stats.invgauss.invgauss(mu=1/(gamma*delta), scale=delta**2)
+    When, sig = gamma = delta, the IG variable has mean 1 and variance 1/sig^2. We match the momoent by
+
+        m2/m1^2 = 1/sig^2 = exp(sigma^2 T)
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.InvGauss(sigma=0.2, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([15.71924064,  9.70753358,  5.54459412,  2.95300168,  1.48019682])
+    """
+    sigma = None
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        sig2_inv = np.exp(self.sigma**2 * texp) - 1
+        ig = spst.invgauss(mu=sig2_inv, scale=1/sig2_inv)
+        kk = strike / fwd
+        price = np.where(
+            cp > 0,
+            ig.cdf(1/kk) - kk * ig.sf(kk),
+            kk * ig.cdf(kk) - ig.sf(1/kk),
+        )
+        return df*fwd*price
+
+    def cdf(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        sig2_inv = np.exp(self.sigma**2 * texp) - 1
+        ig = spst.invgauss(mu=sig2_inv, scale=1/sig2_inv)
+        x = strike / fwd
+        cdf = np.where(cp > 0, ig.sf(x), ig.cdf(x))
+        return cdf
