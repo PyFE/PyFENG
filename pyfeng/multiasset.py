@@ -288,7 +288,7 @@ class BsmMax2(opt.OptMaABC):
 
 class BsmBasket1Bm(opt.OptABC):
     """
-    Basket/Spread option when all asset prices are driven by a single
+    Multiasset BSM model for pricing basket/Spread options when all asset prices are driven by a single Brownian motion (BM).
 
     """
 
@@ -351,12 +351,16 @@ class BsmBasket1Bm(opt.OptABC):
         x[y_max <= 0] = np.inf
         ind = ~((y_min >= 0) | (y_max <= 0))
 
+        if np.all(~ind):
+            return x[0] if scalar_output else x
+
         for k in range(32):
             y_vec = fac * np.exp(std * x[ind, None])
             y = np.log(np.sum(y_vec, axis=-1)) - log_k[ind] if log else np.sum(y_vec, axis=-1) - strike[ind]
             dy = np.sum(std * y_vec, axis=-1) / np.sum(y_vec, axis=-1) if log else np.sum(std * y_vec, axis=-1)
             x[ind] -= y / dy
-
+            if len(y) == 0:
+                print(ind, y_vec, y)
             y_err_max = np.amax(np.abs(y))
             if y_err_max < BsmBasket1Bm.IMPVOL_TOL:
                 break
