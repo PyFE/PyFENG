@@ -1,4 +1,5 @@
-import scipy.stats as scst
+import scipy.stats as spst
+import warnings
 import numpy as np
 from . import bsm
 from . import norm
@@ -78,8 +79,8 @@ class BsmSpreadBjerksund2014(opt.OptMaABC):
         d2 = (d3 - 0.5*std11 + self.rho*std12 + bb*(0.5*bb - 1)*std22) / std
         d3 = (d3 - 0.5*std11 + 0.5*bb**2*std22) / std
 
-        price = cp*(fwd1*scst.norm.cdf(cp*d1) - fwd2*scst.norm.cdf(cp*d2)
-                    - strike*scst.norm.cdf(cp*d3))
+        price = cp*(fwd1*spst.norm.cdf(cp*d1) - fwd2*spst.norm.cdf(cp*d2)
+                    - strike*spst.norm.cdf(cp*d3))
 
         return df * price
 
@@ -271,9 +272,9 @@ class BsmMax2(opt.OptMaABC):
         price = np.zeros_like(strike, float)
         for k in range(n_strike):
             xx_ = xx + np.log(strike[k])/sig_std
-            term1 = fwd[0] * (scst.norm.cdf(yy[0]) - scst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1))
-            term2 = fwd[1] * (scst.norm.cdf(yy[1]) - scst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2))
-            term3 = strike[k] * np.array(scst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m))
+            term1 = fwd[0] * (spst.norm.cdf(yy[0]) - spst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1))
+            term2 = fwd[1] * (spst.norm.cdf(yy[1]) - spst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2))
+            term3 = strike[k] * np.array(spst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m))
 
             assert(term1 + term2 + term3 >= strike[k])
             price[k] = (term1 + term2 + term3 - strike[k])
@@ -283,3 +284,104 @@ class BsmMax2(opt.OptMaABC):
         price *= df
 
         return price[0] if strike_isscalar else price
+
+
+class BsmBasket1Bm(opt.OptABC):
+    """
+    Basket/Spread option when all asset prices are driven by a single
+
+    """
+
+    def __init__(self, sigma, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Args:
+            sigma: model volatilities of `n_asset` assets. (n_asset, )
+            weight: asset weights, If None, equally weighted as 1/n_asset
+                If scalar, equal weights of the value
+                If 1-D array, uses as it is. (n_asset, )
+            intr: interest rate (domestic interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+
+        sigma = np.atleast_1d(sigma)
+        self.n_asset = len(sigma)
+        if weight is None:
+            self.weight = np.ones(self.n_asset) / self.n_asset
+        elif np.isscalar(weight):
+            self.weight = np.ones(self.n_asset) * weight
+        else:
+            assert len(weight) == self.n_asset
+            self.weight = np.array(weight)
+        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    @staticmethod
+    def root(fac, std, strike):
+        """
+        Calculate the root x of f(x) = sum(fac * exp(std*x)) - strike = 0 using Newton's method
+
+        Each fac and std should have the same signs so that f(x) is a monotonically increasing function.
+
+        fac: factor to the exponents. (n_asset, ) or (n_strike, n_asset). Asset takes the last dimension.
+        std: total standard variance. (n_asset, )
+        strike: strike prices. scalar or (n_asset, )
+        """
+
+        assert np.all(fac * std >= 0.0)
+        log = np.min(fac) > 0  # Basket if log=True, spread if otherwise.
+        scalar_output = np.isscalar(np.sum(fac * std, axis=-1) - strike)
+        strike = np.atleast_1d(strike)
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            log_k = np.where(strike > 0, np.log(strike), 1)
+
+            # Initial guess with linearlized assmption
+            x = (strike - np.sum(fac, axis=-1)) / np.sum(fac * std, axis=-1)
+            if log:
+                np.fmin(x, np.amin(np.log(strike[:, None] / fac) / std, axis=-1), out=x)
+            else:
+                np.clip(x, -3, 3, out=x)
+
+        # Test x=-9 and 9 for min/max values.
+        y_max = np.exp(9 * std)
+        y_min = np.sum(fac / y_max, axis=-1) - strike
+        y_max = np.sum(fac * y_max, axis=-1) - strike
+
+        x[y_min >= 0] = -np.inf
+        x[y_max <= 0] = np.inf
+        ind = ~((y_min >= 0) | (y_max <= 0))
+
+        for k in range(32):
+            y_vec = fac * np.exp(std * x[ind, None])
+            y = np.log(np.sum(y_vec, axis=-1)) - log_k[ind] if log else np.sum(y_vec, axis=-1) - strike[ind]
+            dy = np.sum(std * y_vec, axis=-1) / np.sum(y_vec, axis=-1) if log else np.sum(std * y_vec, axis=-1)
+            x[ind] -= y / dy
+
+            y_err_max = np.amax(np.abs(y))
+            if y_err_max < BsmBasket1Bm.IMPVOL_TOL:
+                break
+
+        if y_err_max > BsmBasket1Bm.IMPVOL_TOL:
+            warn_msg = f'root did not converge within {k} iterations: max error = {y_err_max}'
+            warnings.warn(warn_msg, Warning)
+
+        return x[0] if scalar_output else x
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd_basket = fwd * self.weight
+        sigma_std = self.sigma * np.sqrt(texp)
+        cp = np.array(cp)
+        d2 = -cp * self.root(fwd_basket * np.exp(-sigma_std**2/2), sigma_std, strike)
+
+        if np.isscalar(d2):
+            d1 = d2 + cp*sigma_std
+        else:
+            d1 = d2[:, None] + np.atleast_1d(cp)[:, None]*sigma_std
+
+        price = np.sum(fwd_basket*spst.norm.cdf(d1), axis=-1)
+        price -= strike * spst.norm.cdf(d2)
+        price *= cp*df
+        return price

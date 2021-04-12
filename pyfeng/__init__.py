@@ -6,6 +6,6 @@ from .sabr import SabrHagan2002, SabrNorm, SabrLorig2017, SabrChoiWu2021H, SabrC
 from .sabr_int import SabrUncorrChoiWu2021
 from .nsvh import Nsvh1
 from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormSpread, BsmBasketLevy1992, BsmMax2, \
-    BsmBasketMilevsky1998
+    BsmBasketMilevsky1998, BsmBasket1Bm
 from .multiasset_mc import BsmNdMc, NormNdMc
 
