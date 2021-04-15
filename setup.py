@@ -18,6 +18,11 @@ setup(
     packages=['pyfeng'],
     test_suite="tests",
     install_requires=[
-        'numpy', 'scipy'
-    ]
+        'numpy',
+        'openpyxl',
+        'pandas',
+        'scipy',
+        'xlrd'
+    ],
+    include_package_data=True
 )
