@@ -3,7 +3,7 @@ import scipy.integrate as scint
 from . import sv
 
 
-class HestonCondMc(sv.CondMcBsmABC):
+class HestonCondMc(sv.SvABC, sv.CondMcBsmABC):
     """
     Heston model with conditional Monte-Carlo simulation
     """

@@ -26,19 +26,19 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         return {**params1, **params2}
 
 
-class CondMcBsmABC(SvABC, abc.ABC):
+class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     """
     Abstract Class for conditional Monte-Carlo method for BSM-based stochastic volatility models
     """
 
-    dt = 0.1
+    dt = 0.05
     n_path = 10000
     rn_seed = None
-    rng = None
+    rng = np.random.default_rng(None)
     antithetic = True
 
     def set_mc_params(self, n_path, dt=0.1, rn_seed=None, antithetic=True):
-        self.n_path = n_path
+        self.n_path = int(n_path)
         self.dt = dt
         self.rn_seed = rn_seed
         self.antithetic = antithetic
@@ -95,4 +95,5 @@ class CondMcBsmABC(SvABC, abc.ABC):
         price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
 
         price = spot * np.mean(price_grid, axis=1)
+
         return price[0] if scalar_output else price
