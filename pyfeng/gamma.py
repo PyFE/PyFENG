@@ -20,6 +20,7 @@ class InvGam(smile.OptSmileABC):
         array([15.49803779,  9.53595458,  5.49889751,  3.02086661,  1.60505654])
     """
     sigma = None
+    
 
     @staticmethod
     def price_formula(strike, spot, texp, alpha, beta, cp=1, intr=0.0, divr=0.0, is_fwd=False):
