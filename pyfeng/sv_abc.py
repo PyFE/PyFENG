@@ -6,9 +6,9 @@ from . import opt_smile_abc as smile
 
 class SvABC(smile.OptSmileABC, abc.ABC):
 
-    vov, rho, mr, sig_inf = 0.01, 0.0, 0.01, 1.0
+    vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, sig_inf=None, intr=0.0, divr=0.0, is_fwd=False):
+    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, theta=None, intr=0.0, divr=0.0, is_fwd=False):
         # Note:
         #    sigma^2: initial variance
         #    var_inf: long-term variance
@@ -18,11 +18,11 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         self.vov = vov
         self.rho = rho
         self.mr = mr
-        self.sig_inf = sigma if sig_inf is None else sig_inf
+        self.theta = sigma if theta is None else theta
 
     def params_kw(self):
         params1 = super().params_kw()
-        params2 = {"vov": self.vov, "rho": self.rho, "mr": self.mr, "sig_inf": self.sig_inf}
+        params2 = {"vov": self.vov, "rho": self.rho, "mr": self.mr, "sig_inf": self.theta}
         return {**params1, **params2}
 
 

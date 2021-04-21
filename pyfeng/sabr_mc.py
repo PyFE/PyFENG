@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.integrate as scint
 from . import sabr
-from . import sv
+from . import sv_abc as sv
 from . import cev
 
 
