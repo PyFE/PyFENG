@@ -37,7 +37,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng = np.random.default_rng(None)
     antithetic = True
 
-    def set_mc_params(self, n_path, dt=0.1, rn_seed=None, antithetic=True):
+    def set_mc_params(self, n_path, dt=0.05, rn_seed=None, antithetic=True):
         self.n_path = int(n_path)
         self.dt = dt
         self.rn_seed = rn_seed
@@ -61,6 +61,36 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         n_steps = (texp//(2*self.dt)+1)*2
         tobs = np.arange(n_steps + 1) / n_steps * texp
         return tobs
+
+    def _bm_incr(self, tobs, cum=False, n_path=None):
+        """
+        Calculate incremental Brownian Motions
+
+        Args:
+            tobs: observation times (array) including 0
+            cum: return cumulative values if True
+            n_path: number of paths. If None (default), use the stored one.
+
+        Returns:
+            price path (time, path)
+        """
+        dt = np.diff(tobs)
+        n_dt = len(dt)
+
+        n_path = n_path or self.n_path
+
+        if self.antithetic:
+            # generate random number in the order of path, time, asset and transposed
+            # in this way, the same paths are generated when increasing n_path
+            bm_incr = self.rng.normal(size=(n_path//2, n_dt)).T * np.sqrt(dt[:, None])
+            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((n_dt, n_path))
+        else:
+            bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(dt[:, None])
+
+        if cum:
+            np.cumsum(bm_incr, axis=0, out=bm_incr)
+
+        return bm_incr
 
     @abc.abstractmethod
     def vol_paths(self, tobs):

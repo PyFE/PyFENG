@@ -24,26 +24,15 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         assert tobs[0] == 0
 
         texp = tobs[-1]
-        tobs /= texp  # normalized time
-        ds = np.diff(tobs)  # normalized time diff
-        n_steps = len(ds)
-        assert -1e-10 < np.sum(ds)-1 < 1e-10
+        tobs = tobs/texp  # normalized time: s
         vov_std = self.vov * np.sqrt(texp)
 
-        # Antithetic
-        if self.antithetic:
-            zz = self.rng.normal(size=(n_steps, self.n_path//2))
-            zz = np.concatenate((zz, -zz), axis=1)
-        else:
-            zz = self.rng.normal(size=(n_steps, self.n_path))
+        log_sig_s = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
+        log_rn_deriv = 0.0 if mu == 0 else -mu*(log_sig_s[-1, :] + 0.5*mu)
 
-        Bs = np.cumsum(np.sqrt(ds[:, None])*zz, axis=0)
-        log_rn_deriv = 0.0 if mu == 0 else -mu*(Bs[-1, :] + 0.5*mu)
-
-        log_sigma_t = np.zeros((n_steps+1, self.n_path))
-        log_sigma_t[1:, :] = vov_std*(Bs + (mu - 0.5*vov_std) * tobs[1:, None])
-
-        return np.exp(log_sigma_t), log_rn_deriv
+        log_sig_s = np.insert(log_sig_s, 0, np.zeros(log_sig_s.shape[1]), axis=0)
+        log_sig_s = vov_std*(log_sig_s + (mu - 0.5*vov_std) * tobs[:, None])
+        return np.exp(log_sig_s), log_rn_deriv
 
     def cond_fwd_vol(self, texp, mu=0):
         rhoc = np.sqrt(1.0 - self.rho**2)

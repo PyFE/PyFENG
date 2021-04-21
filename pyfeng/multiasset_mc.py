@@ -51,7 +51,6 @@ class BsmNdMc(opt.OptMaABC):
         Args:
             tobs: array of observation times
             n_path: number of paths. If None (default), use the stored one.
-            store: if True (default), save the result to self.path_stored
 
         Returns:
             price path (time, path, asset)

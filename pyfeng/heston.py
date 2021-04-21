@@ -9,26 +9,16 @@ class HestonCondMc(sv.SvABC, sv.CondMcBsmABC):
     """
 
     def vol_paths(self, tobs):
-
-        np.random.seed(self.rn_seed)
-
         dt = np.diff(tobs)
-        n_steps = len(dt)
-        vov_sqrt_dt = self.vov * np.sqrt(dt)
+        n_dt = len(dt)
 
-        # Antithetic
-        if self.antithetic:
-            zz = self.rng.normal(size=(n_steps, self.n_path//2))
-            zz = np.concatenate((zz, -zz), axis=1)
-        else:
-            zz = self.rng.normal(size=(n_steps, self.n_path))
-
-        vv_path = np.empty([n_steps+1, self.n_path])  # variance series: V0, V1,...,VT
+        dB_t = self._bm_incr(tobs, cum=False)  # B_t (0 <= s <= 1)
+        vv_path = np.empty([n_dt+1, self.n_path])  # variance series: V0, V1,...,VT
         vv = self.sigma**2
         vv_path[0, :] = vv
-        for i in range(n_steps):
-            vv = vv + self.mr * (self.sig_inf**2 - vv)*dt[i] + np.sqrt(vv)*vov_sqrt_dt[i]*zz[i, :]  # Euler method
-            vv = vv + 0.25 * vov_sqrt_dt[i]**2 * (zz[i, :]**2 - 1)  # Milstein method
+        for i in range(n_dt):
+            vv = vv + self.mr * (self.sig_inf**2 - vv)*dt[i] + np.sqrt(vv)*self.vov*dB_t[i, :]  # Euler method
+            vv = vv + 0.25 * self.vov**2 * (dB_t[i, :]**2 - dt[i])  # Milstein method
             vv[vv < 0] = 0  # variance should be larger than zero
             vv_path[i+1, :] = vv
 
