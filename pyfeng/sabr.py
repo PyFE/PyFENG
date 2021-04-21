@@ -62,8 +62,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         Returns: model
         """
         base_beta = self._base_beta or self.beta
-        is_fwd = self.is_fwd if is_fwd is None else is_fwd
-
+        if is_fwd is None:
+            is_fwd = self.is_fwd
         if np.isclose(base_beta, 1):
             return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         elif np.isclose(base_beta, 0):

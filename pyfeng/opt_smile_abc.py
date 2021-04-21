@@ -10,11 +10,13 @@ class OptSmileABC(opt.OptABC, abc.ABC):
     """
     Abstract class to model with volatility smile
     """
-    def _m_smile(self, model='bsm'):
+    def _m_smile(self, model='bsm', is_fwd=None):
+        if is_fwd is None:
+            is_fwd = self.is_fwd
         if model.lower() == 'bsm':
-            base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
+            base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         elif model.lower() == 'norm':
-            base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
+            base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
             base_model = None
         return base_model

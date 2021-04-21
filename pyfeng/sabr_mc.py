@@ -54,29 +54,28 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         sigma_paths, log_rn_deriv = self.vol_paths(tobs, mu=mu)
         sigma_final = sigma_paths[-1, :]
         int_var = scint.simps(sigma_paths**2, dx=1, axis=0) / n_steps
-
         vol_cond = rhoc*np.sqrt(int_var)
-        if self.beta > 0.0:
-            fwd_cond = np.exp(rho_sigma*(1.0/self.vov*(sigma_final - 1) - 0.5*rho_sigma*int_var*texp))
+        if np.isclose(self.beta, 0):
+            fwd_cond = rho_sigma/self.vov*(sigma_final - 1)
         else:
-            fwd_cond = rho_sigma/self.vov*(sigma_final - 1) - 0.5*self.sigma**2*int_var*texp
+            fwd_cond = np.exp(rho_sigma*(1.0/self.vov*(sigma_final - 1) - 0.5*rho_sigma*int_var*texp))
 
         return fwd_cond, vol_cond, log_rn_deriv
 
     def price(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)
         fwd_cond, vol_cond, log_rn_deriv = self.cond_fwd_vol(texp)
-        if self.beta > 0.0:
+        if np.isclose(self.beta, 0):
+            base_model = self._m_base(self.sigma*vol_cond, is_fwd=True)
+            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
+            price = np.mean(price_grid*np.exp(log_rn_deriv), axis=1)
+        else:
             alpha = self.sigma / np.power(spot, 1.0 - self.beta)
             kk = strike / fwd
 
             base_model = self._m_base(alpha*vol_cond, is_fwd=True)
             price_grid = base_model.price(kk[:, None], fwd_cond, texp, cp=cp)
             price = fwd * np.mean(price_grid*np.exp(log_rn_deriv), axis=1)
-        else:
-            base_model = self._m_base(self.sigma*vol_cond, is_fwd=True)
-            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
-            price = np.mean(price_grid*np.exp(log_rn_deriv), axis=1)
 
         return price
 

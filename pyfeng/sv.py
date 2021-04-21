@@ -49,7 +49,16 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
 
     def tobs(self, texp):
-        n_steps = texp // self.dt + 1
+        """
+        Return array of observation time including 0. The number of steps are even.
+
+        Args:
+            texp: time-to-expiry
+
+        Returns:
+            array of observation time
+        """
+        n_steps = (texp//(2*self.dt)+1)*2
         tobs = np.arange(n_steps + 1) / n_steps * texp
         return tobs
 
