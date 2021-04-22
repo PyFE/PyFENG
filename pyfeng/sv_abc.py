@@ -50,7 +50,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     def tobs(self, texp):
         """
-        Return array of observation time including 0. The number of steps are even.
+        Return array of observation time in even size. 0 is not included.
 
         Args:
             texp: time-to-expiry
@@ -59,7 +59,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
             array of observation time
         """
         n_steps = (texp//(2*self.dt)+1)*2
-        tobs = np.arange(n_steps + 1) / n_steps * texp
+        tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
         return tobs
 
     def _bm_incr(self, tobs, cum=False, n_path=None):
@@ -67,14 +67,14 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Calculate incremental Brownian Motions
 
         Args:
-            tobs: observation times (array) including 0
+            tobs: observation times (array). 0 is not included.
             cum: return cumulative values if True
             n_path: number of paths. If None (default), use the stored one.
 
         Returns:
             price path (time, path)
         """
-        dt = np.diff(tobs)
+        dt = np.diff(np.atleast_1d(tobs), prepend=0)
         n_dt = len(dt)
 
         n_path = n_path or self.n_path
@@ -82,8 +82,8 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.antithetic:
             # generate random number in the order of path, time, asset and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(n_path//2, n_dt)).T * np.sqrt(dt[:, None])
-            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((n_dt, n_path))
+            bm_incr = self.rng.normal(size=(int(n_path/2), n_dt)).T * np.sqrt(dt[:, None])
+            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
         else:
             bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(dt[:, None])
 
@@ -95,8 +95,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     @abc.abstractmethod
     def vol_paths(self, tobs):
         """
-        Volatility or variance paths at tobs.
-        The paths are standardized by sigma_0 = 1.0
+        Volatility or variance paths at 0 and tobs.
 
         Args:
             tobs: observation time (array)

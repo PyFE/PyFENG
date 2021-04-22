@@ -9,7 +9,7 @@ class HestonCondMc(sv.SvABC, sv.CondMcBsmABC):
     """
 
     def vol_paths(self, tobs):
-        dt = np.diff(tobs)
+        dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
 
         dB_t = self._bm_incr(tobs, cum=False)  # B_t (0 <= s <= 1)
@@ -28,7 +28,7 @@ class HestonCondMc(sv.SvABC, sv.CondMcBsmABC):
     def cond_fwd_vol(self, texp):
 
         tobs = self.tobs(texp)
-        n_steps = len(tobs) - 1
+        n_steps = len(tobs)
         sigma_paths = self.vol_paths(tobs)
         vv0 = self.sigma**2
         vv_ratio = sigma_paths[-1, :]
