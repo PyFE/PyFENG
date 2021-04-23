@@ -9,9 +9,17 @@ class SvABC(smile.OptSmileABC, abc.ABC):
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
     def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, theta=None, intr=0.0, divr=0.0, is_fwd=False):
-        # Note:
-        #    sigma^2: initial variance
-        #    var_inf: long-term variance
+        """
+        Args:
+            sigma: model volatility at t=0. variance = sigma**2
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            mr: mean-reversion speed (kappa)
+            theta: long-term mean of volatility. For variance process, use theta**2. If None, same as sigma
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
 
         super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
 
@@ -38,6 +46,15 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     antithetic = True
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            dt: time step for Euler/Milstein steps
+            rn_seed: random number seed
+            antithetic: antithetic
+        """
         self.n_path = int(n_path)
         self.dt = dt
         self.rn_seed = rn_seed
