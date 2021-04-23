@@ -6,23 +6,31 @@ from . import opt_smile_abc as smile
 
 class SvABC(smile.OptSmileABC, abc.ABC):
 
-    vov, rho, mr, sig_inf = 0.01, 0.0, 0.01, 1.0
+    vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, sig_inf=None, intr=0.0, divr=0.0, is_fwd=False):
-        # Note:
-        #    sigma^2: initial variance
-        #    var_inf: long-term variance
+    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, theta=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Args:
+            sigma: model volatility at t=0. variance = sigma**2
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            mr: mean-reversion speed (kappa)
+            theta: long-term mean of volatility. For variance process, use theta**2. If None, same as sigma
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
 
         super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
 
         self.vov = vov
         self.rho = rho
         self.mr = mr
-        self.sig_inf = sigma if sig_inf is None else sig_inf
+        self.theta = sigma if theta is None else theta
 
     def params_kw(self):
         params1 = super().params_kw()
-        params2 = {"vov": self.vov, "rho": self.rho, "mr": self.mr, "sig_inf": self.sig_inf}
+        params2 = {"vov": self.vov, "rho": self.rho, "mr": self.mr, "sig_inf": self.theta}
         return {**params1, **params2}
 
 
@@ -37,7 +45,16 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng = np.random.default_rng(None)
     antithetic = True
 
-    def set_mc_params(self, n_path, dt=0.05, rn_seed=None, antithetic=True):
+    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            dt: time step for Euler/Milstein steps
+            rn_seed: random number seed
+            antithetic: antithetic
+        """
         self.n_path = int(n_path)
         self.dt = dt
         self.rn_seed = rn_seed
@@ -50,7 +67,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     def tobs(self, texp):
         """
-        Return array of observation time including 0. The number of steps are even.
+        Return array of observation time in even size. 0 is not included.
 
         Args:
             texp: time-to-expiry
@@ -59,7 +76,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
             array of observation time
         """
         n_steps = (texp//(2*self.dt)+1)*2
-        tobs = np.arange(n_steps + 1) / n_steps * texp
+        tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
         return tobs
 
     def _bm_incr(self, tobs, cum=False, n_path=None):
@@ -67,14 +84,14 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Calculate incremental Brownian Motions
 
         Args:
-            tobs: observation times (array) including 0
+            tobs: observation times (array). 0 is not included.
             cum: return cumulative values if True
             n_path: number of paths. If None (default), use the stored one.
 
         Returns:
             price path (time, path)
         """
-        dt = np.diff(tobs)
+        dt = np.diff(np.atleast_1d(tobs), prepend=0)
         n_dt = len(dt)
 
         n_path = n_path or self.n_path
@@ -82,8 +99,8 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.antithetic:
             # generate random number in the order of path, time, asset and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(n_path//2, n_dt)).T * np.sqrt(dt[:, None])
-            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((n_dt, n_path))
+            bm_incr = self.rng.normal(size=(int(n_path/2), n_dt)).T * np.sqrt(dt[:, None])
+            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
         else:
             bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(dt[:, None])
 
@@ -95,8 +112,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     @abc.abstractmethod
     def vol_paths(self, tobs):
         """
-        Volatility or variance paths at tobs.
-        The paths are standardized by sigma_0 = 1.0
+        Volatility or variance paths at 0 and tobs.
 
         Args:
             tobs: observation time (array)

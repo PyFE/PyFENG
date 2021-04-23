@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.integrate as scint
 from . import sabr
-from . import sv
+from . import sv_abc as sv
 from . import cev
 
 
@@ -16,22 +16,21 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         exp(vov_std B_s - 0.5*vov_std^2 * s)  where s = 0, ..., 1, vov_std = vov*sqrt(T)
 
         Args:
-            tobs: observation time (array)
+            tobs_01: observation time (array)
             mu: rn-derivative
 
-        Returns: volatility path (time, path)
+        Returns: volatility path (time, path) including the value at t=0
         """
-        assert tobs[0] == 0
 
         texp = tobs[-1]
-        tobs = tobs/texp  # normalized time: s
+        tobs01 = tobs / texp  # normalized time: 0<s<1
         vov_std = self.vov * np.sqrt(texp)
 
-        log_sig_s = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
+        log_sig_s = self._bm_incr(tobs01, cum=True)  # B_s (0 <= s <= 1)
         log_rn_deriv = 0.0 if mu == 0 else -mu*(log_sig_s[-1, :] + 0.5*mu)
 
+        log_sig_s = vov_std*(log_sig_s + (mu - 0.5*vov_std) * tobs01[:, None])
         log_sig_s = np.insert(log_sig_s, 0, np.zeros(log_sig_s.shape[1]), axis=0)
-        log_sig_s = vov_std*(log_sig_s + (mu - 0.5*vov_std) * tobs[:, None])
         return np.exp(log_sig_s), log_rn_deriv
 
     def cond_fwd_vol(self, texp, mu=0):
@@ -39,10 +38,10 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         rho_sigma = self.rho*self.sigma
 
         tobs = self.tobs(texp)
-        n_steps = len(tobs)-1
+        n_dt = len(tobs)
         sigma_paths, log_rn_deriv = self.vol_paths(tobs, mu=mu)
         sigma_final = sigma_paths[-1, :]
-        int_var = scint.simps(sigma_paths**2, dx=1, axis=0) / n_steps
+        int_var = scint.simps(sigma_paths**2, dx=1, axis=0) / n_dt
         vol_cond = rhoc*np.sqrt(int_var)
         if np.isclose(self.beta, 0):
             fwd_cond = rho_sigma/self.vov*(sigma_final - 1)
