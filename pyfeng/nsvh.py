@@ -92,7 +92,16 @@ class Nsvh1(sabr.SabrABC):
              np.arcsinh(((fwd - strike) * s_sqrt / sig_sqrt - self.rho * vov_var) / rhoc)) / s_sqrt
         return spst.norm.cdf(cp*d)
 
-    def moments_vsk(self, texp):
+    def moments_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis
+
+        Args:
+            texp: time-to-expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+        """
         vol_std = self.vov*np.sqrt(texp)
         ww = np.exp(vol_std**2)
         rho2 = self.rho**2
@@ -120,9 +129,9 @@ class Nsvh1(sabr.SabrABC):
         skew = np.sqrt(ww*(ww - 1) / 2)*(self.rho*c31 + rho3*c33) / np.power(c20 + rho2*c22, 1.5)
         exkurt = (1/2)*(ww - 1)*(k0 + rho2*k2 + rho4*k4) / (c20 + rho2*c22)**2
 
-        return m2, skew, exkurt
+        return m2*(self.sigma/self.vov)**2, skew, exkurt
 
-    def calibrate_vsk(self, texp, var, skew, exkurt, setval=False):
+    def calibrate_vsk(self, var, skew, exkurt, texp=1, setval=False):
         """
         Calibrate parameters to the moments: variance, skewness, ex-kurtosis.
 
@@ -166,7 +175,7 @@ class Nsvh1(sabr.SabrABC):
 
         rho = np.sign(skew)*np.sqrt(1 - 1/(1 + term))
         vov = np.sqrt(np.log(w_root)/texp)
-        m2 = 0.5*(w_root - 1)*((w_root + 1) + self.rho**2*(w_root - 1))
+        m2 = 0.5*(w_root - 1)*((w_root + 1) + rho**2*(w_root - 1))
         sig0 = np.sqrt(var/m2)*vov
 
         if setval:
