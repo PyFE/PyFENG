@@ -82,3 +82,15 @@ class OusvIft(sv.SvABC):
             price = price[0]
 
         return df*price
+
+class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
+    """
+        OUSV model with conditional Monte-Carlo simulation
+        """
+
+    def vol_paths(self, tobs):
+        return 0
+
+    def cond_fwd_vol(self, texp):
+        return 0
+
