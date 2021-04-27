@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.stats as spst
+import scipy.optimize as spop
 from . import sabr
 
 
@@ -90,6 +91,99 @@ class Nsvh1(sabr.SabrABC):
         d = (np.arctanh(self.rho) +
              np.arcsinh(((fwd - strike) * s_sqrt / sig_sqrt - self.rho * vov_var) / rhoc)) / s_sqrt
         return spst.norm.cdf(cp*d)
+
+    def moments_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis
+
+        Args:
+            texp: time-to-expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+        """
+        vol_std = self.vov*np.sqrt(texp)
+        ww = np.exp(vol_std**2)
+        rho2 = self.rho**2
+        rho3 = self.rho*rho2
+        rho4 = rho2**2
+
+        c20 = ww + 1
+        c22 = ww - 1
+
+        c31 = 3*(ww + 1)**2
+        c33 = (ww - 1)*(ww + 3)
+
+        #C40 = (ww + 1)**2*(ww**4 + 2*ww**2 + 3)
+        #C42 = 6*(ww**2 - 1)*(ww**4 + 2*ww**3 + 4*ww**2 + 2*ww + 1)
+        #C44 = (ww - 1)**2*(ww**4 + 4*ww**3 + 10*ww**2 + 12*ww + 3)
+        #M3 = (1 / 4)*np.sqrt(ww)*(ww - 1)**2*(self.rho*C_31 + rho3*C_33)
+        #M4 = (1 / 8)*(ww - 1)**2*(C_40 + rho2*C_42 + rho4*C_44)
+
+        m2 = (1/2)*(ww - 1)*(c20 + rho2*c22)
+
+        k0 = (ww + 1)**3*(ww**2 + 3)
+        k2 = 6*(ww + 1)**2*(ww**3 + ww**2 + 3*ww - 1)
+        k4 = (ww - 1)*(ww**4 + 4*ww**3 + 10*ww**2 + 12*ww - 3)
+
+        skew = np.sqrt(ww*(ww - 1) / 2)*(self.rho*c31 + rho3*c33) / np.power(c20 + rho2*c22, 1.5)
+        exkurt = (1/2)*(ww - 1)*(k0 + rho2*k2 + rho4*k4) / (c20 + rho2*c22)**2
+
+        return m2*(self.sigma/self.vov)**2, skew, exkurt
+
+    def calibrate_vsk(self, var, skew, exkurt, texp=1, setval=False):
+        """
+        Calibrate parameters to the moments: variance, skewness, ex-kurtosis.
+
+        Args:
+            texp: time-to-expiry
+            var: variance
+            skew: skewness
+            exkurt: ex-kurtosis. should be > 0.
+
+        Returns: (sigma, vov, rho)
+
+        References:
+            Tuenter, H. J. H. (2001). An algorithm to determine the parameters of SU-curves in the johnson system of probabillity distributions by moment matching. Journal of Statistical Computation and Simulation, 70(4), 325–347. https://doi.org/10.1080/00949650108812126
+        """
+        assert exkurt > 0
+        beta1 = skew**2
+        beta2 = exkurt + 3
+
+        # min of w search
+        roots = np.roots(np.array([1, 2, 3, 0, -3-beta2]))
+        roots = roots[(roots.real > 0) & np.isclose(roots.imag, 0)]
+        assert len(roots) == 1
+        w_min = roots.real[0]
+        w_max = np.sqrt(-1 + np.sqrt(2*(beta2 - 1)))
+
+        def f_beta1(w):
+            term1 = np.sqrt(4 + 2*(w*w - (beta2 + 3) / (w*w + 2*w + 3)))
+            return (w + 1 - term1)*(w + 1 + 0.5*term1)**2 - beta1
+
+        assert f_beta1(w_min) >= 0
+        #print(w_min, f_beta1(w_min), w_max, f_beta1(w_max))
+
+        # root finding for w = exp(S) = exp(vov^2 texp)
+        w_root = spop.brentq(f_beta1, w_min, w_max)
+        m = -2 + np.sqrt(4 + 2*(w_root**2 - (beta2 + 3)/(w_root**2 + 2*w_root + 3)))
+        term = (w_root + 1)/(2*w_root)*((w_root - 1)/m - 1)  # - sinh(Omega) = rho / rho_*
+
+        # if term is slightly negative, next line error in sqrt
+        if abs(term) < np.finfo(float).eps*100:
+            term = 0.0
+
+        rho = np.sign(skew)*np.sqrt(1 - 1/(1 + term))
+        vov = np.sqrt(np.log(w_root)/texp)
+        m2 = 0.5*(w_root - 1)*((w_root + 1) + rho**2*(w_root - 1))
+        sig0 = np.sqrt(var/m2)*vov
+
+        if setval:
+            self.sigma = sig0
+            self.vov = vov
+            self.rho = rho
+
+        return sig0, vov, rho
 
 
 class NsvhMc(sabr.SabrABC):

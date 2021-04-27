@@ -16,7 +16,7 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         exp(vov_std B_s - 0.5*vov_std^2 * s)  where s = 0, ..., 1, vov_std = vov*sqrt(T)
 
         Args:
-            tobs_01: observation time (array)
+            tobs: observation time (array)
             mu: rn-derivative
 
         Returns: volatility path (time, path) including the value at t=0
