@@ -138,7 +138,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         Returns: volatility path (time, path) including the value at t=0
         """
         bm_path = self._bm_incr(tobs, kai, cum=True)  # B_s (0 <= s <= 1)
-        sigma_t = LT_avg * kai + (self.sigma - LT_avg * kai + self.vov / np.sqrt(2 * kai) * bm_path) * np.exp(-kai * tobs[:, None])
+        sigma_t = LT_avg + (self.sigma - LT_avg + self.vov / np.sqrt(2 * kai) * bm_path) * np.exp(-kai * tobs[:, None])
         sigma_t = np.insert(sigma_t, 0, np.array([self.sigma] * sigma_t.shape[1]), axis=0)
         return sigma_t
 
@@ -180,8 +180,8 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         fwd_cond, vol_cond = self.cond_fwd_vol(texp, kai, LT_avg)
 
         base_model = self.base_model(vol_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)     # in cond_fwd_vol, S_0 = 0
+        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
 
-        price = fwd * np.mean(price_grid, axis=1)
+        price = fwd * np.mean(price_grid, axis=1)  # in cond_fwd_vol, S_0 = 1
 
         return price[0] if scalar_output else price
