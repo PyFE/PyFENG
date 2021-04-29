@@ -10,4 +10,4 @@ from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormS
     BsmBasketMilevsky1998
 from .multiasset_mc import BsmNdMc, NormNdMc
 from .heston import HestonCondMc
-from .ousv import OusvIft
+from .ousv import OusvIft, OusvCondMC
