@@ -172,16 +172,19 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         return fwd_cond, vol_cond
 
     def price(self, strike, spot, texp, kai, LT_avg, cp=1):
-        fwd = self.forward(spot, texp)
-        kk = strike / fwd
-        scalar_output = np.isscalar(kk)
-        kk = np.atleast_1d(kk)
+        price = []
+        texp = [texp] if isinstance(texp, (int,float)) else texp
+        for t in texp:
+            fwd = self.forward(spot, t)
+            kk = strike / fwd
+            scalar_output = len(kk)
+            kk = np.atleast_1d(kk)
 
-        fwd_cond, vol_cond = self.cond_fwd_vol(texp, kai, LT_avg)
+            fwd_cond, vol_cond = self.cond_fwd_vol(t, kai, LT_avg)
 
-        base_model = self.base_model(vol_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
+            base_model = self.base_model(vol_cond)
+            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
-        price = fwd * np.mean(price_grid, axis=1)  # in cond_fwd_vol, S_0 = 1
+            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
 
-        return price[0] if scalar_output else price
+        return price[:,0] if scalar_output==1 else price
