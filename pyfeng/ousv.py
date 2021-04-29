@@ -90,9 +90,10 @@ class OusvIft(sv.SvABC):
 class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
     """
         OUSV model with conditional Monte-Carlo simulation
+        The SDE of SV is: dsigma_t = kai (LT_avg - sigma_t) dt + vov dB_T
         """
 
-    def _bm_incr(self, tobs, cum=False, n_path=None):
+    def _bm_incr(self, tobs, kai, cum=False, n_path=None):
         """
         Calculate incremental Brownian Motions
 
@@ -109,7 +110,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
         tobs_lag = tobs[:-1]
         tobs_lag = np.insert(tobs_lag, 0, 0)
-        bm_var = np.exp(tobs) - np.exp(tobs_lag)
+        bm_var = np.exp(2 * kai * tobs) - np.exp(2 * kai * tobs_lag)
         n_path = n_path or self.n_path
 
         if self.antithetic:
@@ -127,7 +128,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
     def vol_paths(self, tobs, kai, LT_avg=0):
         """
-        sigma_t = np.exp(-alpha * tobs) * (sigma0 - sigma_final + vov / np.sqrt(2 * alpha) * bm) + sigma_final
+        sigma_t = np.exp(-kai * tobs) * (sigma0 - LT_avg * kai + vov / np.sqrt(2 * kai) * bm) + LT_avg * kai
         Args:
             tobs: observation time (array)
             kai: coefficient of dt
@@ -136,12 +137,12 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
         Returns: volatility path (time, path) including the value at t=0
         """
-        bm_path = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
-        sigma_t = LT_avg + (self.sigma - LT_avg + self.vov / np.sqrt(2 * kai) * bm_path) * np.exp(-kai * tobs[:, None])
+        bm_path = self._bm_incr(tobs, kai, cum=True)  # B_s (0 <= s <= 1)
+        sigma_t = LT_avg * kai + (self.sigma - LT_avg * kai + self.vov / np.sqrt(2 * kai) * bm_path) * np.exp(-kai * tobs[:, None])
         sigma_t = np.insert(sigma_t, 0, np.array([self.sigma] * sigma_t.shape[1]), axis=0)
         return sigma_t
 
-    def cond_fwd_vol(self, texp, kai, LT_avg):
+    def cond_fwd_vol(self, texp, kai, LT_avg=0):
         """
             Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
             The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
@@ -149,6 +150,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
             Args:
                 LT_avg: the long term average
+                kai: coefficient of dt
                 texp: time-to-expiry
 
             Returns: (forward, volatility)
@@ -170,16 +172,16 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         return fwd_cond, vol_cond
 
     def price(self, strike, spot, texp, kai, LT_avg, cp=1):
-        kk = strike / spot
+        fwd = self.forward(spot, texp)
+        kk = strike / fwd
         scalar_output = np.isscalar(kk)
         kk = np.atleast_1d(kk)
 
         fwd_cond, vol_cond = self.cond_fwd_vol(texp, kai, LT_avg)
 
         base_model = self.base_model(vol_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
+        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)     # in cond_fwd_vol, S_0 = 0
 
-        price = spot * np.mean(price_grid, axis=1)
+        price = fwd * np.mean(price_grid, axis=1)
 
         return price[0] if scalar_output else price
-
