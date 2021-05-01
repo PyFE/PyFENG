@@ -90,10 +90,10 @@ class OusvIft(sv.SvABC):
 class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
     """
         OUSV model with conditional Monte-Carlo simulation
-        The SDE of SV is: dsigma_t = kai (LT_avg - sigma_t) dt + vov dB_T
+        The SDE of SV is: dsigma_t = mr (theta - sigma_t) dt + vov dB_T
         """
 
-    def _bm_incr(self, tobs, kai, cum=False, n_path=None):
+    def _bm_incr(self, tobs, cum=False, n_path=None):
         """
         Calculate incremental Brownian Motions
 
@@ -110,7 +110,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
         tobs_lag = tobs[:-1]
         tobs_lag = np.insert(tobs_lag, 0, 0)
-        bm_var = np.exp(2 * kai * tobs) - np.exp(2 * kai * tobs_lag)
+        bm_var = np.exp(2 * self.mr * tobs) - np.exp(2 * self.mr * tobs_lag)
         n_path = n_path or self.n_path
 
         if self.antithetic:
@@ -126,31 +126,31 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
         return bm_incr
 
-    def vol_paths(self, tobs, kai, LT_avg=0):
+    def vol_paths(self, tobs):
         """
-        sigma_t = np.exp(-kai * tobs) * (sigma0 - LT_avg * kai + vov / np.sqrt(2 * kai) * bm) + LT_avg * kai
+        sigma_t = np.exp(-mr * tobs) * (sigma0 - theta * mr + vov / np.sqrt(2 * mr) * bm) + theta * mr
         Args:
             tobs: observation time (array)
-            kai: coefficient of dt
-            LT_avg: the long term average
+            mr: coefficient of dt
+            theta: the long term average
             mu: rn-derivative
 
         Returns: volatility path (time, path) including the value at t=0
         """
-        bm_path = self._bm_incr(tobs, kai, cum=True)  # B_s (0 <= s <= 1)
-        sigma_t = LT_avg + (self.sigma - LT_avg + self.vov / np.sqrt(2 * kai) * bm_path) * np.exp(-kai * tobs[:, None])
+        bm_path = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
+        sigma_t = self.theta + (self.sigma - self.theta + self.vov / np.sqrt(2 * self.mr) * bm_path) * np.exp(-self.mr * tobs[:, None])
         sigma_t = np.insert(sigma_t, 0, np.array([self.sigma] * sigma_t.shape[1]), axis=0)
         return sigma_t
 
-    def cond_fwd_vol(self, texp, kai, LT_avg=0):
+    def cond_fwd_vol(self, texp):
         """
             Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
             The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
             Therefore, they should be scaled by the original F_0 and sigma_0 values
 
             Args:
-                LT_avg: the long term average
-                kai: coefficient of dt
+                theta: the long term average
+                mr: coefficient of dt
                 texp: time-to-expiry
 
             Returns: (forward, volatility)
@@ -158,33 +158,30 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         tobs = self.tobs(texp)
         n_dt = len(tobs)
-        sigma_paths = self.vol_paths(tobs, kai, LT_avg)
+        sigma_paths = self.vol_paths(tobs)
         sigma_final = sigma_paths[-1, :]
         int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
         int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
 
         fwd_cond = np.exp(self.rho * ((sigma_final**2 - self.sigma**2) / (2 * self.vov) - self.vov * 0.5 * texp -
-                                      kai * LT_avg / self.vov * int_sigma +
-                                      (kai/self.vov - self.rho * 0.5) * int_var))   # scaled by initial value
+                                      self.mr * self.theta / self.vov * int_sigma +
+                                      (self.mr/self.vov - self.rho * 0.5) * int_var))   # scaled by initial value
 
         vol_cond = rhoc * np.sqrt(int_var / texp)
 
         return fwd_cond, vol_cond
 
-    def price(self, strike, spot, texp, kai, LT_avg, cp=1):
-        price = []
-        texp = [texp] if isinstance(texp, (int,float)) else texp
-        for t in texp:
-            fwd = self.forward(spot, t)
-            kk = strike / fwd
-            scalar_output = len(kk)
-            kk = np.atleast_1d(kk)
+    def price(self, strike, spot, texp, cp=1):
+        fwd = self.forward(spot, texp)
+        kk = strike / fwd
+        scalar_output = len(kk)
+        kk = np.atleast_1d(kk)
 
-            fwd_cond, vol_cond = self.cond_fwd_vol(t, kai, LT_avg)
+        fwd_cond, vol_cond = self.cond_fwd_vol(texp)
 
-            base_model = self.base_model(vol_cond)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
+        base_model = self.base_model(vol_cond)
+        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
 
-            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
+        price = fwd * np.mean(price_grid, axis=1)  # in cond_fwd_vol, S_0 = 1
 
-        return price[:,0] if scalar_output==1 else price
+        return price[0] if scalar_output==1 else price
