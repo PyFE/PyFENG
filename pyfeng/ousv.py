@@ -37,7 +37,7 @@ class OusvIft(sv.SvABC):
         D = (mr - gamma1 * sincos / cossin) / vov ** 2
         B = ((ktg3 + gamma3 * sincos) / cossin - mr * theta * gamma1) / (vov ** 2 * gamma1)
         C = -0.5 * np.log(cossin) + 0.5 * mr * texp + ((mr * theta * gamma1) ** 2 - gamma3 ** 2) / (2 * s2g3) * (
-                    sinh / cossin - gamma1 * texp) \
+                sinh / cossin - gamma1 * texp) \
             + ktg3 * gamma3 / s2g3 * ((cosh - 1) / cossin)
 
         return D, B, C
@@ -116,7 +116,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         if self.antithetic:
             # generate random number in the order of path, time, asset and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(int(n_path/2), n_dt)).T * np.sqrt(bm_var[:, None])
+            bm_incr = self.rng.normal(size=(int(n_path / 2), n_dt)).T * np.sqrt(bm_var[:, None])
             bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
         else:
             bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(bm_var[:, None])
@@ -138,7 +138,8 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         Returns: volatility path (time, path) including the value at t=0
         """
         bm_path = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
-        sigma_t = self.theta + (self.sigma - self.theta + self.vov / np.sqrt(2 * self.mr) * bm_path) * np.exp(-self.mr * tobs[:, None])
+        sigma_t = self.theta + (self.sigma - self.theta + self.vov / np.sqrt(2 * self.mr) * bm_path) * np.exp(
+            -self.mr * tobs[:, None])
         sigma_t = np.insert(sigma_t, 0, np.array([self.sigma] * sigma_t.shape[1]), axis=0)
         return sigma_t
 
@@ -163,25 +164,37 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
         int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
 
-        fwd_cond = np.exp(self.rho * ((sigma_final**2 - self.sigma**2) / (2 * self.vov) - self.vov * 0.5 * texp -
+        fwd_cond = np.exp(self.rho * ((sigma_final ** 2 - self.sigma ** 2) / (2 * self.vov) - self.vov * 0.5 * texp -
                                       self.mr * self.theta / self.vov * int_sigma +
-                                      (self.mr/self.vov - self.rho * 0.5) * int_var))   # scaled by initial value
+                                      (self.mr / self.vov - self.rho * 0.5) * int_var))  # scaled by initial value
 
         vol_cond = rhoc * np.sqrt(int_var / texp)
 
         return fwd_cond, vol_cond
 
     def price(self, strike, spot, texp, cp=1):
-        fwd = self.forward(spot, texp)
-        kk = strike / fwd
-        scalar_output = len(kk)
-        kk = np.atleast_1d(kk)
+        """
+        Calculate option price based on BSM
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to maturity
+            cp: cp=1 if call option else put option
 
-        fwd_cond, vol_cond = self.cond_fwd_vol(texp)
+        Returns: price
+        """
+        price = []
+        texp = [texp] if isinstance(texp, (int, float)) else texp
+        for t in texp:
+            fwd = self.forward(spot, t)
+            kk = strike / fwd
+            kk = np.atleast_1d(kk)
 
-        base_model = self.base_model(vol_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
+            fwd_cond, vol_cond = self.cond_fwd_vol(t)
 
-        price = fwd * np.mean(price_grid, axis=1)  # in cond_fwd_vol, S_0 = 1
+            base_model = self.base_model(vol_cond)
+            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
-        return price[0] if scalar_output==1 else price
+            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
+
+        return price

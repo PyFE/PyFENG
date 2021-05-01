@@ -13,6 +13,7 @@ class GarchApproxUncor(sv.SvABC):
     This method is only used to compare with the method GarchCondMC.
     """
 
+
 class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
     """
     Garch model with conditional Monte-Carlo simulation
@@ -36,11 +37,12 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         n_path = n_path or self.n_path
         rn_norm = self.rng.normal(size=(n_dt, int(n_path)))
 
-        w_t = np.zeros((n_dt+1, int(n_path)))
+        w_t = np.zeros((n_dt + 1, int(n_path)))
         w_t[0, :] = 2 * np.log(self.sigma)
 
         for i in range(1, n_dt + 1):
-            w_t[i, :] = w_t[i-1, :] + (self.mr * self.theta * np.exp(-w_t[i-1, :]) - self.mr - self.vov ** 2 / 2) * self.dt + self.vov * np.sqrt(self.dt) * rn_norm[i-1, :]
+            w_t[i, :] = w_t[i - 1, :] + (self.mr * self.theta * np.exp(-w_t[i - 1, :]) - self.mr - self.vov ** 2 / 2) * \
+                        self.dt + self.vov * np.sqrt(self.dt) * rn_norm[i - 1, :]
 
         v_t = np.exp(w_t)
 
@@ -67,26 +69,40 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         sigma_final = sigma_paths[-1, :]
         int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
         int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
-        int_sigma_inv = scint.simps(1/sigma_paths, dx=1, axis=0) / n_dt
+        int_sigma_inv = scint.simps(1 / sigma_paths, dx=1, axis=0) / n_dt
 
-        fwd_cond = np.exp(self.rho * (2 * (sigma_final - self.sigma) / self.vov - self.mr * self.theta * int_sigma_inv / self.vov
-                                      + (self.mr / self.vov + self.vov / 4) * int_sigma - self.rho * int_var / 2))   # scaled by initial value
+        fwd_cond = np.exp(
+            self.rho * (2 * (sigma_final - self.sigma) / self.vov - self.mr * self.theta * int_sigma_inv / self.vov
+                        + (
+                                    self.mr / self.vov + self.vov / 4) * int_sigma - self.rho * int_var / 2))  # scaled by initial value
 
         vol_cond = rhoc * np.sqrt(int_var / texp)
 
         return fwd_cond, vol_cond
 
     def price(self, strike, spot, texp, cp=1):
-        fwd = self.forward(spot, texp)
-        kk = strike / fwd
-        scalar_output = len(kk)
-        kk = np.atleast_1d(kk)
+        """
+        Calculate option price based on BSM
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to maturity
+            cp: cp=1 if call option else put option
 
-        fwd_cond, vol_cond = self.cond_fwd_vol(texp)
+        Returns: price
+        """
+        price = []
+        texp = [texp] if isinstance(texp, (int, float)) else texp
+        for t in texp:
+            fwd = self.forward(spot, t)
+            kk = strike / fwd
+            kk = np.atleast_1d(kk)
 
-        base_model = self.base_model(vol_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
+            fwd_cond, vol_cond = self.cond_fwd_vol(t)
 
-        price = fwd * np.mean(price_grid, axis=1)  # in cond_fwd_vol, S_0 = 1
+            base_model = self.base_model(vol_cond)
+            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
-        return price[0] if scalar_output==1 else price
+            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
+
+        return price
