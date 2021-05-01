@@ -120,8 +120,7 @@ class Ju2002_Basket_Asian(NormBasket):
         return 6*self.func_a1(z)*self.func_a2(z)-4*pow(self.func_a1(z),3)-pow(z,6)*self.u2_3rd_der()/2/self.u2(0)
     
     def func_b1(self, z):
-        pass
-        # return pow(z,4)*self.e_a12_a2()/4/
+        return pow(z,4)*self.e_a12_a2()/4/pow(self.u1(spot,texp),3)
         
     def func_b2(self, z):
         return pow(self.func_a1(z),2)-self.func_a2(z)/2
@@ -130,16 +129,25 @@ class Ju2002_Basket_Asian(NormBasket):
         return -self.func_a1(z)*self.func_b1(z)
     
     def func_c2(self, z):
-        pass
+        return pow(z,6)*(9*self.e_a12_a22()+4*self.e_a13_a3())/144/pow(self.u1(spot,texp),4)
     
     def func_c3(self, z):
-       pass
+        return pow(z,6)*(4*self.e_a1_a2_a3()+self.e_a23())/48/pow(self.u1(spot,texp),3)
     
     def func_c4(self, z):
         return self.func_a1(z)*self.func_a2(z)-2*pow(self.func_a1(z),3)/3-self.func_a3(z)/6
     
-    def func_d():
-        pass
+    def func_d1(self, z):
+        return 0.5*(6*pow(self.func_a1(z),2)+self.func_a2(z)-4*self.func_b1(z)+2*self.func_b2(z))-1/6*(120*pow(self.func_a1(z),3)-self.func_a3(z)+6*(24*self.func_c1(z)-6*self.func_c2(z)+2*self.func_c3(z)-self.func_c4(z)))
+    
+    def func_d2(self, z):
+        return 0.5*(10*pow(self.func_a1(z),2)+self.func_a2(z)-6*self.func_b1(z)+2*self.func_b2(z))-(128*pow(self.func_a1(z),3)/3-self.func_a3(z)/6+2*self.func_a1(z)*self.func_b1(z)-self.func_a1(z)*self.func_b2(z)+50*self.func_c1(z)-11*self.func_c2(z)+3*self.func_c3(z)-self.func_c4(z))
+    
+    def func_d3(self, z):
+        return 2*pow(self.func_a1(z),2)-self.func_b1(z)-1/3*(88*pow(self.func_a1(z),3)+3*self.func_a1(z)*(5*self.func_b1(z)-2*self.func_b2(z))+3*(35*self.func_c1(z)-6*self.func_c2(z)+self.func_c3(z)))
+                     
+    def func_d4(self, z):
+        return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(z)+self.func_b2(z))-10*self.func_c1(z)+self.func_c2(z)
     
     def price(self, strike, spot, texp, cp=1):
         self.average_s(spot, texp)
