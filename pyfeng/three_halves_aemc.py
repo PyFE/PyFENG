@@ -4,8 +4,9 @@ import numpy as np
 import scipy.special as sp
 from scipy import stats as st
 from scipy.misc import derivative
+from mpmath import besseli
 class Three_Halves_AEMC_Model:
-    def __init__(self, S0, Ks, T, r=0, sigma_0=0.2, beta=1, rho=0.6, theta=0.04, kappa=1, vov=0.6, path_num = 10000):
+    def __init__(self, S0, Ks, T, r=0.05, sigma_0=1, beta=1, rho=-0.5, theta=1.5, kappa=2, vov=0.2, path_num = 100, cp=1):
         assert(beta==1 or beta==0), 'Beta must be 0 or 1.'
         self.S0 = S0
         if not isinstance(Ks, np.ndarray):
@@ -21,53 +22,56 @@ class Three_Halves_AEMC_Model:
         self.kappa = kappa
         self.vov = vov
         self.path_num = path_num
-        self.sigma_2_T = np.zeros(path_num)
+        self.cp = cp
 
-
-    def optionPrice(self):
+    def optionPrice_version1(self):
         self.simulate_sigma_2_T()
-        self.simulate_U_T()
-        self.calForwardAndVolatility()
+        self.simulate_U_T_version1()
+        self.calForwardAndVolatility_version1()
         return self.calOutput()
 
-    def calOutput(self):
-        if self.beta == 0:
-            prices = self.BSM(self.S0, self.Ks, self.r, self.T, self.sigma_N, self.cp)
-        else:
-            prices = self.Bachelier(self.S0, self.Ks, self.r, self.T, self.sigma_BS, self.cp)
-        return prices.mean(), prices.std()
+    def simulate_sigma_2_T(self):
+        self.X_T = self.simulate_Heston_outlayer()
+        self.V_T = 1/self.X_T
 
-    def calForwardAndVolatility(self):
+    def simulate_U_T_version1(self):
+        chfs = self.charFuncs_version1()
+        M1, M2 = self.calTwoMoments_version1(chfs)
+        mu, sigma = self.calLogNormalParas_version1(M1, M2)
+        self.U_T = st.lognorm.rvs(mu, sigma)
+
+    def calForwardAndVolatility_version1(self):
         if self.beta==0:
             self.E_F_T = self.S0+self.rho/self.vov*(
-                    np.log(self.sigma_2_T/self.sigma_0**2)+(
+                    np.log(self.V_T/self.sigma_0**2)+(
                     self.kappa+self.vov**2/2)*self.U_T-self.kappa*self.theta*self.T)
             self.sigma_N = np.sqrt((1-self.rho**2)*self.U_T/self.T)
         else:
             self.E_F_T = self.S0*np.exp(self.rho/self.vov*(
-                    np.log(self.sigma_2_T/self.sigma_0**2)+(
+                    np.log(self.V_T/self.sigma_0**2)+(
                     self.kappa+self.vov**2/2+self.rho**2-1)*self.U_T-self.kappa*self.theta*self.T))
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * self.U_T / self.T)
 
-
-    def simulate_U_T(self):
-        chfs = self.charFuncs()
-        M1, M2 = self.calTwoMoments(chfs)
-        mu, sigma = self.calLogNormalParas(M1, M2)
-        self.U_T = st.lognorm.rvs(mu, sigma)
-
+    def calOutput(self):
+        if self.beta == 0:
+            prices = self.Bachelier(self.E_F_T, self.Ks, self.r, self.T, self.sigma_N, self.cp)
+        else:
+            prices = self.BSM(self.E_F_T, self.Ks, self.r, self.T, self.sigma_BS, self.cp)
+        return prices.mean(), prices.std()
 
     @staticmethod
-    def calLogNormalParas(M1, M2):
+    def calLogNormalParas_version1(M1, M2):
+        M1 = np.array(np.abs(M1).tolist(), dtype=float)
+        M2 = np.array(np.abs(M2).tolist(), dtype=float)
+        M2[np.isnan(M2)] = 0
         return M1, np.sqrt(np.log(M2/M1**2))
 
     @staticmethod
-    def calTwoMoments(chfs):
-        M1 = derivative(chfs, x0=0, dx=0.0000001, n=1)
-        M2 = derivative(chfs, x0=0, dx=0.0000001, n=2)
+    def calTwoMoments_version1(chfs):
+        M1 = derivative(chfs, x0=0, dx=0.00001, n=1)
+        M2 = -derivative(chfs, x0=0, dx=0.00001, n=2)
         return M1, M2
-
-    def charFuncs(self):
+    def charFuncs_version1(self):
         n = 4 * self.kappa * self.theta * (self.kappa + self.vov ** 2) / (self.vov ** 2 * self.kappa * self.theta)
         j = -2 * self.kappa * self.theta / self.vov ** 2
         vega = n / 2 - 1
@@ -75,15 +79,79 @@ class Three_Halves_AEMC_Model:
         X_0 = 1 / self.sigma_0 ** 2
         denominator = np.sinh(j*delta)
         arg_in_Iv = j*np.sqrt(self.X_T*X_0)/denominator
+        besseli_ufun = np.frompyfunc(besseli, 2, 1)
         def char_func(a):
-            order_1 = np.sqrt(vega ** 2 + 8 * a / self.vov ** 2)
-            return sp.iv(order_1, arg_in_Iv)/sp.iv(vega, arg_in_Iv)
+            order_1 = np.sqrt(vega ** 2 + 8 * a *(-1j)/ self.vov ** 2)
+            return (besseli_ufun(order_1, arg_in_Iv)/besseli_ufun(vega, arg_in_Iv))
         return char_func
 
+    def optionPrice_version2(self):
+        self.simulate_sigma_2_T()
+        M1 = self.simulate_M1()
+        self.calForwardAndVolatility_version2(M1)
+        return self.calOutput()
 
-    def simulate_sigma_2_T(self):
-        self.X_T = self.simulate_Heston_outlayer()
-        self.V_T = 1/self.X_T
+    def calForwardAndVolatility_version2(self, M1):
+        if self.beta==0:
+            self.E_F_T = self.S0+self.rho/self.vov*(
+                    np.log(self.V_T/self.sigma_0**2)+(
+                    self.kappa+self.vov**2/2)*M1-self.kappa*self.theta*self.T)
+            self.sigma_N = np.sqrt((1-self.rho**2)*M1/self.T)
+        else:
+            self.E_F_T = self.S0*np.exp(self.rho/self.vov*(
+                    np.log(self.V_T/self.sigma_0**2)+(
+                    self.kappa+self.vov**2/2+self.rho**2-1)*M1-self.kappa*self.theta*self.T))
+            self.sigma_BS = np.sqrt((1 - self.rho ** 2) * M1 / self.T)
+
+    def simulate_M1(self):
+        chfs = self.charFuncs_version1()
+        M1 = self.calOneMoment(chfs)
+        M1 = np.array(np.abs(M1).tolist(),dtype=float)
+        return M1
+
+    @staticmethod
+    def calOneMoment(chfs):
+        M1 = derivative(chfs, x0=0, dx=0.00001, n=1)
+        return M1
+
+    def optionPrice_version3(self):
+        self.simulate_sigma_2_T()
+        self.simulate_U_T_version3()
+        self.calForwardAndVolatility_version1()
+        return self.calOutput()
+
+    def simulate_U_T_version3(self):
+        chfs = self.charFuncs_version3()
+        M1, M2 = self.calTwoMoments_version3(chfs)
+        mu, sigma = self.calLogNormalParas_version1(M1, M2)
+        self.U_T = st.lognorm.rvs(mu, sigma)
+
+    @staticmethod
+    def calTwoMoments_version3(chfs):
+        M1 = -derivative(chfs, x0=0, dx=0.00001, n=1)
+        M2 = derivative(chfs, x0=0, dx=0.00001, n=2)
+        return M1, M2
+
+    @staticmethod
+    def calLogNormalParas_version3(M1, M2):
+        M1 = np.array(M1, dtype=float)
+        M2 = np.sqrt(np.log(np.array(M2/M1**2, dtype=float)))
+        M2[np.isnan(M2)] = 0
+        return M1, M2
+
+    def charFuncs_version3(self):
+        n = 4 * self.kappa * self.theta * (self.kappa + self.vov ** 2) / (self.vov ** 2 * self.kappa * self.theta)
+        j = -2 * self.kappa * self.theta / self.vov ** 2
+        vega = n / 2 - 1
+        delta = self.vov ** 2 * self.T / 4
+        X_0 = 1 / self.sigma_0 ** 2
+        denominator = np.sinh(j*delta)
+        arg_in_Iv = j*np.sqrt(self.X_T*X_0)/denominator
+        besseli_ufun = np.frompyfunc(besseli, 2, 1)
+        def char_func(a):
+            order_1 = np.sqrt(vega ** 2 + 8 * a/ self.vov ** 2)
+            return (besseli_ufun(order_1, arg_in_Iv)/besseli_ufun(vega, arg_in_Iv))
+        return char_func
 
     def simulate_Heston_outlayer(self):
         X_0 = 1/self.sigma_0**2
@@ -109,4 +177,4 @@ class Three_Halves_AEMC_Model:
         discount_factor = np.exp(-r*T)
         forward_price = S0/discount_factor
         d = (forward_price-Ks)/sigma_T
-        return discount_factor(cp*(forward_price-Ks)*st.norm.cdf(d)+st.norm.pdf(d*cp)*sigma_T)
+        return discount_factor*(cp*(forward_price-Ks)*st.norm.cdf(d)+st.norm.pdf(d*cp)*sigma_T)
