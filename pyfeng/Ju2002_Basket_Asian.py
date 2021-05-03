@@ -23,6 +23,10 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
         """
     def average_s(self, spot, texp):
         #cal the forward price of asset num in the basket
+        if np.isscalar(spot):
+             spot = np.full(len(self.weight),spot)
+        if np.isscalar(self.divr):
+             self.divr = np.full(len(self.weight),self.divr)
         av_s = np.zeros(len(self.weight))
         for num in range(len(self.weight)):
             av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
@@ -151,6 +155,10 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
         return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(spot, texp, z)+self.func_b2(z))-10*self.func_c1(spot, texp, z)+self.func_c2(spot, texp, z)
     
     def price(self, strike, spot, texp, cp=1):
+        if np.isscalar(spot):
+             spot = np.full(len(self.weight),spot)
+        if np.isscalar(self.divr):
+             self.divr = np.full(len(self.weight),self.divr)
         self.average_s(spot, texp)
         self.average_rho(texp)
         self.ak_bar()
@@ -164,6 +172,7 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
         z2=self.func_d3(spot,texp,1)-self.func_d4(spot,texp,1)
         z3=self.func_d4(spot,texp,1)
         bc=self.u1(spot,texp)*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
+<<<<<<< Updated upstream
         
         if cp == 1:
           return bc
@@ -171,3 +180,12 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
           return np.exp(-self.intr*texp)*(strike-self.u1(spot,texp)*(self.weight@np.transpose(spot))/texp)+bc
         
         # to be continue
+=======
+        if cp == 1:
+            return bc
+        elif cp == -1:
+            # !!! the formula is stil not sure
+            return np.exp(-self.intr*texp)* (strike-self.u1(spot, texp))+bc
+        else:
+            return -1
+>>>>>>> Stashed changes
