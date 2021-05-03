@@ -1,165 +1,165 @@
-import abc
+import math
 import numpy as np
 from scipy.stats import norm
-from scipy.optimize import fsolve
+import scipy.optimize as spop
 
 
-class FmABC(abc.ABC):
+class Fm:
     """
 
     Johnson's SU distribution approximation for basket/Asian options.
 
-    References:
+    Args:
+        sigma: volatility
+        r: risk-free rate
+        q: dividend
 
+    References:
         Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD with higher moments.
         The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
 
     """
-
-    def __init__(self, spot, texp, sigma, r):
-        self.spot = spot
-        self.texp = texp
+    def __init__(self, sigma, r, q):
         self.sigma = sigma
         self.r = r
+        self.q = q
 
-    @abc.abstractmethod
-    def price(self, strike, spot, texp):
-        pass
+    def moments_fm(self, spot, texp, n=1):
+        """
 
-    # obtain first four moments
-    def get_four_moments(self, s0, T, r, sigma):
-        a = r + sigma ** 2
-        b = 2 * r + sigma ** 2
-        c = 2 * r + 3 * sigma ** 2
+        The moments of the Asian option with a log-normal underlying asset.
 
-        moment1 = s0 / (r * T) * (np.exp(r * T) - 1)
+        Args:
+            spot: spot price
+            texp: time to expiry
+            n: moment order
 
-        item1 = r * np.exp(b * T) - b * np.exp(r * T) + a
-        moment2 = 2 * s0 ** 2 / (r * a * b * T ** 2) * item1
+        References:
+            Geman, H., & Yor, M. (1993). Bessel processes, Asian options, and perpetuities.
+            Mathematical finance, 3(4), 349-375.
 
-        item2 = 1 / c * 1 / (3 * a) * np.exp(3 * a * T)
-        item3 = -1 / a * 1 / b * np.exp(b * T)
-        item4 = (1 / (r * a) - (1 / (r * c))) * np.exp(r * T)
-        item5 = 1 / (r * c) + 1 / (a * b)
-        item6 = -1 / (3 * a * c) - 1 / (r * a)
-        moment3 = 6 * s0 ** 3 / ((r + 2 * sigma ** 2) * T ** 3) * (item2 + item3 + item4 + item5 + item6)
+        Returns: the nth moment
 
-        d = r + 2 * sigma ** 2
-        e = 3 * r + 3 * sigma ** 2
-        f = 2 * r + 5 * sigma ** 2
-        g = 4 * r + 6 * sigma ** 2
-        h = np.exp(g * T) - 1
-        item7 = 1 / (f * e * g) * h - 1 / (f * e * r) * h
-        item8 = - 1 / (f * a * b) * h + 1 / (f * a * r) * h
-        item9 = - 1 / (d * c * e) * h + 1 / (d * c * r) * h
-        item10 = 1 / (d * a * b) * h - 1 / (d * a * r) * h
-        moment4 = 24 * s0 ** 4 / ((r + 3 * sigma ** 2) * T ** 4) * (item7 + item8 + item9 + item10)
+        """
+        lam = self.sigma
+        v = (self.r - self.q - self.sigma**2 / 2) / self.sigma
+        beta = v / lam
 
-        mu = moment1
-        var = moment2 - moment1 ** 2
-        skew = (moment3 - moment1 ** 3 - 3 * moment2 * moment1 + 3 * moment1 ** 3) / np.power(var, 3 / 2)
-        kurt = (moment4 - 3 * moment1 ** 4 - 4 * moment3 * moment1 + 6 * moment2 * moment1 ** 2) / var ** 2
+        ds = []
+        for j in range(n+1):
+            item0 = 2 ** n
+            for i in range(n+1):
+                if i != j:
+                    item0 *= ((beta + j)**2 - (beta + i)**2)**(-1)
+            ds.append(item0)
+        item1 = 0
+        for i in range(n+1):
+            item1 += (ds[i] * np.exp((lam**2 * i**2 / 2 + lam * i * v) * texp))
+        moment = (spot / texp)**n * math.factorial(n) / lam ** (2 * n) * item1
+
+        return moment
+
+    def get_moments(self, spot, texp):
+        """
+
+        Return mean, variance, skewness, kurtosis.
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+
+        Returns: mean, variance, skewness, kurtosis
+
+        """
+        moments = []
+        for i in range(1, 5):
+            moments.append(self.moments_fm(spot, texp, i))
+
+        m1, m2, m3, m4 = moments[0], moments[1], moments[2], moments[3]
+        mu = m1
+        var = m2 - m1 ** 2
+        skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var**(3 / 2)
+        kurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var**2
 
         return mu, var, skew, kurt
 
-    def moment_matching(self, mu, var, skew, kurt):
-        w0 = np.power(8 + 4 * skew ** 2 + 4 * np.sqrt(4 * skew ** 2 + skew ** 4), 1 / 3)
-        w = 1 / 2 * w0 + 2 / w0 - 1
+    def calibrate_fm(self, mu, var, skew, kurt):
+        """
 
-        k = w ** 4 + 2 * w ** 3 + 3 * w ** 2 - 3
-        # Type I
-        if np.isclose(kurt - k, 0):
-            b = np.power(np.log(w), -1 / 2)
-            a = 0.5 * b * np.log(w * (w - 1) / var)
-            d = np.sign(skew)
-            c = - np.exp((1 / 2 * b - a) / b)
-            return a, b, c, d, 1
-        # Type II
-        elif np.isclose(skew, 0):
-            w = np.sqrt(np.sqrt(2 * kurt - 2) - 1)
-            b = 1 / np.sqrt(np.log(w))
-            a = 0
-        else:
-            w = np.sqrt(np.sqrt(2 * kurt - 2.8 * skew ** 2 - 2) - 1)
-            a, b = self.Johnson_iteration(w, skew**2, kurt)
-        d = np.sqrt(2 * var / ((w - 1) * (w * np.cosh(2 * a / b) + 1)))
-        c = mu + d * np.sqrt(w) * np.sinh(a / b)
-        return a, b, c, d, 0
+        Calibrate parameters to the moments: mean, variance, skewness, kurtosis.
 
-    def Johnson_iteration(self, w, b1, b2):
+        References:
+            Tuenter, H. J. H. (2001). An algorithm to determine the parameters of SU-curves in the johnson system of
+            probability distributions by moment matching. Journal of Statistical Computation and Simulation, 70(4),
+            325–347. https://doi.org/10.1080/00949650108812126
 
-        def helper(w):
-            A2 = 8 * (w ** 3 + 3 * w ** 2 + 6 * w + 6)
-            A1 = 8 * (w ** 4 + 3 * w ** 3 + 6 * w ** 2 + 7 * w + 3)
-            A0 = w ** 5 + 3 * w ** 4 + 6 * w ** 3 + 10 * w ** 2 + 9 * w + 3
+        Args:
+            mu: mean
+            var: variance
+            skew: skewness
+            kurt: kurtosis. should be > 0
 
-            def func_m(m):
-                return b2 - 3 - (w - 1) * (A2 * m ** 2 + A1 * m + A0) / (2 * (2 * m + w + 1) ** 2)
-            m_root = fsolve(func_m, 5)[0]
-            b1_iter = m_root * (w - 1) * (4 * (w + 2) * m_root + 3 * (w + 1) ** 2) ** 2 / (2 * (2 * m_root + w + 1) ** 3)
-            return b1_iter, m_root
+        Returns: parameters of Johnson distribution
 
-        w_root = w
-        for _ in range(10):
-            b1_iter, m_root = helper(w_root)
-            print(b1_iter, b1)
-            def func_w(w2):
-                return b1 / b1_iter - (b2 - 1 / 2 * (w2 ** 4 + 2 * w2 ** 2 + 3)) / (
-                            b2 - 1 / 2 * (w ** 4 + 2 * w ** 2 + 3))
-            w_root = fsolve(func_w, 5)[0]
+        """
+        assert kurt > 0
+        beta1 = skew**2
+        beta2 = kurt
 
-        delta = np.power(np.log(w_root), -1 / 2)
+        # min of w search
+        roots = np.roots(np.array([1, 2, 3, 0, -3-beta2]))
+        roots = roots[(roots.real > 0) & np.isclose(roots.imag, 0)]
+        assert len(roots) == 1
+        w_min = roots.real[0]
+        w_max = np.sqrt(-1 + np.sqrt(2*(beta2 - 1)))
 
-        def func_gamma(gamma):
-            return m_root - w_root * (np.sinh(gamma / delta)) ** 2
+        def f_beta1(w):
+            term1 = np.sqrt(4 + 2*(w*w - (beta2 + 3) / (w*w + 2*w + 3)))
+            return (w + 1 - term1)*(w + 1 + 0.5*term1)**2 - beta1
 
-        gamma_root = fsolve(func_gamma, 5)[0]
-        return gamma_root, delta
+        assert f_beta1(w_min) >= 0
 
+        # root finding
+        w_root = spop.brentq(f_beta1, w_min, w_max)
+        m = -2 + np.sqrt(4 + 2*(w_root**2 - (beta2 + 3)/(w_root**2 + 2*w_root + 3)))
+        term = (w_root + 1)/(2*w_root)*((w_root - 1)/m - 1)
 
-class FmCall(FmABC):
-    """
+        # if term is slightly negative, next line error in sqrt
+        if abs(term) < np.finfo(float).eps*100:
+            term = 0.0
 
-    Johnson's SU distribution approximation for basket/Asian call option.
+        omega = -np.sign(skew) * np.log(term + np.sqrt(term**2 + 1))
+        gamma = omega / np.sqrt(np.log(w_root))
+        delta = 1 / np.sqrt(np.log(w_root))
 
-    """
+        mu1 = - np.sqrt(w_root) * np.sinh(omega)
+        var1 = 1/2 * (w_root - 1) * (w_root * np.cosh(2 * omega) + 1)
+        d = np.sqrt(var / var1)  # sign?
+        c = mu - mu1 * d
 
-    def __init__(self, strike, spot, texp, sigma, r):
-        super(FmCall, self).__init__(spot=spot, texp=texp, sigma=sigma, r=r)
-        self.strike = strike
+        return gamma, delta, c, d, 0
 
-    # Type I (log) Johnson distribution.
-    @staticmethod
-    def _asian_call_price_tpye1(a, b, c, d, mu, K, r, T):
-        item0 = (K - c) * norm.cdf(a + b * np.log((K - c) / d)) - d * np.exp((1 - 2 * a * b) / (2 * b ** 2)) * norm.cdf(
-            a + b * np.log((K - c) / d) - 1 / b)
-        return np.exp(-r * T) * (mu - K + item0)
+    def price(self, strike, spot, texp, cp=1):
+        """
 
-    # Type II (inverse hyperbolic sine) Johnson distribution.
-    @staticmethod
-    def _asian_call_price_tpye2(a, b, c, d, mu, K, r, T):
-        Q = a + b * np.arcsinh((K - c) / d)
-        item0 = (K - c) * norm.cdf(Q) + d / 2 * np.exp(1 / (2 * b ** 2)) * (
+        Call option price (cp == 1), or put option price (cp == 0).
+
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+
+        Returns: call/put option price
+
+        """
+        mu, var, skew, kurt = self.get_moments(spot, texp)
+        a, b, c, d, is_type1 = self.calibrate_fm(mu, var, skew, kurt)
+
+        Q = a + b * np.arcsinh((strike - c) / d)
+        item0 = (strike - c) * norm.cdf(Q) + d / 2 * np.exp(1 / (2 * b ** 2)) * (
                     np.exp(a / b) * norm.cdf(Q + 1 / b) - np.exp(-a / b) * norm.cdf(Q - 1 / b))
-        return np.exp(-r * T) * (mu - K + item0)
-
-    def price(self, strike, spot, texp):
-        mu, var, skew, kurt = self.get_four_moments(spot, texp, self.r, self.sigma)
-        a, b, c, d, is_type1 = self.moment_matching(mu, var, skew, kurt)
-        if is_type1:
-            return self._asian_call_price_tpye1(a, b, c, d, mu, strike, self.r, texp)
+        if cp:
+            return np.exp(-self.r * texp) * (mu - strike + item0)
         else:
-            return self._asian_call_price_tpye2(a, b, c, d, mu, strike, self.r, texp)
-
-
-if __name__ == "__main__":
-    r = 0.09
-    q = 0
-    sigma = 0.50
-    s0 = 100
-    K = 90
-    T = 1
-
-    fmCall = FmCall(K, s0, T, sigma, r)
-    # price = fmCall.price(K, s0, T)
-    print(fmCall.get_four_moments(s0, T, r, sigma))
+            return np.exp(-self.r * texp) * item0
