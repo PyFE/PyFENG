@@ -47,9 +47,9 @@ class Three_Halves_AEMC_Model:
                     self.kappa+self.vov**2/2)*self.U_T-self.kappa*self.theta*self.T)
             self.sigma_N = np.sqrt((1-self.rho**2)*self.U_T/self.T)
         else:
-            self.E_F_T = self.S0*np.exp(self.rho/self.vov*(
-                    np.log(self.V_T/self.sigma_0**2)+(
-                    self.kappa+self.vov**2/2+self.rho**2-1)*self.U_T-self.kappa*self.theta*self.T))
+            self.E_F_T = self.S0*np.exp(
+                self.rho/self.vov*(np.log(
+                    self.V_T/self.sigma_0**2)-self.kappa*self.T*self.theta+(self.kappa+self.vov**2/2)*self.U_T)-self.rho**2*self.U_T/2)
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * self.U_T / self.T)
 
     def calOutput(self):
