@@ -63,7 +63,7 @@ class Three_Halves_AEMC_Model:
     def calLogNormalParas_version1(M1, M2):
         M1 = np.array(np.abs(M1).tolist(), dtype=float)
         M2 = np.array(np.abs(M2).tolist(), dtype=float)
-        M2[np.isnan(M2)] = 0
+        M2[np.isnan(M2)] = np.mean(M2)
         return M1, np.sqrt(np.log(M2/M1**2))
 
     @staticmethod
@@ -71,6 +71,7 @@ class Three_Halves_AEMC_Model:
         M1 = derivative(chfs, x0=0, dx=0.00001, n=1)
         M2 = -derivative(chfs, x0=0, dx=0.00001, n=2)
         return M1, M2
+
     def charFuncs_version1(self):
         n = 4 * self.kappa * self.theta * (self.kappa + self.vov ** 2) / (self.vov ** 2 * self.kappa * self.theta)
         j = -2 * self.kappa * self.theta / self.vov ** 2
