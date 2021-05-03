@@ -6,6 +6,7 @@ Created on Wed Apr 28 09:08:29 2021
 """
 from . import multiasset
 import numpy as np
+import scipy.stats as ss
 
 class Ju2002_Basket_Asian(multiasset.NormBasket): 
     """
@@ -137,21 +138,37 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     def func_c4(self, z):
         return self.func_a1(z)*self.func_a2(z)-2*pow(self.func_a1(z),3)/3-self.func_a3(z)/6
     
-    def func_d1(self, z):
-        return 0.5*(6*pow(self.func_a1(z),2)+self.func_a2(z)-4*self.func_b1(z)+2*self.func_b2(z))-1/6*(120*pow(self.func_a1(z),3)-self.func_a3(z)+6*(24*self.func_c1(z)-6*self.func_c2(z)+2*self.func_c3(z)-self.func_c4(z)))
+    def func_d1(self, spot, texp, z):
+        return 0.5*(6*pow(self.func_a1(z),2)+self.func_a2(z)-4*self.func_b1(spot, texp, z)+2*self.func_b2(z))-1/6*(120*pow(self.func_a1(z),3)-self.func_a3(z)+6*(24*self.func_c1(spot, texp, z)-6*self.func_c2(spot, texp, z)+2*self.func_c3(spot, texp, z)-self.func_c4(z)))
     
-    def func_d2(self, z):
-        return 0.5*(10*pow(self.func_a1(z),2)+self.func_a2(z)-6*self.func_b1(z)+2*self.func_b2(z))-(128*pow(self.func_a1(z),3)/3-self.func_a3(z)/6+2*self.func_a1(z)*self.func_b1(z)-self.func_a1(z)*self.func_b2(z)+50*self.func_c1(z)-11*self.func_c2(z)+3*self.func_c3(z)-self.func_c4(z))
+    def func_d2(self, spot, texp, z):
+        return 0.5*(10*pow(self.func_a1(z),2)+self.func_a2(z)-6*self.func_b1(spot, texp, z)+2*self.func_b2(z))-(128*pow(self.func_a1(z),3)/3-self.func_a3(z)/6+2*self.func_a1(z)*self.func_b1(spot, texp, z)-self.func_a1(z)*self.func_b2(z)+50*self.func_c1(spot, texp, z)-11*self.func_c2(spot, texp, z)+3*self.func_c3(spot, texp, z)-self.func_c4(z))
     
-    def func_d3(self, z):
-        return 2*pow(self.func_a1(z),2)-self.func_b1(z)-1/3*(88*pow(self.func_a1(z),3)+3*self.func_a1(z)*(5*self.func_b1(z)-2*self.func_b2(z))+3*(35*self.func_c1(z)-6*self.func_c2(z)+self.func_c3(z)))
+    def func_d3(self, spot, texp, z):
+        return 2*pow(self.func_a1(z),2)-self.func_b1(spot, texp, z)-1/3*(88*pow(self.func_a1(z),3)+3*self.func_a1(z)*(5*self.func_b1(spot, texp, z)-2*self.func_b2(z))+3*(35*self.func_c1(spot, texp, z)-6*self.func_c2(spot, texp, z)+self.func_c3(spot, texp, z)))
                      
-    def func_d4(self, z):
-        return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(z)+self.func_b2(z))-10*self.func_c1(z)+self.func_c2(z)
+    def func_d4(self, spot, texp, z):
+        return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(spot, texp, z)+self.func_b2(z))-10*self.func_c1(spot, texp, z)+self.func_c2(spot, texp, z)
     
     def price(self, strike, spot, texp, cp=1):
         self.average_s(spot, texp)
-        self.averge_rho(texp)
+        self.average_rho(texp)
         self.ak_bar()
+        m1=2*np.log(self.u1(spot,texp))-0.5*np.log(self.u2(1))
+        v1=np.log(self.u2(1))-2*np.log(self.u1(spot,texp))
+        sqrtv1=np.sqrt(v1)
+        y=np.log(strike)
+        y1=(m1-y)/np.sqrt(v1)+sqrtv1
+        y2=y1-sqrtv1
+        z1=self.func_d2(spot,texp,1)-self.func_d3(spot,texp,1)+self.func_d4(spot,texp,1)
+        z2=self.func_d3(spot,texp,1)-self.func_d4(spot,texp,1)
+        z3=self.func_d4(spot,texp,1)
+        bc=self.u1(spot,texp)*np.exp(-self.intr*texp)*ss.norm.cdf(y,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
+        return bc
+        '''
+        if cp == 1
+          return bc
+        elif cp == -1
+          return np.exp(-self.intr*self.texp)*(strike-self.u1(spot,texp)*(self.weight@np.transpose(spot))/self.texp)+bc
+        '''
         # to be continue
-        return 0
