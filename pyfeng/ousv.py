@@ -188,6 +188,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         for t in texp:
             fwd = self.forward(spot, t)
             kk = strike / fwd
+            scalar_output = len(kk)
             kk = np.atleast_1d(kk)
 
             fwd_cond, vol_cond = self.cond_fwd_vol(t)
@@ -197,4 +198,4 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
 
             price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
 
-        return price
+        return price[:, 0] if scalar_output==1 else price
