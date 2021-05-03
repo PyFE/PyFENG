@@ -161,8 +161,8 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         n_dt = len(tobs)
         sigma_paths = self.vol_paths(tobs)
         sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
-        int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
+        int_sigma = scint.simps(sigma_paths, dx=texp/n_dt, axis=0)
+        int_var = scint.simps(sigma_paths ** 2, dx=texp/n_dt, axis=0)
 
         fwd_cond = np.exp(self.rho * ((sigma_final ** 2 - self.sigma ** 2) / (2 * self.vov) - self.vov * 0.5 * texp -
                                       self.mr * self.theta / self.vov * int_sigma +
@@ -186,9 +186,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         price = []
         texp = [texp] if isinstance(texp, (int, float)) else texp
         for t in texp:
-            fwd = self.forward(spot, t)
-            kk = strike / fwd
-            scalar_output = len(kk)
+            kk = strike / spot
             kk = np.atleast_1d(kk)
 
             fwd_cond, vol_cond = self.cond_fwd_vol(t)
@@ -196,6 +194,7 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
             base_model = self.base_model(vol_cond)
             price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
-            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
+            #np.set_printoptions(suppress=True, precision=6)
+            price.append(spot * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
 
-        return price[:, 0] if scalar_output==1 else price
+        return np.array(price).T

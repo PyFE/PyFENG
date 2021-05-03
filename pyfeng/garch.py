@@ -92,8 +92,7 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         price = []
         texp = [texp] if isinstance(texp, (int, float)) else texp
         for t in texp:
-            fwd = self.forward(spot, t)
-            kk = strike / fwd
+            kk = strike / spot
             kk = np.atleast_1d(kk)
 
             fwd_cond, vol_cond = self.cond_fwd_vol(t)
@@ -102,6 +101,6 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
             price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
             np.set_printoptions(suppress=True, precision=6)
-            price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
+            price.append(spot * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
 
         return np.array(price).T
