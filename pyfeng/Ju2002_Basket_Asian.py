@@ -29,12 +29,10 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     
     def average_rho(self, texp):
         #cal the rho between asset i and j
-        if (np.isscalar(self.rho)):
-            self.rho = np.full((len(self.weight),len(self.weight)),self.rho)
         av_rho = np.zeros((len(self.weight),len(self.weight)))
         for i in range(len(self.weight)):
             for j in range(len(self.weight)):
-                av_rho[i,j] = self.rho[i,j]*self.sigma[i]*self.sigma[j]*texp
+                av_rho[i,j] = self.cor_m[i,j]*self.sigma[i]*self.sigma[j]*texp
         self.av_rho = av_rho
     
     def u1(self, spot, texp):
@@ -127,8 +125,8 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     def func_b2(self, z):
         return pow(self.func_a1(z),2)-self.func_a2(z)/2
     
-    def func_c1(self, z):
-        return -self.func_a1(z)*self.func_b1(z)
+    def func_c1(self, spot, texp, z):
+        return -self.func_a1(z)*self.func_b1(spot, texp, z)
     
     def func_c2(self, spot, texp, z):
         return pow(z,6)*(9*self.e_a12_a22()+4*self.e_a13_a3())/144/pow(self.u1(spot,texp),4)
@@ -154,5 +152,6 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     def price(self, strike, spot, texp, cp=1):
         self.average_s(spot, texp)
         self.averge_rho(texp)
+        self.ak_bar()
         # to be continue
         return 0
