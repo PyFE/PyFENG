@@ -11,7 +11,7 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     """
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
+            rho: correlation. If matrix, used as it is. (n_asset, n_asset)
                 If scalar, correlation matrix is constructed with all same off-diagonal values.
             weight: asset weights, If None, equally weighted as 1/n_asset
                 If scalar, equal weights of the value
@@ -24,15 +24,17 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
         #cal the forward price of asset num in the basket
         av_s = np.zeros(len(self.weight))
         for num in range(len(self.weight)):
-            av_s.append(self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
+            av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
         self.av_s = av_s
     
-    def averge_rho(self, texp):
+    def average_rho(self, texp):
         #cal the rho between asset i and j
+        if (np.isscalar(self.rho)):
+            self.rho = np.full((len(self.weight),len(self.weight)),self.rho)
         av_rho = np.zeros((len(self.weight),len(self.weight)))
         for i in range(len(self.weight)):
             for j in range(len(self.weight)):
-                av_rho[i,j] = self.cor[i,j]*self.sigma[i]*self.sigma[j]*texp
+                av_rho[i,j] = self.rho[i,j]*self.sigma[i]*self.sigma[j]*texp
         self.av_rho = av_rho
     
     def u1(self, spot, texp):
