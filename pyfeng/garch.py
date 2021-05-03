@@ -67,14 +67,12 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         v_paths = self.vol_paths(tobs)
         sigma_paths = np.sqrt(v_paths)
         sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
-        int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
-        int_sigma_inv = scint.simps(1 / sigma_paths, dx=1, axis=0) / n_dt
+        int_sigma = scint.simps(sigma_paths, dx=texp/n_dt, axis=0)
+        int_var = scint.simps(sigma_paths ** 2, dx=texp/n_dt, axis=0)
+        int_sigma_inv = scint.simps(1 / sigma_paths, dx=texp/n_dt, axis=0)
 
-        fwd_cond = np.exp(
-            self.rho * (2 * (sigma_final - self.sigma) / self.vov - self.mr * self.theta * int_sigma_inv / self.vov
-                        + (
-                                    self.mr / self.vov + self.vov / 4) * int_sigma - self.rho * int_var / 2))  # scaled by initial value
+        fwd_cond = np.exp(self.rho * (2 * (sigma_final - self.sigma) / self.vov - self.mr * self.theta * int_sigma_inv /
+                                      self.vov + (self.mr / self.vov + self.vov / 4) * int_sigma - self.rho * int_var / 2))  # scaled by initial value
 
         vol_cond = rhoc * np.sqrt(int_var / texp)
 
@@ -96,7 +94,6 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         for t in texp:
             fwd = self.forward(spot, t)
             kk = strike / fwd
-            scalar_output = len(kk)
             kk = np.atleast_1d(kk)
 
             fwd_cond, vol_cond = self.cond_fwd_vol(t)
@@ -104,6 +101,7 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
             base_model = self.base_model(vol_cond)
             price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
 
+            np.set_printoptions(suppress=True, precision=6)
             price.append(fwd * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
 
-        return price[:, 0] if scalar_output == 1 else price
+        return np.array(price).T
