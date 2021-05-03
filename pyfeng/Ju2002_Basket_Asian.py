@@ -2,7 +2,7 @@
 """
 Created on Wed Apr 28 09:08:29 2021
 
-@author: Yuzhe, Lantian
+@author: Yuze, Lantian
 """
 from . import multiasset
 import numpy as np
@@ -171,16 +171,7 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
         z1=self.func_d2(spot,texp,1)-self.func_d3(spot,texp,1)+self.func_d4(spot,texp,1)
         z2=self.func_d3(spot,texp,1)-self.func_d4(spot,texp,1)
         z3=self.func_d4(spot,texp,1)
-        bc=self.u1(spot,texp)*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
-<<<<<<< Updated upstream
-        
-        if cp == 1:
-          return bc
-        elif cp == -1:
-          return np.exp(-self.intr*texp)*(strike-self.u1(spot,texp)*(self.weight@np.transpose(spot))/texp)+bc
-        
-        # to be continue
-=======
+        bc=self.u1(spot,texp)*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))    
         if cp == 1:
             return bc
         elif cp == -1:
@@ -188,4 +179,3 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
             return np.exp(-self.intr*texp)* (strike-self.u1(spot, texp))+bc
         else:
             return -1
->>>>>>> Stashed changes
