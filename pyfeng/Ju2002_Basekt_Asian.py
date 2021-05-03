@@ -4,10 +4,10 @@ Created on Wed Apr 28 09:08:29 2021
 
 @author: Yuzhe, Lantian
 """
-from multiasset import NormBasket
+from . import multiasset as ma
 import numpy as np
 
-class Ju2002_Basket_Asian(NormBasket):
+class Ju2002_Basket_Asian(ma.NormBasket): 
     """
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
@@ -119,7 +119,7 @@ class Ju2002_Basket_Asian(NormBasket):
     def func_a3(self, z):
         return 6*self.func_a1(z)*self.func_a2(z)-4*pow(self.func_a1(z),3)-pow(z,6)*self.u2_3rd_der()/2/self.u2(0)
     
-    def func_b1(self, z):
+    def func_b1(self, spot, texp, z):
         return pow(z,4)*self.e_a12_a2()/4/pow(self.u1(spot,texp),3)
         
     def func_b2(self, z):
@@ -128,10 +128,10 @@ class Ju2002_Basket_Asian(NormBasket):
     def func_c1(self, z):
         return -self.func_a1(z)*self.func_b1(z)
     
-    def func_c2(self, z):
+    def func_c2(self, spot, texp, z):
         return pow(z,6)*(9*self.e_a12_a22()+4*self.e_a13_a3())/144/pow(self.u1(spot,texp),4)
     
-    def func_c3(self, z):
+    def func_c3(self, spot, texp, z):
         return pow(z,6)*(4*self.e_a1_a2_a3()+self.e_a23())/48/pow(self.u1(spot,texp),3)
     
     def func_c4(self, z):
