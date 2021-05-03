@@ -4,10 +4,10 @@ Created on Wed Apr 28 09:08:29 2021
 
 @author: Yuzhe, Lantian
 """
-from . import multiasset as ma
+from . import multiasset
 import numpy as np
 
-class Ju2002_Basket_Asian(ma.NormBasket): 
+class Ju2002_Basket_Asian(multiasset.NormBasket): 
     """
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
