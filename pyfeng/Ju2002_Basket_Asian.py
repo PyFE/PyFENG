@@ -21,23 +21,39 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
             divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
-    def average_s(self, spot, texp):
+    def average_s(self, spot, texp, basket = True):
         #cal the forward price of asset num in the basket
-        if np.isscalar(spot):
-             spot = np.full(len(self.weight),spot)
-        if np.isscalar(self.divr):
-             self.divr = np.full(len(self.weight),self.divr)
-        av_s = np.zeros(len(self.weight))
-        for num in range(len(self.weight)):
-            av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
+        if(basket):
+            if np.isscalar(spot):
+                 spot = np.full(len(self.weight),spot)
+            if np.isscalar(self.divr):
+                 self.divr = np.full(len(self.weight),self.divr)
+            av_s = np.zeros(len(self.weight))
+            for num in range(len(self.weight)):
+                av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
+        else:
+            if np.isscalar(spot):
+                 spot = np.full(len(self.weight),spot)
+            if np.isscalar(self.divr):
+                 self.divr = np.full(len(self.weight),self.divr)
+            av_s = np.zeros(len(self.weight))
+            for num in range(len(self.weight)):
+                av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp/len(self.weight)*num))
         self.av_s = av_s
     
-    def average_rho(self, texp):
+    def average_rho(self, texp, basket = True):
         #cal the rho between asset i and j
-        av_rho = np.zeros((len(self.weight),len(self.weight)))
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
-                av_rho[i,j] = self.cor_m[i,j]*self.sigma[i]*self.sigma[j]*texp
+        if(basket):
+            av_rho = np.zeros((len(self.weight),len(self.weight)))
+            for i in range(len(self.weight)):
+                for j in range(len(self.weight)):
+                    av_rho[i,j] = self.cor_m[i,j]*self.sigma[i]*self.sigma[j]*texp
+        else:
+            av_rho = np.zeros((len(self.weight),len(self.weight)))
+            for i in range(len(self.weight)-1):
+                for j in range(i,len(self.weight)):
+                    av_rho[i,j] = self.sigma[0]**2*texp/len(self.weight)*i
+                    av_rho[j,i] = av_rho[i,j]
         self.av_rho = av_rho
     
     def u1(self, spot, texp):
@@ -154,13 +170,14 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     def func_d4(self, spot, texp, z):
         return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(spot, texp, z)+self.func_b2(z))-10*self.func_c1(spot, texp, z)+self.func_c2(spot, texp, z)
     
-    def price(self, strike, spot, texp, cp=1):
+    def price(self, strike, spot, texp, cp=1, basket = True):
         if np.isscalar(spot):
              spot = np.full(len(self.weight),spot)
         if np.isscalar(self.divr):
              self.divr = np.full(len(self.weight),self.divr)
-        self.average_s(spot, texp)
-        self.average_rho(texp)
+        if (basket != True):
+            self.average_s(spot, texp, False)
+            self.average_rho(texp, False)
         self.ak_bar()
         m1=2*np.log(self.u1(spot,texp))-0.5*np.log(self.u2(1))
         v1=np.log(self.u2(1))-2*np.log(self.u1(spot,texp))
