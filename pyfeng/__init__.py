@@ -11,4 +11,4 @@ from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormS
 from .multiasset_mc import BsmNdMc, NormNdMc
 from .heston import HestonCondMc
 from .ousv import OusvIft
-from .Ju2002_Basket_Asian import Ju2002_Basket_Asian
+from .Ju2002_Basket_Asian import BsmBasketAsianJu2002

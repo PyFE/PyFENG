@@ -8,16 +8,17 @@ Created on Sat May  1 20:17:09 2021
 import pyfeng as pf
 import numpy as np
 
-sigma = np.full(156, 0.05)
+sigma = np.full(5, 0.2)
 # cor = np.full((5,5),0)
 # for i in range(5):
 #     cor[i,i] = 1
-weight = [1/156] *156
-intr = 0.09
+weight = [0.05, 0.15, 0.2, 0.25 , 0.35]
+# weight = [1/156] *156
+intr = 0.05
 divr = 0
 spot = 100
 texp = 3
 z = 1
 
-a =pf.Ju2002_Basket_Asian(sigma, 0, weight, intr, divr)
-print(a.price(95,100,texp,1, False))
+a =pf.BsmBasketAsianJu2002(sigma, 0.5, weight, intr, divr)
+print(a.price(100,100,texp,1, True))

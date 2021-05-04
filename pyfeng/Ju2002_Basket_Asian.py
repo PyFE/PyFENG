@@ -8,11 +8,12 @@ from . import multiasset
 import numpy as np
 import scipy.stats as ss
 
-class Ju2002_Basket_Asian(multiasset.NormBasket): 
-    """
+class BsmBasketAsianJu2002(multiasset.NormBasket): 
+    def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            rho: correlation. If matrix, used as it is. (n_asset, n_asset)
+            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
                 If scalar, correlation matrix is constructed with all same off-diagonal values.
             weight: asset weights, If None, equally weighted as 1/n_asset
                 If scalar, equal weights of the value
@@ -21,72 +22,77 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
             divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
             is_fwd: if True, treat `spot` as forward price. False by default.
         """
+        super().__init__(sigma, cor=cor, weight = weight, intr=intr, divr=divr, is_fwd=is_fwd)
+        num_asset = len(self.weight)
+        global num_asset
+    
     def average_s(self, spot, texp, basket = True):
         #cal the forward price of asset num in the basket
         if(basket):
             if np.isscalar(spot):
-                 spot = np.full(len(self.weight),spot)
+                 spot = np.full(num_asset,spot)
             if np.isscalar(self.divr):
-                 self.divr = np.full(len(self.weight),self.divr)
-            av_s = np.zeros(len(self.weight))
-            for num in range(len(self.weight)):
+                 self.divr = np.full(num_asset,self.divr)
+            av_s = np.zeros(num_asset)
+            for num in range(num_asset):
                 av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp))
         else:
             if np.isscalar(spot):
-                 spot = np.full(len(self.weight),spot)
+                 spot = np.full(num_asset,spot)
             if np.isscalar(self.divr):
-                 self.divr = np.full(len(self.weight),self.divr)
-            av_s = np.zeros(len(self.weight))
-            for num in range(len(self.weight)):
-                av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp/len(self.weight)*num))
+                 self.divr = np.full(num_asset,self.divr)
+            av_s = np.zeros(num_asset)
+            for num in range(num_asset):
+                av_s[num] = (self.weight[num]*spot[num]*np.exp((self.intr-self.divr[num])*texp/(num_asset-1)*num))
         self.av_s = av_s
     
     def average_rho(self, texp, basket = True):
         #cal the rho between asset i and j
         if(basket):
-            av_rho = np.zeros((len(self.weight),len(self.weight)))
-            for i in range(len(self.weight)):
-                for j in range(len(self.weight)):
+            av_rho = np.zeros((num_asset,num_asset))
+            for i in range(num_asset):
+                for j in range(num_asset):
                     av_rho[i,j] = self.cor_m[i,j]*self.sigma[i]*self.sigma[j]*texp
         else:
-            av_rho = np.zeros((len(self.weight),len(self.weight)))
-            for i in range(len(self.weight)-1):
-                for j in range(i,len(self.weight)):
-                    av_rho[i,j] = self.sigma[0]**2*texp/len(self.weight)*i
+            av_rho = np.zeros((num_asset,num_asset))
+            for i in range(num_asset-1):
+                for j in range(i,num_asset):
+                    av_rho[i,j] = self.sigma[0]**2*texp/(num_asset-1)*i
                     av_rho[j,i] = av_rho[i,j]
         self.av_rho = av_rho
     
     def u1(self, spot, texp):
         #the first momentum of log normal distribution#
-        u1_value = self.weight @ (spot * np.exp((self.intr-self.divr)*texp))
+        u1_value = self.av_s.sum()
+        # u1_value = self.weight @ (spot * np.exp((self.intr-self.divr)*texp))
         return u1_value
     
     def u2(self, z):
         #the second momentum of log normal distribution#
         u2_value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
               u2_value += self.av_s[i] * self.av_s[j] *np.exp(z*z*self.av_rho[i,j])
         return u2_value
     
     def u2_1st_der(self):
         u2_1st_value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
               u2_1st_value += self.av_s[i] * self.av_s[j] *self.av_rho[i,j]
         return u2_1st_value
     
     def u2_2nd_der(self):
         u2_2nd_value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
               u2_2nd_value += self.av_s[i] * self.av_s[j] *pow(self.av_rho[i,j],2)
         return u2_2nd_value
     
     def u2_3rd_der(self):
         u2_3rd_value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
               u2_3rd_value += self.av_s[i] * self.av_s[j] *pow(self.av_rho[i,j],3)
         return u2_3rd_value
     
@@ -100,8 +106,8 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     
     def e_a12_a22(self):
         value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
                 value += self.av_a[i]*self.av_s[i]*self.av_rho[i,j]*self.av_a[j]*self.av_s[j]
         value *=8
         value += 2*self.u2_1st_der()*self.u2_2nd_der()
@@ -112,21 +118,21 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     
     def e_a1_a2_a3(self):
         value = 0
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
                 value += self.av_s[i]*pow(self.av_rho[i,j],2)*self.av_a[j]*self.av_s[j]
         value *= 6
         return value
     
     def e_a23(self):
         value = 0
-        temp = np.zeros((len(self.weight),len(self.weight)))
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
+        temp = np.zeros((num_asset,num_asset))
+        for i in range(num_asset):
+            for j in range(num_asset):
                 temp[i,j] = pow(self.av_s[i],0.5)*self.av_rho[i,j]*pow(self.av_s[j],0.5)
-        for i in range(len(self.weight)):
-            for j in range(len(self.weight)):
-                for k in range(len(self.weight)):
+        for i in range(num_asset):
+            for j in range(num_asset):
+                for k in range(num_asset):
                     value += temp[i,j]*temp[j,k]*temp[k,i]
         value *= 8
         return value
@@ -172,10 +178,13 @@ class Ju2002_Basket_Asian(multiasset.NormBasket):
     
     def price(self, strike, spot, texp, cp=1, basket = True):
         if np.isscalar(spot):
-             spot = np.full(len(self.weight),spot)
+             spot = np.full(num_asset,spot)
         if np.isscalar(self.divr):
-             self.divr = np.full(len(self.weight),self.divr)
-        if (basket != True):
+             self.divr = np.full(num_asset,self.divr)
+        if(basket):
+            self.average_s(spot, texp)
+            self.average_rho(texp)
+        else:
             self.average_s(spot, texp, False)
             self.average_rho(texp, False)
         self.ak_bar()
