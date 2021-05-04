@@ -5,6 +5,7 @@ Created on Wed Apr 28 09:08:29 2021
 @author: Yuze, Lantian
 """
 from . import multiasset
+from . import opt_abc as opt
 import numpy as np
 import scipy.stats as ss
 
@@ -175,7 +176,7 @@ class BsmBasketAsianJu2002(multiasset.NormBasket):
                      
     def func_d4(self, spot, texp, z):
         return -20*pow(self.func_a1(z),3)/3+self.func_a1(z)*(-4*self.func_b1(spot, texp, z)+self.func_b2(z))-10*self.func_c1(spot, texp, z)+self.func_c2(spot, texp, z)
-    
+
     def price(self, strike, spot, texp, cp=1, basket = True):
         if np.isscalar(spot):
              spot = np.full(num_asset,spot)
@@ -204,8 +205,9 @@ class BsmBasketAsianJu2002(multiasset.NormBasket):
             return np.exp(-self.intr*texp)* (strike-self.u1(spot, texp))+bc
         else:
             return -1
-        
-    '''def price_continiousAsian(self, strike, spot, texp, cp=1):
+class BsmContiniousAsianJu2002(opt.OptABC):
+    def price(self, strike, spot, texp, cp=1):
+
         if (np.isscalar(spot) == False):
             print("spot should not be array")
             return 0
@@ -213,26 +215,26 @@ class BsmBasketAsianJu2002(multiasset.NormBasket):
             print("dividend should not be array")
             return 0
         else:
-            g=self.intr-self.divr
-            gt=g*texp
-            u1=spot*(np.exp(gt)-1)/g/texp
-            u2=2*spot**2/texp/texp/(g+self.sigma**2)*((np.exp((2*g+sigma**2)*texp)-1)/(2*g+sigma**2)-(np.exp(gt)-1)/g)
-            z1=-pow(sigma,4)*texp**2(1/45+gt/180-11*gt**2/15120-pow(gt,3)/2520+pow(gt,4)/113400)-pow(sigma,6)*pow(texp,3)*(1/11340-13*gt/30240-17*gt**2/226800+23*pow(gt,3)/453600+59*pow(gt,4)/5987520)
-            z2=-pow(sigma,4)*texp**2(1/90+gt/360-11*gt**2/30240-pow(gt,3)/5040+pow(gt,4)/226800)-pow(sigma,6)*pow(texp,3)*(31/22680-11*gt/60480-37*gt**2/151200-19*pow(gt,3)/302400+953*pow(gt,4)/59875200)
-            z3=pow(sigma,6)*pow(texp,3)*(2/2835-gt/60480-2*gt**2/14175-17*pow(gt,3)/907200+13*pow(gt,4)/1247400)
-            m1=2*np.log(self.u1(spot,texp))-0.5*np.log(self.u2(1))
-            v1=np.log(u2)-2*np.log(u1)
-            sqrtv1=np.sqrt(v1)
-            y=np.log(strike)
-            y1=(m1-y)/np.sqrt(v1)+sqrtv1
-            y2=y1-sqrtv1
-            bc=u1*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
+            g = self.intr-self.divr
+            gt = g*texp
+            u1 = spot*(np.exp(gt)-1)/g/texp
+            u2 = 2*spot**2/texp/texp/(g+self.sigma**2)*((np.exp((2*g+self.sigma**2)*texp)-1)/(2*g+self.sigma**2)-(np.exp(gt)-1)/g)
+            z1 = -pow(self.sigma,4)*texp**2*(1/45+gt/180-11*gt**2/15120-pow(gt,3)/2520+pow(gt,4)/113400)-pow(self.sigma,6)*pow(texp,3)*(1/11340-13*gt/30240-17*gt**2/226800+23*pow(gt,3)/453600+59*pow(gt,4)/5987520)
+            z2 = -pow(self.sigma,4)*texp**2*(1/90+gt/360-11*gt**2/30240-pow(gt,3)/5040+pow(gt,4)/226800)-pow(self.sigma,6)*pow(texp,3)*(31/22680-11*gt/60480-37*gt**2/151200-19*pow(gt,3)/302400+953*pow(gt,4)/59875200)
+            z3 = pow(self.sigma,6)*pow(texp,3)*(2/2835-gt/60480-2*gt**2/14175-17*pow(gt,3)/907200+13*pow(gt,4)/1247400)
+            m1 = 2*np.log(u1)-0.5*np.log(u2)
+            v1 = np.log(u2)-2*np.log(u1)
+            sqrtv1 = np.sqrt(v1)
+            y = np.log(strike)
+            y1 = (m1-y)/np.sqrt(v1)+sqrtv1
+            y2 = y1-sqrtv1
+            bc = u1*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
         if cp == 1:
             return bc
         elif cp == -1:
             return np.exp(-self.intr*texp)* (strike-u1)+bc
         else:
-            return -1'''
+            return -1
         
         
         
