@@ -17,8 +17,13 @@ weight = [0.05, 0.15, 0.2, 0.25 , 0.35]
 intr = 0.05
 divr = 0
 spot = 100
-texp = 3
+texp = 1
 z = 1
 
-a =pf.BsmBasketAsianJu2002(sigma, 0.5, weight, intr, divr)
-print(a.price(100,100,texp,1, True))
+#a =pf.BsmBasketAsianJu2002(sigma, 0.5, weight, intr, divr)
+#print(a.price(100,100,texp,1, True))
+b=pf.BsmContiniousAsianJu2002(0.05, 0.09, 0)
+print(b.price(95,100,texp,1))
+print(b.price(100,100,texp,1))
+print(b.price(105,100,texp,1))
+
