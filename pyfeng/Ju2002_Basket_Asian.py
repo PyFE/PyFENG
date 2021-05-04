@@ -218,7 +218,7 @@ class BsmContinuousAsianJu2002(opt.OptABC):
             g = self.intr-self.divr
             gt = g*texp
             u1 = spot*(np.exp(gt)-1)/g/texp
-            u2 = 2*spot**2/texp/texp/(g+self.sigma**2)*((np.exp((2*g+self.sigma**2)*texp)-1)/(2*g+self.sigma**2)-(np.exp(gt)-1)/g)
+            u2 = 2*spot**2*((np.exp((2*g+self.sigma**2)*texp)-1)/(2*g+self.sigma**2)-(np.exp(gt)-1)/g)/texp/texp/(g+self.sigma**2)
             z1 = -pow(self.sigma,4)*texp**2*(1/45+gt/180-11*gt**2/15120-pow(gt,3)/2520+pow(gt,4)/113400)-pow(self.sigma,6)*pow(texp,3)*(1/11340-13*gt/30240-17*gt**2/226800+23*pow(gt,3)/453600+59*pow(gt,4)/5987520)
             z2 = -pow(self.sigma,4)*texp**2*(1/90+gt/360-11*gt**2/30240-pow(gt,3)/5040+pow(gt,4)/226800)-pow(self.sigma,6)*pow(texp,3)*(31/22680-11*gt/60480-37*gt**2/151200-19*pow(gt,3)/302400+953*pow(gt,4)/59875200)
             z3 = pow(self.sigma,6)*pow(texp,3)*(2/2835-gt/60480-2*gt**2/14175-17*pow(gt,3)/907200+13*pow(gt,4)/1247400)
