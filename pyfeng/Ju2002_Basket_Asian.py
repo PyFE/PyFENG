@@ -205,7 +205,7 @@ class BsmBasketAsianJu2002(multiasset.NormBasket):
             return np.exp(-self.intr*texp)* (strike-self.u1(spot, texp))+bc
         else:
             return -1
-class BsmContiniousAsianJu2002(opt.OptABC):
+class BsmContinuousAsianJu2002(opt.OptABC):
     def price(self, strike, spot, texp, cp=1):
 
         if (np.isscalar(spot) == False):
