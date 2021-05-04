@@ -119,7 +119,8 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
             bm_incr = self.rng.normal(size=(int(n_path / 2), n_dt)).T * np.sqrt(bm_var[:, None])
             bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
         else:
-            bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(bm_var[:, None])
+            # bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(bm_var[:, None])
+            bm_incr = self.rng.normal(size=(n_path, n_dt)).T * np.sqrt(bm_var[:, None])
 
         if cum:
             np.cumsum(bm_incr, axis=0, out=bm_incr)
