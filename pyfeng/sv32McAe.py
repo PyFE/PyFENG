@@ -1,11 +1,10 @@
 # This is the py-file for 3/2 almost exact Monte Carlo Simulation
 # Author: Kaiwen CHEN and Jinze HE | 陈恺文 何金泽
 import numpy as np
-import scipy.special as sp
 from scipy import stats as st
 from scipy.misc import derivative
 from mpmath import besseli
-class Three_Halves_AEMC_Model:
+class Sv32McAe:
     def __init__(self, S0, Ks, T, r=0.05, sigma_0=1, beta=1, rho=-0.5, theta=1.5, kappa=2, vov=0.2, path_num = 100, cp=1):
         assert(beta==1 or beta==0), 'Beta must be 0 or 1.'
         self.S0 = S0
