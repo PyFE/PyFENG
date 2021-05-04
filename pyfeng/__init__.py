@@ -11,3 +11,4 @@ from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormS
 from .multiasset_mc import BsmNdMc, NormNdMc
 from .heston import HestonCondMc
 from .ousv import OusvIft
+from .mp4m import MP4M
