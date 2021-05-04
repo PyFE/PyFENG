@@ -41,15 +41,16 @@ class Three_Halves_AEMC_Model:
         self.U_T = st.lognorm.rvs(mu, sigma)
 
     def calForwardAndVolatility_version1(self):
+        internal_term = self.rho / self.vov * (
+                    np.log(self.V_T / self.sigma_0 ** 2) - self.kappa * self.T * self.theta + (
+                    (self.kappa + self.vov ** 2 / 2) * self.U_T
+            ))
         if self.beta==0:
-            self.E_F_T = self.S0+self.rho/self.vov*(
-                    np.log(self.V_T/self.sigma_0**2)+(
-                    self.kappa+self.vov**2/2)*self.U_T-self.kappa*self.theta*self.T)
+            self.E_F_T = self.S0+internal_term
             self.sigma_N = np.sqrt((1-self.rho**2)*self.U_T/self.T)
         else:
-            self.E_F_T = self.S0*np.exp(
-                self.rho/self.vov*(np.log(
-                    self.V_T/self.sigma_0**2)-self.kappa*self.T*self.theta+(self.kappa+self.vov**2/2)*self.U_T)-self.rho**2*self.U_T/2)
+            outside_term = self.rho**2*self.U_T/2
+            self.E_F_T = self.S0 * np.exp(internal_term-outside_term)
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * self.U_T / self.T)
 
     def calOutput(self):
@@ -93,15 +94,16 @@ class Three_Halves_AEMC_Model:
         return self.calOutput()
 
     def calForwardAndVolatility_version2(self, M1):
-        if self.beta==0:
-            self.E_F_T = self.S0+self.rho/self.vov*(
-                    np.log(self.V_T/self.sigma_0**2)+(
-                    self.kappa+self.vov**2/2)*M1-self.kappa*self.theta*self.T)
-            self.sigma_N = np.sqrt((1-self.rho**2)*M1/self.T)
+        internal_term = self.rho / self.vov * (
+                np.log(self.V_T / self.sigma_0 ** 2) - self.kappa * self.T * self.theta + (
+                (self.kappa + self.vov ** 2 / 2) * M1
+        ))
+        if self.beta == 0:
+            self.E_F_T = self.S0 + internal_term
+            self.sigma_N = np.sqrt((1 - self.rho ** 2) * M1 / self.T)
         else:
-            self.E_F_T = self.S0*np.exp(self.rho/self.vov*(
-                    np.log(self.V_T/self.sigma_0**2)+(
-                    self.kappa+self.vov**2/2+self.rho**2-1)*M1-self.kappa*self.theta*self.T))
+            outside_term = self.rho ** 2 * M1 / 2
+            self.E_F_T = self.S0 * np.exp(internal_term - outside_term)
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * M1 / self.T)
 
     def simulate_M1(self):
