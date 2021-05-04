@@ -45,6 +45,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng = np.random.default_rng(None)
     antithetic = True
 
+    
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
         Set MC parameters
