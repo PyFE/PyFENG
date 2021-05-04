@@ -4,6 +4,7 @@ import numpy as np
 from scipy import stats as st
 from scipy.misc import derivative
 from mpmath import besseli
+import scipy.optimize as sopt
 class Sv32McAe:
     def __init__(self, S0, Ks, T, r=0.05, sigma_0=1, beta=1, rho=-0.5, theta=1.5, kappa=2, vov=0.2, path_num = 100, cp=1):
         assert(beta==1 or beta==0), 'Beta must be 0 or 1.'
@@ -12,6 +13,7 @@ class Sv32McAe:
             self.Ks = np.array([Ks])
         else:
             self.Ks = Ks
+        self.Ks = self.Ks.reshape(1,-1)
         self.T = T
         self.r = r
         self.sigma_0 = sigma_0
@@ -47,17 +49,20 @@ class Sv32McAe:
         if self.beta==0:
             self.E_F_T = self.S0+internal_term
             self.sigma_N = np.sqrt((1-self.rho**2)*self.U_T/self.T)
+            self.sigma_N = self.sigma_N.reshape(-1, 1)
         else:
             outside_term = self.rho**2*self.U_T/2
             self.E_F_T = self.S0 * np.exp(internal_term-outside_term)
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * self.U_T / self.T)
-
+            self.sigma_BS = self.sigma_BS.reshape(-1, 1)
+        self.E_F_T = self.E_F_T.reshape(-1,1)
     def calOutput(self):
         if self.beta == 0:
             prices = self.Bachelier(self.E_F_T, self.Ks, self.r, self.T, self.sigma_N, self.cp)
         else:
             prices = self.BSM(self.E_F_T, self.Ks, self.r, self.T, self.sigma_BS, self.cp)
-        return prices.mean(), prices.std()
+        self.option_prices, self.option_prices_std = prices.mean(axis=0), prices.std(axis=0)
+        return self.option_prices, self.option_prices_std
 
     @staticmethod
     def calLogNormalParas_version1(M1, M2):
@@ -100,10 +105,13 @@ class Sv32McAe:
         if self.beta == 0:
             self.E_F_T = self.S0 + internal_term
             self.sigma_N = np.sqrt((1 - self.rho ** 2) * M1 / self.T)
+            self.sigma_N = self.sigma_N.reshape(-1,1)
         else:
             outside_term = self.rho ** 2 * M1 / 2
             self.E_F_T = self.S0 * np.exp(internal_term - outside_term)
             self.sigma_BS = np.sqrt((1 - self.rho ** 2) * M1 / self.T)
+            self.sigma_BS = self.sigma_BS.reshape(-1, 1)
+        self.E_F_T = self.E_F_T.reshape(-1, 1)
 
     def simulate_M1(self):
         chfs = self.charFuncs_version1()
@@ -180,3 +188,36 @@ class Sv32McAe:
         forward_price = S0/discount_factor
         d = (forward_price-Ks)/sigma_T
         return discount_factor*(cp*(forward_price-Ks)*st.norm.cdf(d)+st.norm.pdf(d*cp)*sigma_T)
+
+    def imp_vol_for_bsm(self, K, price):
+        iv_func = lambda _vol: \
+            self.BSM(self.S0, K, self.r, self.T, _vol, self.cp) - price
+        vol = sopt.brentq(iv_func, 0, 10)
+        return vol
+
+    def imp_vol_for_normal(self, K, price):
+        iv_func = lambda _vol: \
+            self.Bachelier(self.S0, K, self.r, self.T, _vol, self.cp) - price
+        vol = sopt.brentq(iv_func, 0, 10)
+        return vol
+
+    def impliedVolatility1(self):
+        output = []
+        if self.beta == 1:
+            for k,p in zip(self.Ks.ravel(), self.option_prices.ravel()):
+                output.append(self.imp_vol_for_bsm(k, p))
+        else:
+            for k, p in zip(self.Ks.ravel(), self.option_prices.ravel()):
+                output.append(self.imp_vol_for_normal(k, p))
+        return np.array(output)
+
+    def impliedVolatility2(self, model_type='bsm'):
+        assert model_type=='bsm' or  model_type=='normal', 'The model_type arg should be bsm or normal'
+        output = []
+        if model_type=='bsm':
+            for k, p in zip(self.Ks.ravel(), self.option_prices.ravel()):
+                output.append(self.imp_vol_for_bsm(k, p))
+        else:
+            for k, p in zip(self.Ks.ravel(), self.option_prices.ravel()):
+                output.append(self.imp_vol_for_normal(k, p))
+        return np.array(output)
