@@ -10,7 +10,8 @@ from . import opt_smile_abc as smile
 class Bsm(opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
-        Underlying price is assumed to follow a geometric Brownian motion.
+
+    Underlying price is assumed to follow a geometric Brownian motion.
 
     Examples:
         >>> import numpy as np
@@ -80,6 +81,15 @@ class Bsm(opt.OptAnalyticABC):
         delta = cp * spst.norm.cdf(cp * d1)  # formula according to wikipedia
         delta *= df if self.is_fwd else divf
         return delta
+
+    def cdf(self, strike, spot, texp, cp=1):
+
+        fwd, df, divf = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        d2 = np.log(fwd / strike) / sigma_std - 0.5 * sigma_std
+        cdf = spst.norm.cdf(cp * d2)  # formula according to wikipedia
+        return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
 
@@ -300,20 +310,23 @@ class Bsm(opt.OptAnalyticABC):
 
 class BsmDisp(smile.OptSmileABC):
     """
-    Displaced Black-Scholes-Merton model for option pricing.
-    Displace price, D(F_t) = beta*F_t + (1-beta)*A is assumed to follow a geometric Brownian
-    motion with volatility beta*sigma
+    Displaced Black-Scholes-Merton model for option pricing. Displace price,
+
+        D(F_t) = beta*F_t + (1-beta)*A
+
+    is assumed to follow a geometric Brownian motion with volatility `beta*sigma`.
 
     Examples:
-        import pyfeng as pf
-        dd = pf.DispBsmModel(sigma=0.2, pivot=100, beta=0.5)
-        price = bsm.price(strike=105, spot=100, texp=1)
-        print(price)
-
-        sigma = np.array([0.2, 0.3, 0.5])
-        bsm = dd.BsmModel(sigma[:,None]) # sigma in axis=0
-        price = dd.price(strike=np.array([90, 100, 110]), spot=100, texp=10, cp=np.array([-1,1,1]))
-        print(price)
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.BsmDisp(sigma=0.2, beta=0.5, pivot=100, intr=0.05, divr=0.1)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> sigma = np.array([0.2, 0.3, 0.5])[:, None]
+        >>> m = pf.BsmDisp(sigma, beta=0.5, pivot=100, intr=0.05, divr=0.1) # sigma in axis=0
+        >>> m.price(np.array([90, 100, 110]), 100, 1.2, cp=np.array([-1,1,1]))
+        array([[ 5.75927238,  5.52948546,  2.94558338],
+               [ 9.4592961 ,  9.3881245 ,  6.45745004],
+               [16.812035  , 17.10541288, 14.10354768]])
     """
 
     pivot = None
@@ -355,6 +368,10 @@ class BsmDisp(smile.OptSmileABC):
 
     def delta(self, strike, spot, *args, **kwargs):
         return self.bsm_model.delta(
+            self.disp(strike), self.disp(spot), *args, **kwargs)
+
+    def cdf(self, strike, spot, *args, **kwargs):
+        return self.bsm_model.cdf(
             self.disp(strike), self.disp(spot), *args, **kwargs)
 
     def vega(self, strike, spot, *args, **kwargs):

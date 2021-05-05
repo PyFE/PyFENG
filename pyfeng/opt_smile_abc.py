@@ -10,11 +10,13 @@ class OptSmileABC(opt.OptABC, abc.ABC):
     """
     Abstract class to model with volatility smile
     """
-    def _m_smile(self, model='bsm'):
+    def _m_smile(self, model='bsm', is_fwd=None):
+        if is_fwd is None:
+            is_fwd = self.is_fwd
         if model.lower() == 'bsm':
-            base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
+            base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         elif model.lower() == 'norm':
-            base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
+            base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
             base_model = None
         return base_model
@@ -41,12 +43,10 @@ class OptSmileABC(opt.OptABC, abc.ABC):
 
 class MassZeroABC(opt.OptABC, abc.ABC):
     """
-    Implied volatility from positive mass at zero from DMHJ (2017)
+    Implied volatility asymptotics of De Marco et al. (2017) given the positive mass at zero.
 
     References:
-          De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with
-          Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737.
-          https://doi.org/10.1137/14098065X
+          - De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737. https://doi.org/10.1137/14098065X
     """
 
     @abc.abstractmethod

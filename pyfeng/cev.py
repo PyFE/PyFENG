@@ -74,7 +74,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         return t0
 
     @staticmethod
-    def price_formula(strike, spot, texp, cp=1, sigma=None, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
+    def price_formula(strike, spot, texp, sigma=None, cp=1, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
         """
 
         Args:
@@ -118,7 +118,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         )
         return disc_fac * price
 
-    def delta(self, strike, spot, texp, cp_sign=1):
+    def delta(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
         betac_inv = 1 / (1 - self.beta)
 
@@ -127,16 +127,30 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         y = k_star * np.power(strike, 2 / betac_inv)
 
         if self.beta < 1.0:
-            delta = 0.5 * (cp_sign - 1) + spst.ncx2.sf(y, 2 + betac_inv, x) + 2 * x / betac_inv * \
+            delta = 0.5 * (cp - 1) + spst.ncx2.sf(y, 2 + betac_inv, x) + 2 * x / betac_inv * \
                     (spst.ncx2.pdf(y, 4 + betac_inv, x) - strike / fwd * spst.ncx2.pdf(x, betac_inv, y))
         else:
-            delta = 0.5 * (cp_sign - 1) + spst.ncx2.sf(x, -betac_inv, y) - 2 * x / betac_inv * \
+            delta = 0.5 * (cp - 1) + spst.ncx2.sf(x, -betac_inv, y) - 2 * x / betac_inv * \
                     (spst.ncx2.pdf(x, -betac_inv, y) - strike / fwd * spst.ncx2.pdf(y, 4 - betac_inv, x))
 
         delta *= df if self.is_fwd else divf
         return delta
 
-    def gamma(self, strike, spot, texp, cp_sign=1):
+    def cdf(self, strike, spot, texp, cp=1):
+        fwd = self.forward(spot, texp)
+
+        betac = 1.0 - self.beta
+        betac_inv = 1.0 / betac
+        alpha = self.sigma/np.power(fwd, betac)
+        sigma_std = np.maximum(alpha*np.sqrt(texp), np.finfo(float).eps)
+        kk = strike / fwd
+        x = 1.0 / np.square(betac * sigma_std)
+        y = np.power(kk, 2 * betac) * x
+
+        cdf = np.where(cp > 0, spst.ncx2.cdf(x, betac_inv, y), spst.ncx2.sf(x, betac_inv, y))
+        return cdf
+
+    def gamma(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
         betac_inv = 1 / (1 - self.beta)
 
@@ -159,7 +173,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
 
         return gamma
 
-    def vega(self, strike, spot, texp, cp_sign=1):
+    def vega(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
         spot = fwd * df / divf
 
