@@ -29,7 +29,7 @@ class BsmAsianLinetsky2004 :
         
     def find_zeros_real(self,nu):
         eigenval = []
-        if nu < 0:
+        if nu <= -2:
             for n in range(1,math.floor(np.abs(nu)/2)+1+1):
                 eigenvalue = np.abs(nu)-2*n+2
                 eigenval.append(eigenvalue)
@@ -59,12 +59,6 @@ class BsmAsianLinetsky2004 :
     def xi_p(self,nu,eigenval,b):
         f = lambda x: m.whitw((1-nu)/2,complex(0,x/2),1/(2*b))
         return complex(derivative(f,eigenval,dx=1e-12))
-    
-    def N(nu,n,b):
-        if nu > -2:
-            return 0
-        else:
-            return np.abs(nu)-2*n+2
         
     def exact_asian_price(self,strike,spot,vol,texp,intr,divr,b,call):
         nu = 2*(intr-divr)/(vol**2)-1
@@ -94,7 +88,7 @@ class BsmAsianLinetsky2004 :
             real_term = p1 * p2 * const * w1 * m1
             real_terms.append(complex(real_term))
             
-        P = np.sum(imaginary_terms)
+        P = np.sum(imaginary_terms)+np.sum(real_terms)
         put_price = np.exp(-intr*texp)*(4*spot/(texp*vol**2))* P
         call_price = put_price + (spot*(np.exp(-divr*texp)-np.exp(-intr*texp))/(intr*texp) - strike*np.exp(-intr*texp)) 
         
