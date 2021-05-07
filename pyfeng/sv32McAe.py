@@ -131,23 +131,20 @@ class Sv32McAe:
         return self.calOutput()
 
     def simulate_U_T_version3(self):
-        chfs = self.charFuncs_version3()
-        M1, M2 = self.calTwoMoments_version3(chfs)
-        mu, sigma = self.calLogNormalParas_version1(M1, M2)
-        self.U_T = st.lognorm.rvs(mu, sigma)
+        chfs = self.charFuncs_version1()
+        M1, M2 = self.calTwoMoments_version1(chfs)
+        mu, scale = self.calInverseGaussianParas(M1, M2)
+        self.U_T = st.lognorm.rvs(mu, 0, scale)
 
     @staticmethod
-    def calTwoMoments_version3(chfs):
-        M1 = -derivative(chfs, x0=0, dx=0.00001, n=1)
-        M2 = derivative(chfs, x0=0, dx=0.00001, n=2)
-        return M1, M2
-
-    @staticmethod
-    def calLogNormalParas_version3(M1, M2):
-        M1 = np.array(M1, dtype=float)
+    def calInverseGaussianParas(M1, M2):
+        M1 = np.array(np.abs(M1).tolist(), dtype=float)
+        M2 = np.array(np.abs(M2).tolist(), dtype=float)
         M2 = np.sqrt(np.log(np.array(M2/M1**2, dtype=float)))
         M2[np.isnan(M2)] = 0
-        return M1, M2
+        scale = np.power(M1,3)/(M2-M1**2)
+        mu = M1/scale
+        return mu, scale
 
     def charFuncs_version3(self):
         n = 4 * self.kappa * self.theta * (self.kappa + self.vov ** 2) / (self.vov ** 2 * self.kappa * self.theta)
