@@ -103,6 +103,45 @@ class TestBsmMethods(unittest.TestCase):
             vega2 = m_norm.vega_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
             self.assertAlmostEqual(vega1, vega2, delta=1e-3)
 
+    def test_BsmDisp(self):
+        strike = np.arange(80, 126, 5)
+        dbs = pf.BsmDisp(sigma=0.2, beta=1, pivot=125, intr=0.05, divr=0.1)
+
+        # DBS = BSM if beta=1
+        bsm = pf.Bsm(sigma=dbs.sigma_disp, intr=0.05, divr=0.1)
+        r1 = bsm.price(strike, 100, 2.5, cp=-1)
+        r2 = dbs.price(strike, 100, 2.5, cp=-1)
+        np.testing.assert_almost_equal(r1, r2)
+
+        # DBS = Norm if beta=0
+        dbs.beta = 0.0001
+        dbs.is_fwd = True
+        norm = pf.Norm(sigma=dbs.sigma_disp*dbs.pivot, intr=0.05, divr=0.1, is_fwd=True)
+        r1 = norm.price(strike, 100, 2.5, cp=-1)
+        r2 = dbs.price(strike, 100, 2.5, cp=-1)
+        np.testing.assert_almost_equal(r1/r2, 1, decimal=4)
+        dbs.is_fwd = False
+
+        # Approximate BSM vol
+        dbs.beta = 0.2
+        v1 = dbs.vol_smile(strike, 100, 2.5, model='bsm')
+        v2 = dbs.vol_smile(strike, 100, 2.5, model='bsm-approx')
+        np.testing.assert_almost_equal(v1/v2, 1, decimal=4)
+
+        p1 = dbs.price(strike, 100, 2.5)
+        p2 = pf.Bsm(v1, intr=0.05, divr=0.1).price(strike, 100, 2.5)
+        np.testing.assert_almost_equal(p1, p2)
+
+        # Approximate Bachelier vol
+        dbs.beta = 0.8
+        v1 = dbs.vol_smile(strike, 100, 2.5, model='norm')
+        v2 = dbs.vol_smile(strike, 100, 2.5, model='norm-approx')
+        np.testing.assert_almost_equal(v1/v2, 1, decimal=4)
+
+        p1 = dbs.price(strike, 100, 2.5)
+        p2 = pf.Norm(v1, intr=0.05, divr=0.1).price(strike, 100, 2.5)
+        np.testing.assert_almost_equal(p1, p2)
+
 
 if __name__ == '__main__':
     print(f'Pyfeng loaded from {pf.__path__}')

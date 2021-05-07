@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='pyfeng',
-    version='0.1.5',
+    version='0.1.6',
     description='Python Financial Engineering',
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -13,7 +13,8 @@ setup(
     author_email='pyfe@eml.cc',
     url='https://github.com/PyFE/PyFENG',
     project_urls={
-        "Bug Tracker": "https://github.com/PyFE/PyFENG/issues",
+        'Documentation': 'https://pyfeng.readthedocs.io/',
+        'Bug Tracker': 'https://github.com/PyFE/PyFENG/issues',
     },
     packages=['pyfeng'],
     test_suite="tests",
