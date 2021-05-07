@@ -189,13 +189,13 @@ class Sv32McAe:
     def imp_vol_for_bsm(self, K, price):
         iv_func = lambda _vol: \
             self.BSM(self.S0, K, self.r, self.T, _vol, self.cp) - price
-        vol = sopt.brentq(iv_func, 0, 10)
+        vol = sopt.brentq(iv_func, 0, 10000)
         return vol
 
     def imp_vol_for_normal(self, K, price):
         iv_func = lambda _vol: \
             self.Bachelier(self.S0, K, self.r, self.T, _vol, self.cp) - price
-        vol = sopt.brentq(iv_func, 0, 10)
+        vol = sopt.brentq(iv_func, 0, 10000)
         return vol
 
     def impliedVolatility1(self):
