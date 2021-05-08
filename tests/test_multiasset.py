@@ -129,6 +129,30 @@ class TestMultiAsset(unittest.TestCase):
         p2 = np.array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
         np.testing.assert_almost_equal(p, p2)
 
+    def test_BsmBasket1Bm(self):
+        ### Check the BsmBasket1Bm price should be same as that of the Bsm price if sigma components are same.
+        for k in range(100):
+            n = np.random.randint(1, 8)
+            spot = np.random.uniform(80, 120, size=n)
+            strike = np.random.uniform(80, 120, size=10)
+            sigma = np.random.uniform(0.01, 1)*np.ones(n)
+            texp = np.random.uniform(0.1, 10)
+            intr = np.random.uniform(0, 0.1)
+            divr = np.random.uniform(0, 0.1)
+            weight = np.random.rand(n)
+            weight /= np.sum(weight)
+
+            cp = np.where(np.random.rand(10) > 0.5, 1, -1)
+            is_fwd = (np.random.rand() > 0.5)
+
+            m = pf.BsmBasket1Bm(sigma, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
+            p = m.price(strike, spot, texp, cp)
+
+            m2 = pf.Bsm(sigma[0], intr=intr, divr=divr, is_fwd=is_fwd)
+            p2 = m2.price(strike, np.sum(spot*weight), texp, cp)
+            np.testing.assert_almost_equal(p, p2)
+
+
 
 if __name__ == '__main__':
     print(f'Pyfeng loaded from {pf.__path__}')
