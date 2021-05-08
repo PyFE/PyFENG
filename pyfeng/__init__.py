@@ -14,3 +14,5 @@ from .ousv import OusvIft
 from .Ju2002_Basket_Asian import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .ousv import OusvIft, OusvCondMC
 from .garch import GarchCondMC, GarchApproxUncor
+from .heston_cmc_qe import HestonCondMcQE
+from .sv32_cmc_qe import Sv32CondMcQE
