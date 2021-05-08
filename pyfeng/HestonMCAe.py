@@ -65,13 +65,13 @@ class HestonMCAe:
         ch_f_part_1 = lambda a: gamma_f(a) * np.exp(-0.5 * (temp_f(a) - self.kappa * texp)) \
                                 * (1 - np.exp(-self.kappa * texp)) / (self.kappa * (1 - np.exp(-temp_f(a))))
 
-        ch_f_part_2 = lambda a: np.exp((sigma_0 + sigma_t) / self.vov ** 2 * \
+        ch_f_part_2 = lambda a: np.exp((sigma_0**2 + sigma_t**2) / self.vov ** 2 * \
                                        (self.kappa * (1 + np.exp(-self.kappa * texp)) / (1 - np.exp(-self.kappa * texp))
                                         - gamma_f(a) * (1 + np.exp(-temp_f(a))) / (1 - np.exp(-temp_f(a)))))
 
-        ch_f_part_3 = lambda a: iv(0.5 * chi_dim - 1, np.sqrt(sigma_0 * sigma_t) * 4 * gamma_f(a) *
+        ch_f_part_3 = lambda a: iv(0.5 * chi_dim - 1, np.sqrt(sigma_0**2 * sigma_t**2) * 4 * gamma_f(a) *
                                    np.exp(-0.5 * temp_f(a)) / (self.vov ** 2 * (1 - np.exp(-temp_f(a))))) / \
-                                iv(0.5 * chi_dim - 1, np.sqrt(sigma_0 * sigma_t) * 4 * self.kappa *
+                                iv(0.5 * chi_dim - 1, np.sqrt(sigma_0**2 * sigma_t**2) * 4 * self.kappa *
                                    np.exp(-0.5 * self.kappa * texp) / (
                                            self.vov ** 2 * (1 - np.exp(- self.kappa * texp))))
 
@@ -92,7 +92,7 @@ class HestonMCAe:
 
         """
         cof = self.vov ** 2 * (1 - np.exp(-self.kappa * texp)) / (4 * self.kappa)
-        sigma_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, n_paths)
+        sigma_t = np.sqrt(cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, n_paths))
         return sigma_t
 
     def gen_s_t(self, spot, sigma_t, sigma_0, texp, integral_sigma_t, n_paths):
@@ -110,11 +110,11 @@ class HestonMCAe:
             s_t: stock price at time T
         """
 
-        integral_sqrt_sigma_t = (sigma_t - sigma_0 - self.kappa * self.theta * texp + self.kappa * integral_sigma_t)\
+        integral_sqrt_sigma_t = (sigma_t**2 - sigma_0**2 - self.kappa * self.theta * texp + self.kappa * integral_sigma_t)\
                                 / self.vov
         mean = np.log(spot) + (self.r * texp - 0.5 * integral_sigma_t + self.rho * integral_sqrt_sigma_t)
-        sigma_2 = (1 - self.rho ** 2) * integral_sigma_t
-        s_t = np.exp(mean + np.sqrt(sigma_2) * np.random.normal(size=n_paths))
+        sigma_2 = np.sqrt((1 - self.rho ** 2) * integral_sigma_t)
+        s_t = np.exp(mean + sigma_2 * np.random.normal(size=n_paths))
         return s_t
 
     def price(self, strike, spot, texp, sigma_0, intr=0, divr=0, n_paths=10000, seed=None,
@@ -137,7 +137,7 @@ class HestonMCAe:
 
         chi_dim = (4 * self.theta * self.kappa) / (self.vov ** 2)
         chi_lambda = (4 * self.kappa * np.exp(-self.kappa * texp)) / \
-                     ((self.vov ** 2) * (1 - np.exp(-self.kappa * texp))) * sigma_0
+                     ((self.vov ** 2) * (1 - np.exp(-self.kappa * texp))) * sigma_0**2
 
         sigma_t = self.gen_vov_t(chi_dim, chi_lambda, texp, n_paths)
 
@@ -166,4 +166,4 @@ class HestonMCAe:
         else:
             price_ae = np.fmax(strike - s_t, 0).mean()
 
-        return price_ae
+        return np.exp(- self.r * texp) * price_ae
