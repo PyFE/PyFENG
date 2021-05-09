@@ -16,3 +16,4 @@ from .ousv import OusvIft, OusvCondMC
 from .garch import GarchCondMC, GarchApproxUncor
 from .heston_cmc_qe import HestonCondMcQE
 from .sv32_cmc_qe import Sv32CondMcQE
+from .sv32McAe import Sv32McAe
