@@ -12,3 +12,4 @@ from .multiasset_mc import BsmNdMc, NormNdMc
 from .heston import HestonCondMc
 from .ousv import OusvIft, OusvCondMC
 from .garch import GarchCondMC, GarchApproxUncor
+from .ExactAsian import BsmAsianLinetsky2004
