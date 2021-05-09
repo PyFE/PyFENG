@@ -12,3 +12,10 @@ from .multiasset_mc import BsmNdMc, NormNdMc
 from .heston import HestonCondMc
 from .ousv import OusvIft, OusvCondMC
 from .garch import GarchCondMC, GarchApproxUncor
+<<<<<<< Updated upstream
+=======
+from .heston_cmc_qe import HestonCondMcQE
+from .sv32_cmc_qe import Sv32CondMcQE
+from .sv32McAe import Sv32McAe
+from .ExactAsian import BsmAsianLinetsky2004
+>>>>>>> Stashed changes
