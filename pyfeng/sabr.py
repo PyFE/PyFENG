@@ -551,8 +551,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             eps = 1e-6
 
             ind = (eta2_m_1 > eps)
-            gg1[ind] -= eta[ind] / sqrt_eta2_m_1[ind] * np.arctan(num_t1[ind] / sqrt_eta2_m_1[ind])
-            gg2[ind] -= eta[ind] / sqrt_eta2_m_1[ind] * np.arctan(num_t2[ind] / sqrt_eta2_m_1[ind])
+            gg2[ind] += eta[ind] / sqrt_eta2_m_1[ind] * np.arctan2(sqrt_eta2_m_1[ind], num_t2[ind])
+            gg1[ind] += eta[ind] / sqrt_eta2_m_1[ind] * np.arctan2(sqrt_eta2_m_1[ind], num_t1[ind])
 
             ind = (eta2_m_1 < -eps)
             gg1[ind] += eta[ind] / sqrt_eta2_m_1[ind] \
@@ -565,8 +565,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             # when eta is very small, the term above is zero, so do nothing.
 
             ind = (abs(eta2_m_1) <= eps)
-            gg1[ind] += 1.0 / num_t1[ind]
-            gg2[ind] += 1.0 / num_t2[ind]
+             gg1[ind] += eta[ind]/num_t1[ind] * (1 - eta2_m_1[ind]/num_t1[ind]**2/3)
+            gg2[ind] += eta[ind]/num_t2[ind] * (1 - eta2_m_1[ind]/num_t2[ind]**2/3)
 
             gg_diff = self.rho*self.beta/(rhoc*betac) * (gg2 - gg1)
 
