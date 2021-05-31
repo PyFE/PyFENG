@@ -4,12 +4,13 @@ Created on Wed Apr 28 09:08:29 2021
 
 @author: Yuze, Lantian
 """
-from . import multiasset
+from . import multiasset as ma
 from . import opt_abc as opt
 import numpy as np
-import scipy.stats as ss
+import scipy.stats as spst
 
-class BsmBasketAsianJu2002(multiasset.NormBasket): 
+
+class BsmBasketAsianJu2002(ma.NormBasket):
     def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
@@ -198,7 +199,7 @@ class BsmBasketAsianJu2002(multiasset.NormBasket):
         z1=self.func_d2(spot,texp,1)-self.func_d3(spot,texp,1)+self.func_d4(spot,texp,1)
         z2=self.func_d3(spot,texp,1)-self.func_d4(spot,texp,1)
         z3=self.func_d4(spot,texp,1)
-        bc=self.u1(spot,texp)*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))    
+        bc= self.u1(spot,texp) * np.exp(-self.intr*texp) * spst.norm.cdf(y1, loc=0, scale=1) - strike * np.exp(-self.intr * texp) * spst.norm.cdf(y2, loc=0, scale=1) + np.exp(-self.intr * texp) * strike * (z1 * spst.norm.pdf(y, loc=m1, scale=sqrtv1) + z2 * spst.norm.pdf(y, loc=m1, scale=sqrtv1) * (m1 - y) / v1 + z3 * ((y - m1) * (y - m1) / v1 / v1 - 1 / v1) * spst.norm.pdf(y, loc=m1, scale=sqrtv1))
         if cp == 1:
             return bc
         elif cp == -1:
@@ -228,7 +229,7 @@ class BsmContinuousAsianJu2002(opt.OptABC):
             y = np.log(strike)
             y1 = (m1-y)/np.sqrt(v1)+sqrtv1
             y2 = y1-sqrtv1
-            bc = u1*np.exp(-self.intr*texp)*ss.norm.cdf(y1,loc=0,scale=1)-strike*np.exp(-self.intr*texp)*ss.norm.cdf(y2,loc=0,scale=1)+np.exp(-self.intr*texp)*strike*(z1*ss.norm.pdf(y,loc=m1,scale=sqrtv1)+z2*ss.norm.pdf(y,loc=m1,scale=sqrtv1)*(m1-y)/v1+z3*((y-m1)*(y-m1)/v1/v1-1/v1)*ss.norm.pdf(y,loc=m1,scale=sqrtv1))
+            bc = u1 * np.exp(-self.intr*texp) * spst.norm.cdf(y1, loc=0, scale=1) - strike * np.exp(-self.intr * texp) * spst.norm.cdf(y2, loc=0, scale=1) + np.exp(-self.intr * texp) * strike * (z1 * spst.norm.pdf(y, loc=m1, scale=sqrtv1) + z2 * spst.norm.pdf(y, loc=m1, scale=sqrtv1) * (m1 - y) / v1 + z3 * ((y - m1) * (y - m1) / v1 / v1 - 1 / v1) * spst.norm.pdf(y, loc=m1, scale=sqrtv1))
         if cp == 1:
             return bc
         elif cp == -1:
