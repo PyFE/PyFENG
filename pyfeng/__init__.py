@@ -10,7 +10,7 @@ from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormS
     BsmBasketMilevsky1998, BsmBasket1Bm, BsmBasketLowerBound, BsmBasketJsu
 from .multiasset_mc import BsmNdMc, NormNdMc
 # Basket-Asian from ASP 2021
-from .Ju2002_Basket_Asian import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
+from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .asian import BsmAsianLinetsky2004, BsmAsianJsu
 # SV models (CMC, AE) from ASP 2021
 from .heston_mc import HestonCondMc, HestonCondMcQE, HestonMCAe
