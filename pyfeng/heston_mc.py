@@ -241,7 +241,7 @@ class HestonCondMcQE:
             return (self.rx_results[self.psi_points >= psi][0] + self.rx_results[self.psi_points <= psi][-1])/2
 
 
-class HestonMCAe:
+class HestonMcAe:
     """
     Almost exact MC for Heston model.
 
@@ -251,7 +251,7 @@ class HestonMCAe:
         >>> strike = 100
         >>> spot = 100
         >>> vov, kappa, rho, texp, theta, sigma = 0.61, 6.21, -0.7, 1, 0.019, 0.10201
-        >>> heston_ae = HestonMCAe(vov, kappa, rho, theta, r)
+        >>> heston_ae = HestonMcAe(vov, kappa, rho, theta, r)
         >>> price_ae = heston_ae.price(strike, spot, texp, sigma_0, intr=0, divr=0)
         >>> price_ae
         8.946951375550809
