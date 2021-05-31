@@ -12,7 +12,7 @@ from scipy.misc import derivative
 from sympy import *
 
 
-class BsmAsianLinetsky2004 :
+class BsmAsianLinetsky2004:
     
     def __init__(self, intr, divr, vol, texp, strike, spot, b, call):
         self.intr = intr
