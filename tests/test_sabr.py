@@ -61,6 +61,13 @@ class TestSabr(unittest.TestCase):
         np.testing.assert_almost_equal(mass, mass2)
         np.testing.assert_almost_equal(p, p2)
 
+    def test_CondMc(self):
+        for k in [19, 20]:  # can test 22 (Korn&Tang) also, but difficult to pass
+            m, df, rv = pf.SabrCondMc.init_benchmark(k)
+            m.set_mc_params(n_path=5e4, dt=0.05, rn_seed=1234)
+            p = m.price(**rv['args_pricing'])
+            np.testing.assert_almost_equal(p, rv['val'], decimal=4)
+
 
 if __name__ == '__main__':
     print(f'Pyfeng loaded from {pf.__path__}')

@@ -51,7 +51,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def _m_base(self, vol):
+    def _m_base(self, vol, is_fwd=None):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
@@ -62,13 +62,14 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         Returns: model
         """
         base_beta = self._base_beta or self.beta
-
+        if is_fwd is None:
+            is_fwd = self.is_fwd
         if np.isclose(base_beta, 1):
-            return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
+            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         elif np.isclose(base_beta, 0):
-            return norm.Norm(vol, intr=self.intr, divr=self.divr)
+            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
-            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr)
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:

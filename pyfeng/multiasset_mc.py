@@ -40,6 +40,14 @@ class BsmNdMc(opt.OptMaABC):
         super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=False)
 
     def set_mc_params(self, n_path, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            rn_seed: random number seed for rn generator.
+            antithetic: antithetic
+        """
         self.n_path = n_path
         self.rn_seed = rn_seed
         self.antithetic = antithetic
@@ -51,7 +59,6 @@ class BsmNdMc(opt.OptMaABC):
         Args:
             tobs: array of observation times
             n_path: number of paths. If None (default), use the stored one.
-            store: if True (default), save the result to self.path_stored
 
         Returns:
             price path (time, path, asset)

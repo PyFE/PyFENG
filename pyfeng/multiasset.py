@@ -1,9 +1,11 @@
 import scipy.stats as spst
 import warnings
 import numpy as np
+from itertools import product, combinations
 from . import bsm
 from . import norm
 from . import gamma
+from . import nsvh
 from . import opt_abc as opt
 
 
@@ -389,3 +391,121 @@ class BsmBasket1Bm(opt.OptABC):
         price -= strike * spst.norm.cdf(d2)
         price *= cp*df
         return price
+
+
+class BsmBasketLowerBound(NormBasket):
+
+    def V_func(self, fwd):
+        """
+        Generate factor matrix V
+        Args:
+            fwd: forward rates of basket
+        Returns:
+            V matrix
+        """
+        gg = self.weight * fwd
+        gg /= np.linalg.norm(gg)
+
+        # equation 22，generate Q_1 and V_1
+        Q1 = self.chol_m.T @ gg / np.sqrt(gg @ self.cov_m @ gg)  # in py, this is a row vector
+        V1 = self.chol_m @ Q1
+        V1 = V1[:, None]
+
+        # obtain full V
+        e1 = np.zeros_like(self.sigma)
+        e1[0] = 1
+        v = (Q1 - e1) / np.linalg.norm(Q1 - e1)
+        v = v[:, None]
+        R = np.eye(self.n_asset) - 2 * v @ v.T
+
+        # singular value decomposition
+        U, D, Q = np.linalg.svd(self.chol_m @ R[:, 1:], full_matrices=False)
+        V = np.hstack((V1, U @ np.diag(D)))
+
+        return V
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        V = self.V_func(fwd)
+        sigma1 = V[:, 0]
+        m = BsmBasket1Bm(sigma1, is_fwd=True)
+        price = m.price(strike, fwd, texp)
+        return price
+
+
+class BsmBasketJsu(NormBasket):
+    """
+
+    Johnson's SU distribution approximation for Basket option pricing under the multiasset BSM model.
+
+    Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
+
+    References:
+        [1] Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
+        with higher moments. The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
+
+        [2] Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
+        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+
+    """
+
+    def moment_vsk(self, fwd, texp):
+        """
+
+        Return variance, skewness, kurtosis for Basket options.
+
+        Args:
+            fwd: forward price
+            texp: time to expiry
+
+        Returns: variance, skewness, kurtosis of Basket options
+
+        """
+        n = len(self.weight)
+
+        m1 = sum(self.weight[i] * fwd[i] for i in range(n))
+
+        m2_index = [i for i in product(np.arange(n), repeat=2)]
+        m2 = sum(self.weight[i] * self.weight[j] * fwd[i] * fwd[j] *
+                 np.exp(self.sigma[i] * self.sigma[j] * self.cor_m[i][j] * texp) for i, j in m2_index)
+
+        m3_index = [i for i in product(np.arange(n), repeat=3)]
+        m3 = sum(self.weight[i] * self.weight[j] * self.weight[l] * fwd[i] * fwd[j] * fwd[l] *
+                 np.exp(sum(self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj] for ii, jj in
+                            combinations(np.array([i, j, l]), 2)) * texp) for i, j, l in m3_index)
+
+        m4_index = [i for i in product(np.arange(n), repeat=4)]
+        m4 = sum(self.weight[i] * self.weight[j] * self.weight[l] * self.weight[k] * fwd[i] * fwd[j] * fwd[l] *
+                 fwd[k] * np.exp(sum(self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj] for ii, jj in
+                                      combinations(np.array([i, j, l, k]), 2)) * texp) for i, j, l, k in m4_index)
+
+        var = m2 - m1 ** 2
+        skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var ** (3 / 2)
+        kurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var ** 2
+
+        return var, skew, kurt
+
+    def price(self, strike, spot, texp, cp=1):
+        """
+
+        Basket options price.
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+        Returns: Basket options price
+
+        """
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        assert fwd.shape[-1] == self.n_asset
+
+        fwd_basket = fwd @ self.weight
+
+        var, skew, kurt = self.moment_vsk(fwd, texp)
+
+        m = nsvh.Nsvh1(sigma=self.sigma)
+        m.calibrate_vsk(var, skew, kurt-3, texp, setval=True)
+        price = m.price(strike, fwd_basket, texp, cp)
+
+        return df * price

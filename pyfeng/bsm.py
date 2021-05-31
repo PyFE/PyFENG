@@ -307,6 +307,25 @@ class Bsm(opt.OptAnalyticABC):
 
         return p
 
+    def moments_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis. Assume mean=1.
+
+        Args:
+            texp: time-to-expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+
+        References:
+            https://en.wikipedia.org/wiki/Log-normal_distribution
+        """
+        ww = np.exp(texp*self.sigma**2)
+        var = ww - 1
+        skew = (ww + 2)*np.sqrt(ww-1)
+        exkurt = ww**2*(ww*(ww + 2) + 3) - 6  # ww**4 + 2*ww**3 + 3*ww - 6
+        return var, skew, exkurt
+
 
 class BsmDisp(smile.OptSmileABC, Bsm):
     """
@@ -460,7 +479,12 @@ class BsmDisp(smile.OptSmileABC, Bsm):
 
         return vol
 
-    def price_barrier(self, strike, barrier, spot, texp, cp=1, io=-1):
-        fwd = self.forward(spot, texp)
-        return (1/self.beta)*super().price_barrier(
-            self.disp_spot(strike), self.disp_strike(barrier, strike), self.disp_spot(fwd), texp, cp=cp, io=io)
+    def price_barrier(self, strike, barrier, spot, *args, **kwargs):
+        return (1/self.beta)*self.bsm_model.price_barrier(
+            self.disp(strike), self.disp(barrier), self.disp(spot), *args, **kwargs)
+
+    def moments_vsk(self, texp=1):
+        rv = super().moments_vsk(self, texp)
+        rv[0] /= self.beta
+        rv[1] /= self.beta**3
+        rv[2] /= self.beta**4
