@@ -8,8 +8,110 @@ Created on Tue May  4 18:29:04 2021
 import math
 import numpy as np
 import mpmath as m
+import sympy
 from scipy.misc import derivative
-from sympy import *
+from . import opt_abc as opt
+from . import nsvh
+
+
+class BsmAsianJsu(opt.OptMaABC):
+    """
+
+    Johnson's SU distribution approximation for Asian option pricing under the BSM model.
+
+    Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
+
+    References:
+        [1] Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
+        with higher moments. The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
+
+        [2] Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
+        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+
+    """
+
+    def moments(self, spot, texp, n=1):
+        """
+
+        The moments of the Asian option with a log-normal underlying asset.
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+            n: moment order
+
+        References:
+            Geman, H., & Yor, M. (1993). Bessel processes, Asian options, and perpetuities.
+            Mathematical finance, 3(4), 349-375.
+
+        Returns: the nth moment
+
+        """
+        lam = self.sigma[0]
+        v = (self.intr - self.divr - lam**2 / 2) / lam
+        beta = v / lam
+
+        ds = []
+        for j in range(n+1):
+            item0 = 2 ** n
+            for i in range(n+1):
+                if i != j:
+                    item0 *= ((beta + j)**2 - (beta + i)**2)**(-1)
+            ds.append(item0)
+        item1 = 0
+        for i in range(n+1):
+            item1 += (ds[i] * np.exp((lam**2 * i**2 / 2 + lam * i * v) * texp))
+        moment = (spot / texp)**n * math.factorial(n) / lam ** (2 * n) * item1
+
+        return moment
+
+    def moment_mvsk(self, spot, texp):
+        """
+
+        Return mean, variance, skewness, kurtosis for Asian options.
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+
+        Returns: mean, variance, skewness, kurtosis of Asian options
+
+        """
+        moments = []
+        for i in range(1, 5):
+            moments.append(self.moments(spot, texp, i))
+
+        m1, m2, m3, m4 = moments[0], moments[1], moments[2], moments[3]
+        mu = m1
+        var = m2 - m1 ** 2
+        skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var**(3 / 2)
+        kurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var**2
+
+        return mu, var, skew, kurt
+
+    def price(self, strike, spot, texp, cp=1):
+        """
+
+        Asian options price.
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+        Returns: Basket options price
+
+        """
+        df = np.exp(-texp * self.intr)
+
+        mu, var, skew, kurt = self.moment_mvsk(spot, texp)
+
+        m = nsvh.Nsvh1(sigma=self.sigma)
+        m.calibrate_vsk(var, skew, kurt-3, texp, setval=True)
+        price = m.price(strike, mu, texp, cp)
+
+        return df * price
+
+
 
 
 class BsmAsianLinetsky2004:
@@ -40,7 +142,7 @@ class BsmAsianLinetsky2004:
     def positive_eigenvalue(self,eigval):
         eigval_p = []
         for i in range(len(eigval)):
-            real_i = np.array(eigval[i],dtype=complex).real[0]
+            real_i = np.array(eigval[i], dtype=complex).real[0]
             if real_i > 0:
                 eigval_p.append(real_i)
             else:
@@ -48,18 +150,18 @@ class BsmAsianLinetsky2004:
         return eigval_p
 
     def find_zeros_imag(self,n,nu):
-        p = symbols('p')
+        p = sympy.symbols('p')
         eigenval = []
         for j in range(1,n):
-            p_tilde = solve(p*(log(4*p)-1)-2*np.pi*(j+nu/4-1/2),p)
+            p_tilde = sympy.solve(p*(sympy.log(4*p)-1)-2*np.pi*(j+nu/4-1/2),p)
             eigenval.append(p_tilde)
         eigenval = self.positive_eigenvalue(np.real(eigenval))
         eigenval = np.array(eigenval).transpose()
         return eigenval
     
     def eta_q(self,nu,eigenval,b):
-        f = lambda x: m.whitw((1-nu)/2,x/2,1/(2*b))
-        return complex(-derivative(f,eigenval,dx=1e-12))
+        f = lambda x: m.whitw((1-nu)/2, x/2, 1/(2*b))
+        return complex(-derivative(f, eigenval, dx=1e-12))
 
     def xi_p(self,nu,eigenval,b):
         f = lambda x: m.whitw((1-nu)/2,complex(0,x/2),1/(2*b))
@@ -116,6 +218,3 @@ class BsmAsianLinetsky2004:
             return(call_price.real)
         else:
             return("Wrong")
-         
-    
-    

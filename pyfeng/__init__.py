@@ -7,12 +7,11 @@ from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrCondMc
 from .nsvh import Nsvh1, NsvhMc
 from .multiasset import BsmSpreadKirk, BsmSpreadBjerksund2014, NormBasket, NormSpread, BsmBasketLevy1992, BsmMax2, \
-    BsmBasketMilevsky1998, BsmBasket1Bm, BsmBasketLowerBound
+    BsmBasketMilevsky1998, BsmBasket1Bm, BsmBasketLowerBound, BsmBasketJsu
 from .multiasset_mc import BsmNdMc, NormNdMc
 # Basket-Asian from ASP 2021
 from .Ju2002_Basket_Asian import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
-from .ExactAsian import BsmAsianLinetsky2004
-from .Jsu import BsmAsianJsu, BsmBasketJsu
+from .asian import BsmAsianLinetsky2004, BsmAsianJsu
 # SV models (CMC, AE) from ASP 2021
 from .heston_mc import HestonCondMc, HestonCondMcQE, HestonMCAe
 from .sv32_mc import Sv32CondMcQE, Sv32McAe
