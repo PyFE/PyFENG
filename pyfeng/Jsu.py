@@ -22,24 +22,6 @@ class BsmBasketJsu(NormBasket):
 
     """
 
-    weight = None
-
-    def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            weight: asset weights, If None, equally weighted as 1/n_asset
-                If scalar, equal weights of the value
-                If 1-D array, uses as it is. (n_asset, )
-            intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-
-        super().__init__(sigma, cor=cor, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
-
     def moment_vsk(self, fwd, texp):
         """
 
@@ -88,8 +70,7 @@ class BsmBasketJsu(NormBasket):
         Returns: Basket options price
 
         """
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd @ self.weight
@@ -118,18 +99,6 @@ class BsmAsianJsu(opt.OptMaABC):
         Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
 
     """
-
-    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def moments(self, spot, texp, n=1):
         """

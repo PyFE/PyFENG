@@ -389,3 +389,43 @@ class BsmBasket1Bm(opt.OptABC):
         price -= strike * spst.norm.cdf(d2)
         price *= cp*df
         return price
+
+
+class BsmBasketLowerBound(NormBasket):
+
+    def V_func(self, fwd):
+        """
+        Generate factor matrix V
+        Args:
+            fwd: forward rates of basket
+        Returns:
+            V matrix
+        """
+        gg = self.weight * fwd
+        gg /= np.linalg.norm(gg)
+
+        # equation 22，generate Q_1 and V_1
+        Q1 = self.chol_m.T @ gg / np.sqrt(gg @ self.cov_m @ gg)  # in py, this is a row vector
+        V1 = self.chol_m @ Q1
+        V1 = V1[:, None]
+
+        # obtain full V
+        e1 = np.zeros_like(self.sigma)
+        e1[0] = 1
+        v = (Q1 - e1) / np.linalg.norm(Q1 - e1)
+        v = v[:, None]
+        R = np.eye(self.n_asset) - 2 * v @ v.T
+
+        # singular value decomposition
+        U, D, Q = np.linalg.svd(self.chol_m @ R[:, 1:], full_matrices=False)
+        V = np.hstack((V1, U @ np.diag(D)))
+
+        return V
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        V = self.V_func(fwd)
+        sigma1 = V[:, 0]
+        m = BsmBasket1Bm(sigma1, is_fwd=True)
+        price = m.price(strike, fwd, texp)
+        return price
