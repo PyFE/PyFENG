@@ -51,7 +51,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def _m_base(self, vol):
+    def _m_base(self, vol, is_fwd=None):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
@@ -62,13 +62,14 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         Returns: model
         """
         base_beta = self._base_beta or self.beta
-
+        if is_fwd is None:
+            is_fwd = self.is_fwd
         if np.isclose(base_beta, 1):
-            return bsm.Bsm(vol, intr=self.intr, divr=self.divr)
+            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         elif np.isclose(base_beta, 0):
-            return norm.Norm(vol, intr=self.intr, divr=self.divr)
+            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
-            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr)
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
@@ -551,8 +552,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             eps = 1e-6
 
             ind = (eta2_m_1 > eps)
-            gg1[ind] -= eta[ind] / sqrt_eta2_m_1[ind] * np.arctan(num_t1[ind] / sqrt_eta2_m_1[ind])
-            gg2[ind] -= eta[ind] / sqrt_eta2_m_1[ind] * np.arctan(num_t2[ind] / sqrt_eta2_m_1[ind])
+            gg2[ind] += eta[ind] / sqrt_eta2_m_1[ind] * np.arctan2(sqrt_eta2_m_1[ind], num_t2[ind])
+            gg1[ind] += eta[ind] / sqrt_eta2_m_1[ind] * np.arctan2(sqrt_eta2_m_1[ind], num_t1[ind])
 
             ind = (eta2_m_1 < -eps)
             gg1[ind] += eta[ind] / sqrt_eta2_m_1[ind] \
@@ -565,8 +566,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
             # when eta is very small, the term above is zero, so do nothing.
 
             ind = (abs(eta2_m_1) <= eps)
-            gg1[ind] += 1.0 / num_t1[ind]
-            gg2[ind] += 1.0 / num_t2[ind]
+            gg1[ind] += eta[ind]/num_t1[ind] * (1 - eta2_m_1[ind]/num_t1[ind]**2/3)
+            gg2[ind] += eta[ind]/num_t2[ind] * (1 - eta2_m_1[ind]/num_t2[ind]**2/3)
 
             gg_diff = self.rho*self.beta/(rhoc*betac) * (gg2 - gg1)
 
