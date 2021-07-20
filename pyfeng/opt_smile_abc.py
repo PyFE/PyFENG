@@ -10,18 +10,19 @@ class OptSmileABC(opt.OptABC, abc.ABC):
     """
     Abstract class to model with volatility smile
     """
-    def _m_smile(self, model='bsm', is_fwd=None):
+
+    def _m_smile(self, model="bsm", is_fwd=None):
         if is_fwd is None:
             is_fwd = self.is_fwd
-        if model.lower() == 'bsm':
+        if model.lower() == "bsm":
             base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
-        elif model.lower() == 'norm':
+        elif model.lower() == "norm":
             base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
             base_model = None
         return base_model
 
-    def vol_smile(self, strike, spot, texp, cp=1, model='bsm'):
+    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -94,7 +95,7 @@ class MassZeroABC(opt.OptABC, abc.ABC):
         leading = tmp / np.sqrt(texp)
 
         qq = spst.norm.ppf(mass)
-        vol = 1 + (qq + 0.5*((2 + qq**2) + qq/tmp)/tmp)/tmp
+        vol = 1 + (qq + 0.5 * ((2 + qq ** 2) + qq / tmp) / tmp) / tmp
         vol *= leading
         return vol
 

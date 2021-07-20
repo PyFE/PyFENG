@@ -41,8 +41,16 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         w_t[0, :] = 2 * np.log(self.sigma)
 
         for i in range(1, n_dt + 1):
-            w_t[i, :] = w_t[i - 1, :] + (self.mr * self.theta * np.exp(-w_t[i - 1, :]) - self.mr - self.vov ** 2 / 2) * \
-                        self.dt + self.vov * np.sqrt(self.dt) * rn_norm[i - 1, :]
+            w_t[i, :] = (
+                w_t[i - 1, :]
+                + (
+                    self.mr * self.theta * np.exp(-w_t[i - 1, :])
+                    - self.mr
+                    - self.vov ** 2 / 2
+                )
+                * self.dt
+                + self.vov * np.sqrt(self.dt) * rn_norm[i - 1, :]
+            )
 
         v_t = np.exp(w_t)
 
@@ -50,16 +58,16 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
 
     def cond_fwd_vol(self, texp):
         """
-            Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
-            The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
-            Therefore, they should be scaled by the original F_0 and sigma_0 values
+        Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
+        The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
+        Therefore, they should be scaled by the original F_0 and sigma_0 values
 
-            Args:
-                theta: the long term average
-                mr: coefficient of dt
-                texp: time-to-expiry
+        Args:
+            theta: the long term average
+            mr: coefficient of dt
+            texp: time-to-expiry
 
-            Returns: (forward, volatility)
+        Returns: (forward, volatility)
         """
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         tobs = self.tobs(texp)
@@ -67,12 +75,19 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
         v_paths = self.vol_paths(tobs)
         sigma_paths = np.sqrt(v_paths)
         sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=texp/n_dt, axis=0)
-        int_var = scint.simps(sigma_paths ** 2, dx=texp/n_dt, axis=0)
-        int_sigma_inv = scint.simps(1 / sigma_paths, dx=texp/n_dt, axis=0)
+        int_sigma = scint.simps(sigma_paths, dx=texp / n_dt, axis=0)
+        int_var = scint.simps(sigma_paths ** 2, dx=texp / n_dt, axis=0)
+        int_sigma_inv = scint.simps(1 / sigma_paths, dx=texp / n_dt, axis=0)
 
-        fwd_cond = np.exp(self.rho * (2 * (sigma_final - self.sigma) / self.vov - self.mr * self.theta * int_sigma_inv /
-                                      self.vov + (self.mr / self.vov + self.vov / 4) * int_sigma - self.rho * int_var / 2))  # scaled by initial value
+        fwd_cond = np.exp(
+            self.rho
+            * (
+                2 * (sigma_final - self.sigma) / self.vov
+                - self.mr * self.theta * int_sigma_inv / self.vov
+                + (self.mr / self.vov + self.vov / 4) * int_sigma
+                - self.rho * int_var / 2
+            )
+        )  # scaled by initial value
 
         vol_cond = rhoc * np.sqrt(int_var / texp)
 

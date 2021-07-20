@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 import sys
 import os
+
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
 
@@ -40,13 +41,17 @@ class TestMultiAsset(unittest.TestCase):
         # Table 2
         m = pf.BsmBasketLevy1992(sigma, rho)
         result = np.round(m.price(p_grid, fwd, texp), 2)
-        result2 = np.array([54.34, 47.52, 41.57, 36.4, 31.92, 28.05, 24.7, 21.8, 19.28, 17.1, 15.19])
+        result2 = np.array(
+            [54.34, 47.52, 41.57, 36.4, 31.92, 28.05, 24.7, 21.8, 19.28, 17.1, 15.19]
+        )
         np.testing.assert_almost_equal(result, result2)
 
         # Table 3
         m = pf.BsmBasketLevy1992(sigma, rho)
-        result = np.round(m.price(100, p_grid[:, None]*o4, texp), 2)
-        result2 = np.array([4.34, 7.52, 11.57, 16.4, 21.92, 28.05, 34.7, 41.8, 49.28, 57.1, 65.19])
+        result = np.round(m.price(100, p_grid[:, None] * o4, texp), 2)
+        result2 = np.array(
+            [4.34, 7.52, 11.57, 16.4, 21.92, 28.05, 34.7, 41.8, 49.28, 57.1, 65.19]
+        )
         np.testing.assert_almost_equal(result, result2)
 
         # Table 1
@@ -74,13 +79,17 @@ class TestMultiAsset(unittest.TestCase):
         m = pf.BsmBasketMilevsky1998(sigma, rho)
         result = np.round(m.price(p_grid, fwd, texp), 2)
         # Replaced 38.01 (Krekel et al., 2004) with 38.03
-        result2 = np.array([51.93, 44.41, 38.03, 32.68, 28.22, 24.5, 21.39, 18.77, 16.57, 14.7, 13.1])
+        result2 = np.array(
+            [51.93, 44.41, 38.03, 32.68, 28.22, 24.5, 21.39, 18.77, 16.57, 14.7, 13.1]
+        )
         np.testing.assert_almost_equal(result, result2)
 
         # Table 3
         m = pf.BsmBasketMilevsky1998(sigma, rho)
-        result = np.round(m.price(100, p_grid[:, None]*o4, texp), 2)
-        result2 = np.array([3.93, 6.56, 9.95, 14.1, 18.97, 24.5, 30.63, 37.32, 44.49, 52.08, 60.05])
+        result = np.round(m.price(100, p_grid[:, None] * o4, texp), 2)
+        result2 = np.array(
+            [3.93, 6.56, 9.95, 14.1, 18.97, 24.5, 30.63, 37.32, 44.49, 52.08, 60.05]
+        )
         np.testing.assert_almost_equal(result, result2)
 
         # Table 1
@@ -99,14 +108,14 @@ class TestMultiAsset(unittest.TestCase):
         result = np.zeros_like(result2)
         fwds = [90, 100, 110]
         for k in range(len(fwds)):
-            result[k] = m.price(100, fwds[k]*o2, 3)
+            result[k] = m.price(100, fwds[k] * o2, 3)
 
     def test_BsmNormNdMc(self):
-        spot = np.ones(4)*100
-        sigma = np.ones(4)*0.4
+        spot = np.ones(4) * 100
+        sigma = np.ones(4) * 0.4
         texp = 5
         # Basket Option with equal weight
-        payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
+        payoff = lambda x: np.fmax(np.mean(x, axis=1) - strike, 0)  # Basket option
         strikes = np.arange(80, 121, 10)
 
         # Test BsmNd
@@ -114,17 +123,17 @@ class TestMultiAsset(unittest.TestCase):
         m.simulate(tobs=[texp], n_path=20000)
         p = []
         for strike in strikes:
-           p.append(m.price_european(spot, texp, payoff))
+            p.append(m.price_european(spot, texp, payoff))
         p = np.array(p)
         p2 = np.array([36.31612946, 31.80861014, 27.91269315, 24.55319506, 21.62677625])
         np.testing.assert_almost_equal(p, p2)
 
         # Test NormNd
-        m = pf.NormNdMc(sigma*spot, cor=0.5, rn_seed=1234)
+        m = pf.NormNdMc(sigma * spot, cor=0.5, rn_seed=1234)
         m.simulate(tobs=[texp], n_path=20000)
         p = []
         for strike in strikes:
-           p.append(m.price_european(spot, texp, payoff))
+            p.append(m.price_european(spot, texp, payoff))
         p = np.array(p)
         p2 = np.array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
         np.testing.assert_almost_equal(p, p2)
@@ -135,7 +144,7 @@ class TestMultiAsset(unittest.TestCase):
             n = np.random.randint(1, 8)
             spot = np.random.uniform(80, 120, size=n)
             strike = np.random.uniform(80, 120, size=10)
-            sigma = np.random.uniform(0.01, 1)*np.ones(n)
+            sigma = np.random.uniform(0.01, 1) * np.ones(n)
             texp = np.random.uniform(0.1, 10)
             intr = np.random.uniform(0, 0.1)
             divr = np.random.uniform(0, 0.1)
@@ -143,17 +152,18 @@ class TestMultiAsset(unittest.TestCase):
             weight /= np.sum(weight)
 
             cp = np.where(np.random.rand(10) > 0.5, 1, -1)
-            is_fwd = (np.random.rand() > 0.5)
+            is_fwd = np.random.rand() > 0.5
 
-            m = pf.BsmBasket1Bm(sigma, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
+            m = pf.BsmBasket1Bm(
+                sigma, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd
+            )
             p = m.price(strike, spot, texp, cp)
 
             m2 = pf.Bsm(sigma[0], intr=intr, divr=divr, is_fwd=is_fwd)
-            p2 = m2.price(strike, np.sum(spot*weight), texp, cp)
+            p2 = m2.price(strike, np.sum(spot * weight), texp, cp)
             np.testing.assert_almost_equal(p, p2)
 
 
-
-if __name__ == '__main__':
-    print(f'Pyfeng loaded from {pf.__path__}')
+if __name__ == "__main__":
+    print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()

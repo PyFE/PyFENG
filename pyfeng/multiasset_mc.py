@@ -23,7 +23,7 @@ class BsmNdMc(opt.OptMaABC):
     """
 
     spot = np.ones(2)
-    sigma = np.ones(2)*0.1
+    sigma = np.ones(2) * 0.1
 
     # MC params
     n_path = 0
@@ -71,12 +71,18 @@ class BsmNdMc(opt.OptMaABC):
         if self.antithetic:
             # generate random number in the order of path, time, asset and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(n_path//2, n_t, self.n_asset)).transpose((1, 0, 2))
+            bm_incr = self.rng.normal(size=(n_path // 2, n_t, self.n_asset)).transpose(
+                (1, 0, 2)
+            )
             bm_incr *= np.sqrt(dt[:, None, None])
             bm_incr = np.dot(bm_incr, self.chol_m.T)
-            bm_incr = np.stack([bm_incr, -bm_incr], axis=2).reshape((n_t, n_path, self.n_asset))
+            bm_incr = np.stack([bm_incr, -bm_incr], axis=2).reshape(
+                (n_t, n_path, self.n_asset)
+            )
         else:
-            bm_incr = np.random.randn(n_path, n_t, self.n_asset).transpose((1, 0, 2)) * np.sqrt(dt[:, None, None])
+            bm_incr = np.random.randn(n_path, n_t, self.n_asset).transpose(
+                (1, 0, 2)
+            ) * np.sqrt(dt[:, None, None])
             bm_incr = np.dot(bm_incr, self.chol_m.T)
 
         return bm_incr
@@ -100,12 +106,12 @@ class BsmNdMc(opt.OptMaABC):
         elif store == 2 and tobs is not None:
             # make sure that tobs == self.tobs
             if not np.all(np.isclose(self.tobs, tobs)):
-                raise ValueError('tobs is different from the saved value.')
+                raise ValueError("tobs is different from the saved value.")
 
         path = self._bm_incr(self.tobs, n_path)
         # Add drift and convexity
         dt = np.diff(self.tobs, prepend=0)
-        path += (self.intr - self.divr - 0.5*self.sigma**2)*dt[:, None, None]
+        path += (self.intr - self.divr - 0.5 * self.sigma ** 2) * dt[:, None, None]
         np.cumsum(path, axis=0, out=path)
         np.exp(path, out=path)
 
@@ -131,14 +137,19 @@ class BsmNdMc(opt.OptMaABC):
             The MC price of the payoff
         """
         if self.n_path == 0:
-            raise ValueError('Simulated paths are not available. Run simulate() first.')
+            raise ValueError("Simulated paths are not available. Run simulate() first.")
 
         # check if texp is in tobs
         ind, *_ = np.where(np.isclose(self.tobs, texp))
         if len(ind) == 0:
-            raise ValueError(f'Stored tobs does not contain t={texp}')
+            raise ValueError(f"Stored tobs does not contain t={texp}")
 
-        path = self.path[ind[0], ] * spot
+        path = (
+            self.path[
+                ind[0],
+            ]
+            * spot
+        )
         price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
         return price
 
@@ -176,13 +187,18 @@ class NormNdMc(BsmNdMc):
 
     def price_european(self, spot, texp, payoff):
         if self.path is None:
-            raise ValueError('Simulated paths are not available. Run simulate() first.')
+            raise ValueError("Simulated paths are not available. Run simulate() first.")
 
         # check if texp is in tobs
         ind, *_ = np.where(np.isclose(self.tobs, texp))
         if len(ind) == 0:
-            raise ValueError(f'Stored path does not contain t = {texp}')
+            raise ValueError(f"Stored path does not contain t = {texp}")
 
-        path = self.path[ind[0], ] + spot
+        path = (
+            self.path[
+                ind[0],
+            ]
+            + spot
+        )
         price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
         return price

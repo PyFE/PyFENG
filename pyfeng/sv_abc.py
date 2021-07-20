@@ -8,7 +8,17 @@ class SvABC(smile.OptSmileABC, abc.ABC):
 
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, theta=None, intr=0.0, divr=0.0, is_fwd=False):
+    def __init__(
+        self,
+        sigma,
+        vov=0.01,
+        rho=0.0,
+        mr=0.01,
+        theta=None,
+        intr=0.0,
+        divr=0.0,
+        is_fwd=False,
+    ):
         """
         Args:
             sigma: model volatility at t=0. variance = sigma**2
@@ -30,7 +40,12 @@ class SvABC(smile.OptSmileABC, abc.ABC):
 
     def params_kw(self):
         params1 = super().params_kw()
-        params2 = {"vov": self.vov, "rho": self.rho, "mr": self.mr, "sig_inf": self.theta}
+        params2 = {
+            "vov": self.vov,
+            "rho": self.rho,
+            "mr": self.mr,
+            "sig_inf": self.theta,
+        }
         return {**params1, **params2}
 
 
@@ -45,7 +60,6 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng = np.random.default_rng(None)
     antithetic = True
 
-    
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
         Set MC parameters
@@ -76,7 +90,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns:
             array of observation time
         """
-        n_steps = (texp//(2*self.dt)+1)*2
+        n_steps = (texp // (2 * self.dt) + 1) * 2
         tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
         return tobs
 
@@ -100,7 +114,9 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.antithetic:
             # generate random number in the order of path, time, asset and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(int(n_path/2), n_dt)).T * np.sqrt(dt[:, None])
+            bm_incr = self.rng.normal(size=(int(n_path / 2), n_dt)).T * np.sqrt(
+                dt[:, None]
+            )
             bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
         else:
             bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(dt[:, None])
@@ -147,7 +163,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         fwd_cond, vol_cond = self.cond_fwd_vol(texp)
 
-        base_model = self.base_model(self.sigma*vol_cond)
+        base_model = self.base_model(self.sigma * vol_cond)
         price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
 
         price = spot * np.mean(price_grid, axis=1)
