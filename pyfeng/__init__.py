@@ -31,6 +31,3 @@ from .multiasset_mc import BsmNdMc, NormNdMc
 # Basket-Asian from ASP 2021
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .asian import BsmAsianLinetsky2004, BsmAsianJsu
-from . import _ex
-import sys
-sys.modules['ex'] = _ex
