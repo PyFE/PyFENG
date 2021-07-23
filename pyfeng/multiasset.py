@@ -29,7 +29,9 @@ class BsmSpreadKirk(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         fwd1 = fwd[..., 0] - np.minimum(strike, 0)
@@ -37,7 +39,7 @@ class BsmSpreadKirk(opt.OptMaABC):
 
         sig1 = self.sigma[0] * fwd[..., 0] / fwd1
         sig2 = self.sigma[1] * fwd[..., 1] / fwd2
-        sig_spd = np.sqrt(sig1*(sig1 - 2.0*self.rho*sig2) + sig2**2)
+        sig_spd = np.sqrt(sig1 * (sig1 - 2.0 * self.rho * sig2) + sig2 ** 2)
         price = bsm.Bsm.price_formula(fwd2, fwd1, sig_spd, texp, cp=cp, is_fwd=True)
         return df * price
 
@@ -62,27 +64,32 @@ class BsmSpreadBjerksund2014(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         fwd1 = fwd[..., 0]
         fwd2 = fwd[..., 1]
 
-        std11 = self.sigma[0]**2 * texp
-        std12 = self.sigma[0]*self.sigma[1] * texp
-        std22 = self.sigma[1]**2 * texp
+        std11 = self.sigma[0] ** 2 * texp
+        std12 = self.sigma[0] * self.sigma[1] * texp
+        std22 = self.sigma[1] ** 2 * texp
 
         aa = fwd2 + strike
-        bb = fwd2/aa
-        std = np.sqrt(std11 - 2*bb*self.rho*std12 + bb**2*std22)
+        bb = fwd2 / aa
+        std = np.sqrt(std11 - 2 * bb * self.rho * std12 + bb ** 2 * std22)
 
-        d3 = np.log(fwd1/aa)
-        d1 = (d3 + 0.5*std11 - bb*(self.rho*std12 - 0.5*bb*std22)) / std
-        d2 = (d3 - 0.5*std11 + self.rho*std12 + bb*(0.5*bb - 1)*std22) / std
-        d3 = (d3 - 0.5*std11 + 0.5*bb**2*std22) / std
+        d3 = np.log(fwd1 / aa)
+        d1 = (d3 + 0.5 * std11 - bb * (self.rho * std12 - 0.5 * bb * std22)) / std
+        d2 = (d3 - 0.5 * std11 + self.rho * std12 + bb * (0.5 * bb - 1) * std22) / std
+        d3 = (d3 - 0.5 * std11 + 0.5 * bb ** 2 * std22) / std
 
-        price = cp*(fwd1*spst.norm.cdf(cp*d1) - fwd2*spst.norm.cdf(cp*d2)
-                    - strike*spst.norm.cdf(cp*d3))
+        price = cp * (
+            fwd1 * spst.norm.cdf(cp * d1)
+            - fwd2 * spst.norm.cdf(cp * d2)
+            - strike * spst.norm.cdf(cp * d3)
+        )
 
         return df * price
 
@@ -119,14 +126,17 @@ class NormBasket(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd @ self.weight
         vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
 
         price = norm.Norm.price_formula(
-            strike, fwd_basket, vol_basket, texp, cp=cp, is_fwd=True)
+            strike, fwd_basket, vol_basket, texp, cp=cp, is_fwd=True
+        )
         return df * price
 
 
@@ -142,6 +152,7 @@ class NormSpread(opt.OptMaABC):
         >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
     """
+
     weight = np.array([1, -1])
 
     price = NormBasket.price
@@ -166,18 +177,20 @@ class BsmBasketLevy1992(NormBasket):
                28.05196621, 24.70229571, 21.800801  , 19.28360474, 17.09570196,
                15.19005654])
     """
+
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd * self.weight
         m1 = np.sum(fwd_basket, axis=-1)
         m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
 
-        sig = np.sqrt(np.log(m2/(m1**2))/texp)
-        price = bsm.Bsm.price_formula(
-            strike, m1, sig, texp, cp=cp, is_fwd=True)
+        sig = np.sqrt(np.log(m2 / (m1 ** 2)) / texp)
+        price = bsm.Bsm.price_formula(strike, m1, sig, texp, cp=cp, is_fwd=True)
         return df * price
 
 
@@ -202,19 +215,24 @@ class BsmBasketMilevsky1998(NormBasket):
                24.49577509, 21.38543199, 18.77356434, 16.56909804, 14.69831445,
                13.10186928])
     """
+
     def price(self, strike, spot, texp, cp=1):
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd * self.weight
         m1 = np.sum(fwd_basket, axis=-1)
         m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
 
-        alpha = 1/(m2/m1**2-1) + 2
-        beta = (alpha-1)*m1
+        alpha = 1 / (m2 / m1 ** 2 - 1) + 2
+        beta = (alpha - 1) * m1
 
-        price = gamma.InvGam.price_formula(strike, m1, texp, alpha, beta, cp=cp, is_fwd=True)
+        price = gamma.InvGam.price_formula(
+            strike, m1, texp, alpha, beta, cp=cp, is_fwd=True
+        )
         return df * price
 
 
@@ -243,25 +261,29 @@ class BsmMax2(opt.OptMaABC):
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
         df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df)
+        fwd = np.array(spot) * (
+            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
+        )
         assert fwd.shape[-1] == self.n_asset
 
         sig_std = sig * np.sqrt(texp)
-        spd_rho = np.sqrt(np.dot(sig, sig) - 2*self.rho*sig[0]*sig[1])
+        spd_rho = np.sqrt(np.dot(sig, sig) - 2 * self.rho * sig[0] * sig[1])
         spd_std = spd_rho * np.sqrt(texp)
 
         # -x and y as rows
         # supposed to be -log(fwd/strike) but strike is added later
-        xx = -np.log(fwd)/sig_std - 0.5*sig_std
+        xx = -np.log(fwd) / sig_std - 0.5 * sig_std
 
-        fwd_ratio = fwd[0]/fwd[1]
-        yy = np.log([fwd_ratio, 1/fwd_ratio])/spd_std + 0.5*spd_std
+        fwd_ratio = fwd[0] / fwd[1]
+        yy = np.log([fwd_ratio, 1 / fwd_ratio]) / spd_std + 0.5 * spd_std
 
-        rho12 = np.array([self.rho*sig[1]-sig[0], self.rho*sig[0]-sig[1]])/spd_rho
+        rho12 = (
+            np.array([self.rho * sig[1] - sig[0], self.rho * sig[0] - sig[1]]) / spd_rho
+        )
 
         mu0 = np.zeros(2)
-        cor_m1 = rho12[0] + (1-rho12[0])*np.eye(2)
-        cor_m2 = rho12[1] + (1-rho12[1])*np.eye(2)
+        cor_m1 = rho12[0] + (1 - rho12[0]) * np.eye(2)
+        cor_m2 = rho12[1] + (1 - rho12[1]) * np.eye(2)
 
         strike_isscalar = np.isscalar(strike)
         strike = np.atleast_1d(strike)
@@ -273,13 +295,21 @@ class BsmMax2(opt.OptMaABC):
         parity = 0 if np.all(cp > 0) else self.m_switch.price(0, fwd, texp) + fwd[1]
         price = np.zeros_like(strike, float)
         for k in range(n_strike):
-            xx_ = xx + np.log(strike[k])/sig_std
-            term1 = fwd[0] * (spst.norm.cdf(yy[0]) - spst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1))
-            term2 = fwd[1] * (spst.norm.cdf(yy[1]) - spst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2))
-            term3 = strike[k] * np.array(spst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m))
+            xx_ = xx + np.log(strike[k]) / sig_std
+            term1 = fwd[0] * (
+                spst.norm.cdf(yy[0])
+                - spst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1)
+            )
+            term2 = fwd[1] * (
+                spst.norm.cdf(yy[1])
+                - spst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2)
+            )
+            term3 = strike[k] * np.array(
+                spst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m)
+            )
 
-            assert(term1 + term2 + term3 >= strike[k])
-            price[k] = (term1 + term2 + term3 - strike[k])
+            assert term1 + term2 + term3 >= strike[k]
+            price[k] = term1 + term2 + term3 - strike[k]
 
             if cp[k] < 0:
                 price[k] += strike[k] - parity
@@ -334,7 +364,7 @@ class BsmBasket1Bm(opt.OptABC):
         scalar_output = np.isscalar(np.sum(fac * std, axis=-1) - strike)
         strike = np.atleast_1d(strike)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             log_k = np.where(strike > 0, np.log(strike), 1)
 
             # Initial guess with linearlized assmption
@@ -358,8 +388,16 @@ class BsmBasket1Bm(opt.OptABC):
 
         for k in range(32):
             y_vec = fac * np.exp(std * x[ind, None])
-            y = np.log(np.sum(y_vec, axis=-1)) - log_k[ind] if log else np.sum(y_vec, axis=-1) - strike[ind]
-            dy = np.sum(std * y_vec, axis=-1) / np.sum(y_vec, axis=-1) if log else np.sum(std * y_vec, axis=-1)
+            y = (
+                np.log(np.sum(y_vec, axis=-1)) - log_k[ind]
+                if log
+                else np.sum(y_vec, axis=-1) - strike[ind]
+            )
+            dy = (
+                np.sum(std * y_vec, axis=-1) / np.sum(y_vec, axis=-1)
+                if log
+                else np.sum(std * y_vec, axis=-1)
+            )
             x[ind] -= y / dy
             if len(y) == 0:
                 print(ind, y_vec, y)
@@ -368,7 +406,9 @@ class BsmBasket1Bm(opt.OptABC):
                 break
 
         if y_err_max > BsmBasket1Bm.IMPVOL_TOL:
-            warn_msg = f'root did not converge within {k} iterations: max error = {y_err_max}'
+            warn_msg = (
+                f"root did not converge within {k} iterations: max error = {y_err_max}"
+            )
             warnings.warn(warn_msg, Warning)
 
         return x[0] if scalar_output else x
@@ -380,21 +420,22 @@ class BsmBasket1Bm(opt.OptABC):
         fwd_basket = fwd * self.weight
         sigma_std = self.sigma * np.sqrt(texp)
         cp = np.array(cp)
-        d2 = -cp * self.root(fwd_basket * np.exp(-sigma_std**2/2), sigma_std, strike)
+        d2 = -cp * self.root(
+            fwd_basket * np.exp(-(sigma_std ** 2) / 2), sigma_std, strike
+        )
 
         if np.isscalar(d2):
-            d1 = d2 + cp*sigma_std
+            d1 = d2 + cp * sigma_std
         else:
-            d1 = d2[:, None] + np.atleast_1d(cp)[:, None]*sigma_std
+            d1 = d2[:, None] + np.atleast_1d(cp)[:, None] * sigma_std
 
-        price = np.sum(fwd_basket*spst.norm.cdf(d1), axis=-1)
+        price = np.sum(fwd_basket * spst.norm.cdf(d1), axis=-1)
         price -= strike * spst.norm.cdf(d2)
-        price *= cp*df
+        price *= cp * df
         return price
 
 
 class BsmBasketLowerBound(NormBasket):
-
     def V_func(self, fwd):
         """
         Generate factor matrix V
@@ -407,7 +448,9 @@ class BsmBasketLowerBound(NormBasket):
         gg /= np.linalg.norm(gg)
 
         # equation 22，generate Q_1 and V_1
-        Q1 = self.chol_m.T @ gg / np.sqrt(gg @ self.cov_m @ gg)  # in py, this is a row vector
+        Q1 = (
+            self.chol_m.T @ gg / np.sqrt(gg @ self.cov_m @ gg)
+        )  # in py, this is a row vector
         V1 = self.chol_m @ Q1
         V1 = V1[:, None]
 
@@ -466,18 +509,52 @@ class BsmBasketJsu(NormBasket):
         m1 = sum(self.weight[i] * fwd[i] for i in range(n))
 
         m2_index = [i for i in product(np.arange(n), repeat=2)]
-        m2 = sum(self.weight[i] * self.weight[j] * fwd[i] * fwd[j] *
-                 np.exp(self.sigma[i] * self.sigma[j] * self.cor_m[i][j] * texp) for i, j in m2_index)
+        m2 = sum(
+            self.weight[i]
+            * self.weight[j]
+            * fwd[i]
+            * fwd[j]
+            * np.exp(self.sigma[i] * self.sigma[j] * self.cor_m[i][j] * texp)
+            for i, j in m2_index
+        )
 
         m3_index = [i for i in product(np.arange(n), repeat=3)]
-        m3 = sum(self.weight[i] * self.weight[j] * self.weight[l] * fwd[i] * fwd[j] * fwd[l] *
-                 np.exp(sum(self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj] for ii, jj in
-                            combinations(np.array([i, j, l]), 2)) * texp) for i, j, l in m3_index)
+        m3 = sum(
+            self.weight[i]
+            * self.weight[j]
+            * self.weight[l]
+            * fwd[i]
+            * fwd[j]
+            * fwd[l]
+            * np.exp(
+                sum(
+                    self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj]
+                    for ii, jj in combinations(np.array([i, j, l]), 2)
+                )
+                * texp
+            )
+            for i, j, l in m3_index
+        )
 
         m4_index = [i for i in product(np.arange(n), repeat=4)]
-        m4 = sum(self.weight[i] * self.weight[j] * self.weight[l] * self.weight[k] * fwd[i] * fwd[j] * fwd[l] *
-                 fwd[k] * np.exp(sum(self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj] for ii, jj in
-                                      combinations(np.array([i, j, l, k]), 2)) * texp) for i, j, l, k in m4_index)
+        m4 = sum(
+            self.weight[i]
+            * self.weight[j]
+            * self.weight[l]
+            * self.weight[k]
+            * fwd[i]
+            * fwd[j]
+            * fwd[l]
+            * fwd[k]
+            * np.exp(
+                sum(
+                    self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj]
+                    for ii, jj in combinations(np.array([i, j, l, k]), 2)
+                )
+                * texp
+            )
+            for i, j, l, k in m4_index
+        )
 
         var = m2 - m1 ** 2
         skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var ** (3 / 2)
@@ -505,7 +582,7 @@ class BsmBasketJsu(NormBasket):
         var, skew, kurt = self.moment_vsk(fwd, texp)
 
         m = nsvh.Nsvh1(sigma=self.sigma)
-        m.calibrate_vsk(var, skew, kurt-3, texp, setval=True)
+        m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
         price = m.price(strike, fwd_basket, texp, cp)
 
         return df * price

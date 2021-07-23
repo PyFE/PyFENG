@@ -3,28 +3,48 @@ import copy
 import numpy as np
 import sys
 import os
+
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
 
 
 class TestBsmMethods(unittest.TestCase):
-
     def test_bsm_price(self):
         bsm = pf.Bsm(sigma=0.2, intr=0.05, divr=0.1)
         result = bsm.price(strike=np.arange(80, 126, 5), spot=100, texp=1.2)
-        expect_result = np.array([
-            15.71361973, 12.46799006, 9.69250803, 7.38869609,  5.52948546,
-            4.06773495, 2.94558338, 2.10255008, 1.48139131, 1.03159130
-        ])
+        expect_result = np.array(
+            [
+                15.71361973,
+                12.46799006,
+                9.69250803,
+                7.38869609,
+                5.52948546,
+                4.06773495,
+                2.94558338,
+                2.10255008,
+                1.48139131,
+                1.03159130,
+            ]
+        )
         np.testing.assert_almost_equal(result, expect_result)
 
     def test_norm_price(self):
         bsm = pf.Norm(sigma=20, intr=0.05, divr=0.1)
         result = bsm.price(strike=np.arange(80, 126, 5), spot=100, texp=1.2)
-        expect_result = np.array([
-            16.572334463, 13.264066668, 10.347114013, 7.849408092, 5.778270261,
-            4.119308420, 2.838573670, 1.887447196, 1.209104773, 0.745157542
-        ])
+        expect_result = np.array(
+            [
+                16.572334463,
+                13.264066668,
+                10.347114013,
+                7.849408092,
+                5.778270261,
+                4.119308420,
+                2.838573670,
+                1.887447196,
+                1.209104773,
+                0.745157542,
+            ]
+        )
         np.testing.assert_almost_equal(result, expect_result)
 
     def test_bsm_iv_greeks(self):
@@ -36,11 +56,11 @@ class TestBsmMethods(unittest.TestCase):
             intr = np.random.uniform(0, 0.3)
             divr = np.random.uniform(0, 0.3)
             cp = 1 if np.random.rand() > 0.5 else -1
-            is_fwd = (np.random.rand() > 0.5)
+            is_fwd = np.random.rand() > 0.5
 
             # print( spot, strike, vol, texp, intr, divr, cp)
             m_bsm = pf.Bsm(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-            price = m_bsm.price(strike, spot, texp, cp),
+            price = (m_bsm.price(strike, spot, texp, cp),)
 
             # get implied vol
             iv = m_bsm.impvol(price, strike, spot, texp=texp, cp=cp)
@@ -74,7 +94,7 @@ class TestBsmMethods(unittest.TestCase):
             intr = np.random.uniform(0, 0.3)
             divr = np.random.uniform(0, 0.3)
             cp = 1 if np.random.rand() > 0.5 else -1
-            is_fwd = (np.random.rand() > 0.5)
+            is_fwd = np.random.rand() > 0.5
 
             # print( spot, strike, vol, texp, intr, divr, cp)
             m_norm = pf.Norm(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
@@ -116,17 +136,19 @@ class TestBsmMethods(unittest.TestCase):
         # DBS = Norm if beta=0
         dbs.beta = 0.0001
         dbs.is_fwd = True
-        norm = pf.Norm(sigma=dbs.sigma_disp*dbs.pivot, intr=0.05, divr=0.1, is_fwd=True)
+        norm = pf.Norm(
+            sigma=dbs.sigma_disp * dbs.pivot, intr=0.05, divr=0.1, is_fwd=True
+        )
         r1 = norm.price(strike, 100, 2.5, cp=-1)
         r2 = dbs.price(strike, 100, 2.5, cp=-1)
-        np.testing.assert_almost_equal(r1/r2, 1, decimal=4)
+        np.testing.assert_almost_equal(r1 / r2, 1, decimal=4)
         dbs.is_fwd = False
 
         # Approximate BSM vol
         dbs.beta = 0.2
-        v1 = dbs.vol_smile(strike, 100, 2.5, model='bsm')
-        v2 = dbs.vol_smile(strike, 100, 2.5, model='bsm-approx')
-        np.testing.assert_almost_equal(v1/v2, 1, decimal=4)
+        v1 = dbs.vol_smile(strike, 100, 2.5, model="bsm")
+        v2 = dbs.vol_smile(strike, 100, 2.5, model="bsm-approx")
+        np.testing.assert_almost_equal(v1 / v2, 1, decimal=4)
 
         p1 = dbs.price(strike, 100, 2.5)
         p2 = pf.Bsm(v1, intr=0.05, divr=0.1).price(strike, 100, 2.5)
@@ -134,15 +156,15 @@ class TestBsmMethods(unittest.TestCase):
 
         # Approximate Bachelier vol
         dbs.beta = 0.8
-        v1 = dbs.vol_smile(strike, 100, 2.5, model='norm')
-        v2 = dbs.vol_smile(strike, 100, 2.5, model='norm-approx')
-        np.testing.assert_almost_equal(v1/v2, 1, decimal=4)
+        v1 = dbs.vol_smile(strike, 100, 2.5, model="norm")
+        v2 = dbs.vol_smile(strike, 100, 2.5, model="norm-approx")
+        np.testing.assert_almost_equal(v1 / v2, 1, decimal=4)
 
         p1 = dbs.price(strike, 100, 2.5)
         p2 = pf.Norm(v1, intr=0.05, divr=0.1).price(strike, 100, 2.5)
         np.testing.assert_almost_equal(p1, p2)
 
 
-if __name__ == '__main__':
-    print(f'Pyfeng loaded from {pf.__path__}')
+if __name__ == "__main__":
+    print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()

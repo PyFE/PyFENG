@@ -30,7 +30,17 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
     _base_beta = None
     n_quad = 9
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False, n_quad=9):
+    def __init__(
+        self,
+        sigma,
+        vov=0.0,
+        rho=0.0,
+        beta=1.0,
+        intr=0.0,
+        divr=0.0,
+        is_fwd=False,
+        n_quad=9,
+    ):
         """
         Args:
             sigma: model volatility at t=0
@@ -59,15 +69,15 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
             (m1, sig)
             True distribution should be multiplied by sigma^2*t
         """
-        v2 = vovn**2
+        v2 = vovn ** 2
         w = np.exp(v2)
-        m1 = np.where(v2 > 1e-6, (w-1)/v2, 1+v2/2*(1+v2/3))
-        m2m1ratio = (5 + w*(4 + w*(3 + w*(2 + w))))/15
-        sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4/3*v2))
+        m1 = np.where(v2 > 1e-6, (w - 1) / v2, 1 + v2 / 2 * (1 + v2 / 3))
+        m2m1ratio = (5 + w * (4 + w * (3 + w * (2 + w)))) / 15
+        sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
         return m1, sig
 
     def price(self, strike, spot, texp, cp=1):
-        assert (self._base_beta is None)
+        assert self._base_beta is None
         m1, fac = self.int_var_lndist(self.vov * np.sqrt(texp))
 
         zz, ww = spsp.roots_hermitenorm(self.n_quad)
@@ -90,7 +100,11 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
         vol = self.sigma * np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
 
         if log:
-            log_mass = np.log(ww) + log_rn_deriv + self._m_base(vol).mass_zero(spot, texp, log=True)
+            log_mass = (
+                np.log(ww)
+                + log_rn_deriv
+                + self._m_base(vol).mass_zero(spot, texp, log=True)
+            )
             log_max = np.amax(log_mass)
             log_mass -= log_max
             log_mass = log_max + np.log(np.sum(np.exp(log_mass)))

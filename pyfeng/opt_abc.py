@@ -10,7 +10,7 @@ class OptABC(abc.ABC):
 
     IMPVOL_TOL = 1e-10
     IMPVOL_MAXVOL = 99.99
-    
+
     def __init__(self, sigma, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
@@ -28,7 +28,12 @@ class OptABC(abc.ABC):
         """
         Model parameters in dictionary
         """
-        params = {"sigma": self.sigma, "intr": self.intr, "divr": self.divr, "is_fwd": self.is_fwd}
+        params = {
+            "sigma": self.sigma,
+            "intr": self.intr,
+            "divr": self.divr,
+            "is_fwd": self.is_fwd,
+        }
         return params
 
     def forward(self, spot, texp):
@@ -45,7 +50,7 @@ class OptABC(abc.ABC):
         if self.is_fwd:
             return np.array(spot)
         else:
-            return np.array(spot) * np.exp((self.intr - self.divr)*np.array(texp))
+            return np.array(spot) * np.exp((self.intr - self.divr) * np.array(texp))
 
     def _fwd_factor(self, spot, texp):
         """
@@ -171,7 +176,7 @@ class OptABC(abc.ABC):
         Returns:
             shock size
         """
-        return spot*0.001  # 10 bps of spot price
+        return spot * 0.001  # 10 bps of spot price
 
     def delta_numeric(self, strike, spot, texp, cp=1):
         """
@@ -187,7 +192,10 @@ class OptABC(abc.ABC):
             delta value
         """
         h = self._delta_shock(strike, spot, texp, cp)
-        delta = (self.price(strike, spot+h, texp, cp)-self.price(strike, spot-h, texp, cp))/(2*h)
+        delta = (
+            self.price(strike, spot + h, texp, cp)
+            - self.price(strike, spot - h, texp, cp)
+        ) / (2 * h)
         return delta
 
     def gamma_numeric(self, strike, spot, texp, cp=1):
@@ -204,8 +212,11 @@ class OptABC(abc.ABC):
             Delta with numerical derivative
         """
         h = self._delta_shock(strike, spot, texp, cp)
-        gamma = (self.price(strike, spot+h, texp, cp) - 2*self.price(strike, spot, texp, cp)
-                 + self.price(strike, spot-h, texp, cp))/(h*h)
+        gamma = (
+            self.price(strike, spot + h, texp, cp)
+            - 2 * self.price(strike, spot, texp, cp)
+            + self.price(strike, spot - h, texp, cp)
+        ) / (h * h)
         return gamma
 
     def _vega_shock(self, strike=100, spot=100, texp=1, cp=1):
@@ -240,10 +251,10 @@ class OptABC(abc.ABC):
         model = copy.copy(self)
         model.sigma += h
         p_up = model.price(strike, spot, texp, cp)
-        model.sigma -= 2*h
+        model.sigma -= 2 * h
         p_dn = model.price(strike, spot, texp, cp)
 
-        vega = (p_up - p_dn)/(2*h)
+        vega = (p_up - p_dn) / (2 * h)
         return vega
 
     def volga_numeric(self, strike, spot, texp, cp=1):
@@ -265,10 +276,10 @@ class OptABC(abc.ABC):
         p_0 = model.price(strike, spot, texp, cp)
         model.sigma += h
         p_up = model.price(strike, spot, texp, cp)
-        model.sigma -= 2*h
+        model.sigma -= 2 * h
         p_dn = model.price(strike, spot, texp, cp)
 
-        volga = (p_up+p_dn-2*p_0)/(h*h)
+        volga = (p_up + p_dn - 2 * p_0) / (h * h)
         return volga
 
     def vanna_numeric(self, strike, spot, texp, cp=1):
@@ -285,10 +296,10 @@ class OptABC(abc.ABC):
             vanna value
         """
         h = self._delta_shock(strike, spot, texp, cp)
-        vega_up = self.vega_numeric(strike, spot+h, texp, cp)
-        vega_dn = self.vega_numeric(strike, spot-h, texp, cp)
+        vega_up = self.vega_numeric(strike, spot + h, texp, cp)
+        vega_dn = self.vega_numeric(strike, spot - h, texp, cp)
 
-        vanna = (vega_up - vega_dn)/(2*h)
+        vanna = (vega_up - vega_dn) / (2 * h)
         return vanna
 
     def _theta_shock(self, strike=100, spot=100, texp=1, cp=1):
@@ -304,7 +315,7 @@ class OptABC(abc.ABC):
         Returns:
             shock size
         """
-        return np.minimum(1/365.25, texp)  # one day
+        return np.minimum(1 / 365.25, texp)  # one day
 
     def theta_numeric(self, strike, spot, texp, cp=1):
         """
@@ -320,7 +331,9 @@ class OptABC(abc.ABC):
             theta value
         """
         dt = self._delta_shock(strike, spot, texp, cp)
-        theta = self.price(strike, spot, texp-dt, cp)-self.price(strike, spot, texp, cp)
+        theta = self.price(strike, spot, texp - dt, cp) - self.price(
+            strike, spot, texp, cp
+        )
         theta /= dt
         return theta
 
@@ -337,12 +350,12 @@ class OptABC(abc.ABC):
         Returns:
             probability densitiy
         """
-        fwd = spot*(1.0 if self.is_fwd else np.exp(texp*(self.intr - self.divr)))
+        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
         kk = strike / fwd
         kk_arr = np.array([kk - h, kk, kk + h]).flatten()
         price = self.price(kk_arr, 1, texp, cp=cp)
         price = price.reshape(3, -1)
-        pdf = (price[2] + price[0] - 2.0*price[1])/(h*h)
+        pdf = (price[2] + price[0] - 2.0 * price[1]) / (h * h)
         return pdf
 
     # create aliases
@@ -383,9 +396,11 @@ class OptAnalyticABC(OptABC):
 
     def price(self, strike, spot, texp, cp=1):
         if self.THROW_NEGATIVE_TEXP:
-            assert(~np.any(texp < 0))
+            assert ~np.any(texp < 0)
 
-        return self.price_formula(strike=strike, spot=spot, texp=texp, cp=cp, **self.params_kw())
+        return self.price_formula(
+            strike=strike, spot=spot, texp=texp, cp=cp, **self.params_kw()
+        )
 
     @abc.abstractmethod
     def delta(self, strike, spot, texp, cp=1):
@@ -494,11 +509,13 @@ class OptMaABC(OptABC, abc.ABC):
 
         if self.n_asset == 1:
             if cor is not None:
-                print(f'Ignoring cor={cor} for a single asset')
+                print(f"Ignoring cor={cor} for a single asset")
             self.rho = None
             self.cor_m = np.array([[1.0]])
         elif np.isscalar(cor):
-            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (1 - cor) * np.eye(self.n_asset)
+            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (
+                1 - cor
+            ) * np.eye(self.n_asset)
             self.rho = cor
         else:
             assert cor.shape == (self.n_asset, self.n_asset)
