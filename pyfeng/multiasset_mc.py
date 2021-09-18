@@ -26,39 +26,27 @@ class BsmNdMc(opt.OptMaABC):
     sigma = np.ones(2) * 0.1
 
     # MC params
-    n_path = 0
     rn_seed = None
     rng = None
     antithetic = True
 
-    # path
-    path, tobs = np.array([]), None
+    # tobs and path stored in the class
+    n_path = 0
+    path = tobs = None
 
-    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, rn_seed=None):
+    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, rn_seed=None, antithetic=True):
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
+        self.antithetic = antithetic
         super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=False)
 
-    def set_mc_params(self, n_path, rn_seed=None, antithetic=True):
-        """
-        Set MC parameters
-
-        Args:
-            n_path: number of paths
-            rn_seed: random number seed for rn generator.
-            antithetic: antithetic
-        """
-        self.n_path = n_path
-        self.rn_seed = rn_seed
-        self.antithetic = antithetic
-
-    def _bm_incr(self, tobs, n_path=None):
+    def _bm_incr(self, tobs, n_path):
         """
         Calculate incremental Brownian Motions
 
         Args:
             tobs: array of observation times
-            n_path: number of paths. If None (default), use the stored one.
+            n_path: number of paths to simulate
 
         Returns:
             price path (time, path, asset)
@@ -66,63 +54,51 @@ class BsmNdMc(opt.OptMaABC):
         dt = np.diff(np.atleast_1d(tobs), prepend=0)
         n_t = len(dt)
 
-        n_path = self.n_path if n_path is None else n_path
+        n_path_gen = n_path // 2 if self.antithetic else n_path
 
+        # generate random number in the order of path, time, asset and transposed
+        # in this way, the same paths are generated when increasing n_path
+        bm_incr = self.rng.normal(size=(n_path_gen, n_t, self.n_asset)).transpose(
+            (1, 0, 2)
+        )
+        np.multiply(bm_incr, np.sqrt(dt[:, None, None]), out=bm_incr)
+        bm_incr = np.dot(bm_incr, self.chol_m.T)
         if self.antithetic:
-            # generate random number in the order of path, time, asset and transposed
-            # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(n_path // 2, n_t, self.n_asset)).transpose(
-                (1, 0, 2)
-            )
-            bm_incr *= np.sqrt(dt[:, None, None])
-            bm_incr = np.dot(bm_incr, self.chol_m.T)
             bm_incr = np.stack([bm_incr, -bm_incr], axis=2).reshape(
                 (n_t, n_path, self.n_asset)
             )
-        else:
-            bm_incr = np.random.randn(n_path, n_t, self.n_asset).transpose(
-                (1, 0, 2)
-            ) * np.sqrt(dt[:, None, None])
-            bm_incr = np.dot(bm_incr, self.chol_m.T)
 
         return bm_incr
 
-    def simulate(self, n_path=None, tobs=None, store=1):
+    def simulate(self, tobs, n_path, store=True):
         """
         Simulate the price paths and store in the class.
-        The initial prices are normalized to 1.
+        The initial prices are normalized to 0 and spot should be multiplied later.
 
         Args:
             tobs: array of observation times
-            n_path: number of paths. If None (default), use the stored one.
-            store: if 0, do not store, if 1 (default), overwrite the path to self.path, if 2 append to self.path
+            n_path: number of paths to simulate
+            store: if True (default), store path, tobs, and n_path in the class
 
         Returns:
-            price path (time, path, asset)
+            price path (time, path, asset) if store is False
         """
-        # (n_t, n_path, n_asset) * (n_asset, n_asset)
-        if store == 1 or (store == 2 and self.n_path == 0):
-            self.tobs = np.atleast_1d(tobs)
-        elif store == 2 and tobs is not None:
-            # make sure that tobs == self.tobs
-            if not np.all(np.isclose(self.tobs, tobs)):
-                raise ValueError("tobs is different from the saved value.")
 
-        path = self._bm_incr(self.tobs, n_path)
+        # (n_t, n_path, n_asset) * (n_asset, n_asset)
+        tobs = np.atleast_1d(tobs)
+        path = self._bm_incr(tobs=tobs, n_path=n_path)
         # Add drift and convexity
-        dt = np.diff(self.tobs, prepend=0)
+        dt = np.diff(tobs, prepend=0)
         path += (self.intr - self.divr - 0.5 * self.sigma ** 2) * dt[:, None, None]
         np.cumsum(path, axis=0, out=path)
         np.exp(path, out=path)
 
-        if store == 1 or (store == 2 and self.n_path == 0):
+        if store:
             self.n_path = n_path
             self.path = path
-        elif store == 2:
-            self.n_path += n_path
-            self.path = np.concatenate((self.path, path), axis=1)
-
-        return path
+            self.tobs = tobs
+        else:
+            return path
 
     def price_european(self, spot, texp, payoff):
         """
@@ -144,12 +120,7 @@ class BsmNdMc(opt.OptMaABC):
         if len(ind) == 0:
             raise ValueError(f"Stored tobs does not contain t={texp}")
 
-        path = (
-            self.path[
-                ind[0],
-            ]
-            * spot
-        )
+        path = self.path[ind[0], ] * spot
         price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
         return price
 
@@ -174,7 +145,20 @@ class NormNdMc(BsmNdMc):
         array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
     """
 
-    def simulate(self, tobs, n_path=None, store=True):
+    def simulate(self, tobs, n_path, store=True):
+        """
+        Simulate the price paths and store in the class.
+        The initial prices are normalized to 0 and spot should be added later.
+
+        Args:
+            tobs: array of observation times
+            n_path: number of paths to simulate
+            store: if True (default), store path, tobs, and n_path in the class
+
+        Returns:
+            price path (time, path, asset) if store is False
+        """
+        tobs = np.atleast_1d(tobs)
         path = self._bm_incr(tobs, n_path)
         np.cumsum(path, axis=0, out=path)
 
@@ -182,23 +166,29 @@ class NormNdMc(BsmNdMc):
             self.n_path = n_path
             self.path = path
             self.tobs = tobs
-
-        return path
+        else:
+            return path
 
     def price_european(self, spot, texp, payoff):
-        if self.path is None:
+        """
+        The European price of that payoff at the expiry.
+
+        Args:
+            spot: array of spot prices
+            texp: time-to-expiry
+            payoff: payoff function applicable to the time-slice of price path
+
+        Returns:
+            The MC price of the payoff
+        """
+        if self.n_path == 0:
             raise ValueError("Simulated paths are not available. Run simulate() first.")
 
         # check if texp is in tobs
         ind, *_ = np.where(np.isclose(self.tobs, texp))
         if len(ind) == 0:
-            raise ValueError(f"Stored path does not contain t = {texp}")
+            raise ValueError(f"Stored tobs does not contain t={texp}")
 
-        path = (
-            self.path[
-                ind[0],
-            ]
-            + spot
-        )
+        path = self.path[ind[0], ] + spot
         price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
         return price
