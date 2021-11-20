@@ -27,6 +27,7 @@ from .multiasset import (
     BsmBasketJsu,
 )
 from .multiasset_mc import BsmNdMc, NormNdMc
+from .ousv import OusvIFT, OusvCondMC
 
 # Basket-Asian from ASP 2021
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002

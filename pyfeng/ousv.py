@@ -3,7 +3,7 @@ import scipy.integrate as scint
 from . import sv_abc as sv
 
 
-class OusvIft(sv.SvABC):
+class OusvIFT(sv.SvABC):
     """
     The implementation of Schobel & Zhu (1998)'s inverse FT pricing formula for European
     options the Ornstein-Uhlenbeck driven stochastic volatility process.
@@ -12,10 +12,10 @@ class OusvIft(sv.SvABC):
 
     Examples:
         >>> import pyfeng as pf
-        >>> model = pf.OusvIft(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
+        >>> model = pf.OusvIFT(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
         >>> model.price(100, 100, texp=np.array([1, 5, 10]))
         array([13.21493, 40.79773, 62.76312])
-        >>> model = pf.OusvIft(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
+        >>> model = pf.OusvIFT(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
         >>> model.price(np.array([90, 100, 110]), 100, texp=1)
         array([21.41873, 15.16798, 10.17448])
     """
@@ -49,123 +49,73 @@ class OusvIft(sv.SvABC):
 
         return D, B, C
 
-    def f_1(self, phi, fwd, texp):
+    def f_1(self, phi, texp):
         # implement the formula (12)
         mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
+
         tmp = 1 + 1j * phi
         s1 = 0.5 * tmp * (-tmp * (1 - rho ** 2) + (1 - 2 * mr * rho / vov))
         s2 = tmp * mr * theta * rho / vov
         s3 = 0.5 * tmp * rho / vov
 
-        res = 1j * phi * np.log(fwd) - 0.5 * rho * (1 + 1j * phi) * (
-            self.sigma ** 2 / vov + vov * texp
-        )
+        res = -0.5 * rho * tmp * (self.sigma ** 2 / vov + vov * texp)
         D, B, C = self.D_B_C(s1, s2, s3, texp)
-        res += 0.5 * D * self.sigma ** 2 + B * self.sigma + C
+        res += (D/2 * self.sigma + B) * self.sigma + C
         return np.exp(res)
 
-    def f_2(self, phi, fwd, texp):
+    def f_2(self, phi, texp):
         # implement the formula (13)
         mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
 
-        s1 = 0.5 * (phi ** 2 * (1 - rho ** 2) + 1j * phi * (1 - 2 * mr * rho / vov))
+        s1 = 0.5 * phi * (phi * (1 - rho ** 2) + 1j * (1 - 2 * mr * rho / vov))
         s2 = 1j * phi * mr * theta * rho / vov
         s3 = 0.5 * 1j * phi * rho / vov
 
-        res = 1j * phi * np.log(fwd) - 0.5 * 1j * phi * rho * (
-            self.sigma ** 2 / vov + vov * texp
-        )
+        res = -0.5 * 1j * phi * rho * (self.sigma ** 2 / vov + vov * texp)
         D, B, C = self.D_B_C(s1, s2, s3, texp)
-        res += 0.5 * D * self.sigma ** 2 + B * self.sigma + C
+        res += (D/2 * self.sigma + B) * self.sigma + C
         return np.exp(res)
 
     def price(self, strike, spot, texp, cp=1):
         # implement the formula (14) and (15)
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        log_k = np.log(strike)
-        J, h = 100001, 0.001
+        kk = strike / fwd
+        log_k = np.log(kk)
+        J, h = 100001, 0.001   # need to take these as parameters
         phi = (np.arange(J)[:, None] + 1) * h  # shape=(J,1)
-        ff1 = 0.5 + 1 / np.pi * scint.simps(
-            (self.f_1(phi, fwd, texp) * np.exp(-1j * phi * log_k) / (1j * phi)).real,
-            dx=h,
-            axis=0,
-        )
-        ff2 = 0.5 + 1 / np.pi * scint.simps(
-            (self.f_2(phi, fwd, texp) * np.exp(-1j * phi * log_k) / (1j * phi)).real,
-            dx=h,
-            axis=0,
-        )
 
-        price = np.where(
-            cp > 0, fwd * ff1 - strike * ff2, strike * (1 - ff2) - fwd * (1 - ff1)
-        )
+        ff = self.f_1(phi, texp) - kk * self.f_2(phi, texp)
+
+        ## Need to convert using iFFT later
+        price = scint.simps(
+            (ff * np.exp(-1j * phi * log_k) / (1j * phi)).real,
+            dx=h, axis=0,
+        ) / np.pi
+
+        price += (1 - kk) / 2 * np.where(cp > 0, 1, -1)
+
         if len(price) == 1:
             price = price[0]
 
-        return df * price
+        return df * fwd * price
 
 
 class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
     """
     OUSV model with conditional Monte-Carlo simulation
-    The SDE of SV is: dsigma_t = mr (theta - sigma_t) dt + vov dB_T
+    The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T
     """
 
-    def _bm_incr(self, tobs, cum=False, n_path=None):
-        """
-        Calculate incremental Brownian Motions
-
-        Args:
-            tobs: observation times (array). 0 is not included.
-            cum: return cumulative values if True
-            n_path: number of paths. If None (default), use the stored one.
-
-        Returns:
-            price path (time, path)
-        """
-        # dt = np.diff(np.atleast_1d(tobs), prepend=0)
-        n_dt = len(tobs)
-
-        tobs_lag = tobs[:-1]
-        tobs_lag = np.insert(tobs_lag, 0, 0)
-        bm_var = np.exp(2 * self.mr * tobs) - np.exp(2 * self.mr * tobs_lag)
-        n_path = n_path or self.n_path
-
-        if self.antithetic:
-            # generate random number in the order of path, time, asset and transposed
-            # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(int(n_path / 2), n_dt)).T * np.sqrt(
-                bm_var[:, None]
-            )
-            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
-        else:
-            # bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(bm_var[:, None])
-            bm_incr = self.rng.normal(size=(n_path, n_dt)).T * np.sqrt(bm_var[:, None])
-
-        if cum:
-            np.cumsum(bm_incr, axis=0, out=bm_incr)
-
-        return bm_incr
-
     def vol_paths(self, tobs):
-        """
-        sigma_t = np.exp(-mr * tobs) * (sigma0 - theta * mr + vov / np.sqrt(2 * mr) * bm) + theta * mr
-        Args:
-            tobs: observation time (array)
-            mr: coefficient of dt
-            theta: the long term average
-            mu: rn-derivative
+        # 2d array of (time, path) including t=0
+        exp_tobs = np.exp(self.mr * tobs)
 
-        Returns: volatility path (time, path) including the value at t=0
-        """
-        bm_path = self._bm_incr(tobs, cum=True)  # B_s (0 <= s <= 1)
+        bm_path = self._bm_incr(exp_tobs**2 - 1, cum=True)  # B_s (0 <= s <= 1)
         sigma_t = self.theta + (
             self.sigma - self.theta + self.vov / np.sqrt(2 * self.mr) * bm_path
-        ) * np.exp(-self.mr * tobs[:, None])
-        sigma_t = np.insert(
-            sigma_t, 0, np.array([self.sigma] * sigma_t.shape[1]), axis=0
-        )
+        ) / exp_tobs[:, None]
+        sigma_t = np.insert(sigma_t, 0, self.sigma, axis=0)
         return sigma_t
 
     def cond_fwd_vol(self, texp):
@@ -193,39 +143,13 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
             self.rho
             * (
                 (sigma_final ** 2 - self.sigma ** 2) / (2 * self.vov)
-                - self.vov * 0.5 * texp
+                - self.vov * texp / 2
                 - self.mr * self.theta / self.vov * int_sigma
-                + (self.mr / self.vov - self.rho * 0.5) * int_var
+                + (self.mr / self.vov - self.rho / 2) * int_var
             )
         )  # scaled by initial value
 
-        vol_cond = rhoc * np.sqrt(int_var / texp)
+        # scaled by initial volatility
+        vol_cond = rhoc * np.sqrt(int_var) / (self.sigma * np.sqrt(texp))
 
         return fwd_cond, vol_cond
-
-    def price(self, strike, spot, texp, cp=1):
-        """
-        Calculate option price based on BSM
-        Args:
-            strike: strike price
-            spot: spot price
-            texp: time to maturity
-            cp: cp=1 if call option else put option
-
-        Returns: price
-        """
-        price = []
-        texp = [texp] if isinstance(texp, (int, float)) else texp
-        for t in texp:
-            kk = strike / spot
-            kk = np.atleast_1d(kk)
-
-            fwd_cond, vol_cond = self.cond_fwd_vol(t)
-
-            base_model = self.base_model(vol_cond)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
-
-            # np.set_printoptions(suppress=True, precision=6)
-            price.append(spot * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
-
-        return np.array(price).T
