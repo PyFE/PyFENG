@@ -442,6 +442,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
     References:
         - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
+    Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.SabrChoiWu2021H(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
