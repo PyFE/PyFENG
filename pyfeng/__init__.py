@@ -32,3 +32,6 @@ from .ousv import OusvIFT, OusvCondMC
 # Basket-Asian from ASP 2021
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .asian import BsmAsianLinetsky2004, BsmAsianJsu
+
+# Asset Allocation
+from .assetalloc import RiskParity
