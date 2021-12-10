@@ -57,7 +57,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     dt = 0.05
     n_path = 10000
     rn_seed = None
-    rng = np.random.default_rng(None)
+    rng_array = [None, None]  # rng for (vol, price)
     antithetic = True
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
@@ -74,8 +74,9 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         self.dt = dt
         self.rn_seed = rn_seed
         self.antithetic = antithetic
-        self.rn_seed = rn_seed
-        self.rng = np.random.default_rng(rn_seed)
+
+        seed_seq = np.random.SeedSequence(rn_seed)
+        self.rng_array = [np.random.default_rng(s) for s in seed_seq.spawn(5)]
 
     def base_model(self, vol):
         return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
@@ -94,7 +95,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
         return tobs
 
-    def _bm_incr(self, tobs, cum=False, n_path=None):
+    def _bm_incr(self, tobs, cum=False, n_path=None, rng_index=0):
         """
         Calculate incremental Brownian Motions
 
@@ -112,14 +113,14 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         n_path = n_path or self.n_path
 
         if self.antithetic:
-            # generate random number in the order of path, time, asset and transposed
+            # generate random number in the order of (path, time) first and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.normal(size=(int(n_path / 2), n_dt)).T * np.sqrt(
+            bm_incr = self.rng_array[rng_index].standard_normal((int(n_path//2), n_dt)).T * np.sqrt(
                 dt[:, None]
             )
-            bm_incr = np.stack([bm_incr, -bm_incr], axis=-1).reshape((-1, n_path))
+            bm_incr = np.stack([bm_incr, -bm_incr], axis=1).reshape((-1, n_path))
         else:
-            bm_incr = np.random.randn(n_path, n_dt).T * np.sqrt(dt[:, None])
+            bm_incr = self.rng_array[rng_index].standard_normal(n_path, n_dt).T * np.sqrt(dt[:, None])
 
         if cum:
             np.cumsum(bm_incr, axis=0, out=bm_incr)

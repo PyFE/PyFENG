@@ -58,9 +58,7 @@ class BsmNdMc(opt.OptMaABC):
 
         # generate random number in the order of path, time, asset and transposed
         # in this way, the same paths are generated when increasing n_path
-        bm_incr = self.rng.normal(size=(n_path_gen, n_t, self.n_asset)).transpose(
-            (1, 0, 2)
-        )
+        bm_incr = self.rng.standard_normal((n_path_gen, n_t, self.n_asset)).transpose((1, 0, 2))
         np.multiply(bm_incr, np.sqrt(dt[:, None, None]), out=bm_incr)
         bm_incr = np.dot(bm_incr, self.chol_m.T)
         if self.antithetic:

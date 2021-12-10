@@ -43,7 +43,7 @@ class Nsvh1(sabr.SabrABC):
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
-            is_atmvol: If True, use `sigma` as the ATM normal vol
+            is_atmvol: If True, use `sigma` as the ATM normal vol. False by default.
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
