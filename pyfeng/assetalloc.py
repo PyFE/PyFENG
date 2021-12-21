@@ -30,7 +30,7 @@ class AssetAllocABC(abc.ABC):
             # when sigma and cor are given
 
             self.sigma = np.atleast_1d(sigma)
-            self.n_asset = self.sigma.shape[0]
+            self.n_asset = len(self.sigma)
 
             if self.n_asset == 1:
                 raise ValueError(f"The number of assets should be more than one.")
@@ -64,7 +64,7 @@ class AssetAllocABC(abc.ABC):
         elif np.isscalar(longshort):
             self.longshort = np.full(self.n_asset, np.sign(longshort), dtype=np.int8)  # long-only
         else:
-            assert self.n_asset == longshort.shape[0]
+            assert self.n_asset == len(longshort)
             self.longshort = np.sign(longshort, dtype=np.int8)  # long-only
 
 
@@ -85,11 +85,20 @@ class RiskParity(AssetAllocABC):
                 [ -1.178, -7.901, 0.503, 5.460, 1.057 ],
                 [ 8.778, 84.954, 45.184, 1.057, 34.126 ]
             ])/10000
+        
         >>> m = pf.RiskParity(cov=cov)
         >>> m.weight()
         array([0.125, 0.047, 0.083, 0.613, 0.132])
         >>> m._result
         {'err': 2.2697290741335863e-07, 'n_iter': 6}
+
+        >>> m = pf.RiskParity(cov=cov, budget=[0.1, 0.1, 0.2, 0.3, 0.3])
+        >>> m.weight()
+        array([0.077, 0.025, 0.074, 0.648, 0.176])
+
+        >>> m = pf.RiskParity(cov=cov, longshort=[-1, -1, 1, 1, 1])
+        >>> m.weight()
+        array([-0.216, -0.162,  0.182,  0.726,  0.47 ])
     """
 
     budget = None
@@ -111,9 +120,9 @@ class RiskParity(AssetAllocABC):
         if budget is None:
             self.budget = np.full(self.n_asset, 1 / self.n_asset)
         else:
-            assert self.n_asset == budget.shape[0]
+            assert self.n_asset == len(budget)
             assert np.isclose(np.sum(budget), 1)
-            self.budget = budget
+            self.budget = np.array(budget)
 
     @classmethod
     def init_random(cls, n_asset=10, zero_ev=0, budget=False):
@@ -136,7 +145,6 @@ class RiskParity(AssetAllocABC):
 
         m = cls(cov=cor)
         return m
-
 
     def weight(self, tol=1e-6):
         """
@@ -173,7 +181,6 @@ class RiskParity(AssetAllocABC):
         # when not converged
         self._result = {'err': err, 'n_iter': k}
         return None
-
 
     def weight_ccd_original(self, tol=1e-6):
         """
@@ -227,7 +234,6 @@ class RiskParity(AssetAllocABC):
         jac = cov + np.diag(bud / (w * w))
         return jac
 
-
     def weight_newton(self, tol=1e-6):
         """
         Risk parity weight using Newton method
@@ -238,6 +244,10 @@ class RiskParity(AssetAllocABC):
 
         Returns:
             risk parity weight
+
+        References:
+            - Spinu, F. (2013). An Algorithm for Computing Risk Parity Weights (SSRN Scholarly Paper ID 2297383). Social Science Research Network. https://doi.org/10.2139/ssrn.2297383
+
         """
         cor = self.cor_m
 
