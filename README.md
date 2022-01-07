@@ -21,7 +21,7 @@ pip install pyfeng
 ```
 For upgrade,
 ```sh
-pip install --upgrade pyfeng
+pip install pyfeng --upgrade
 ```
 
 ## Code Snippets
