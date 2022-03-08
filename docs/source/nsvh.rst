@@ -1,4 +1,4 @@
-Hyperbolic Normal Stochastic Volatility
+Hyperbolic Normal Stochastic Volatility (NSVh) Model
 =======================================
 .. automodule:: pyfeng.nsvh
    :members: Nsvh1

@@ -1,4 +1,4 @@
-Models related to the Gamma distribution
+Gamma distribution-related Models
 =======================================
 .. automodule:: pyfeng.gamma
    :members: InvGam
