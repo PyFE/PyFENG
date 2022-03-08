@@ -18,7 +18,7 @@
    gamma
    multiasset
    multiasset_mc
-
+   assetalloc
 
 Indices and tables
 ==================
