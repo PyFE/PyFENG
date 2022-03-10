@@ -2,6 +2,9 @@ import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
 import scipy.integrate as spint
+import scipy.optimize as spop
+import math
+from scipy import interpolate
 from scipy.misc import derivative
 from . import sv_abc as sv
 
@@ -272,3 +275,232 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
+
+
+class HestonMcExactGK(HestonMcAe):
+
+    KK = 1
+
+    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, KK=1):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            rn_seed: random number seed
+            antithetic: antithetic
+            KK:
+
+        References:
+            -
+        """
+        self.n_path = int(n_path)
+        self.rn_seed = rn_seed
+        self.antithetic = antithetic
+        self.rn_seed = rn_seed
+        self.rng = np.random.default_rng(rn_seed)
+        self.KK = KK
+
+    def cond_spot_sigma(self, texp):
+
+        var0 = self.sigma  # inivial variance
+        rhoc = np.sqrt(1.0 - self.rho ** 2)
+
+        ncx_df = self.chi_dim()
+        var_final = self.var_final(texp)
+
+        # sample int_var(integrated variance): Gamma expansion / transform inversion
+        # int_var = X1+X2+X3 from formula(2.7) in Glasserman and Kim (2011)
+
+        # Simulation X1: truncated Gamma expansion
+        X1 = self.generate_X1_gamma_expansion(var_final, texp)
+
+        # Simulation X2: transform inversion
+        coth = 1 / np.tanh(self.mr * texp * 0.5)
+        csch = 1 / np.sinh(self.mr * texp * 0.5)
+        mu_X2_0 = self.vov ** 2 * (-2 + self.mr * texp * coth) / (4 * self.mr ** 2)
+        sigma_square_X2_0 = self.vov ** 4 * (-8 + 2 * self.mr * texp * coth + (self.mr * texp * csch) ** 2) / (
+                    8 * self.mr ** 4)
+        X2 = self.generate_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, ncx_df, texp, self.n_path)
+        # X2 = self.generate_X2_and_Z_gamma_expansion(ncx_df, texp, self.n_path)
+
+        # Simulation X3: X3=sum(Z, eta), Z is a special case of X2 with ncx_df=4
+        Z = self.generate_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, 4, texp, self.n_path * 10)
+        # Z = self.generate_X2_and_Z_gamma_expansion(4, texp, self.n_path*10)
+
+        v = 0.5 * ncx_df - 1
+        z = 2 * self.mr * self.sigma * np.sqrt(var_final) * csch / self.vov ** 2
+        eta = self.generate_eta(v, z)
+
+        X3 = np.zeros(len(eta))
+        for ii in range(len(eta)):
+            X3[ii] = np.sum(Z[np.random.randint(0, len(Z), int(eta[ii]))])
+
+        int_var_std = (X1 + X2 + X3) / texp
+
+        ### Common Part
+        int_var_dw = ((var_final - var0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
+        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
+        sigma_cond = rhoc * np.sqrt(int_var_std / var0)  # normalize by initial variance
+
+        # return normalized forward and volatility
+        return spot_cond, sigma_cond
+
+    def generate_X1_gamma_expansion(self, VT, texp):
+        """
+        Simulation of X1 using truncated Gamma expansion in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        VT : an 1-d array with shape (n_paths,)
+            final variance
+        texp: float
+            time-to-expiry
+
+        Returns
+        -------
+         an 1-d array with shape (n_paths,), random variables X1
+        """
+        var_0 = self.sigma
+        # For fixed k, theta, vov, texp, generate some parameters firstly
+        range_K = np.arange(1, self.KK + 1)
+        temp = 4 * np.pi ** 2 * range_K ** 2
+        gamma_n = (self.mr ** 2 * texp ** 2 + temp) / (2 * self.vov ** 2 * texp ** 2)
+        lambda_n = 4 * temp / (self.vov ** 2 * texp * (self.mr ** 2 * texp ** 2 + temp))
+
+        E_X1_K_0 = 2 * texp / (np.pi ** 2 * range_K)
+        Var_X1_K_0 = 2 * self.vov ** 2 * texp ** 3 / (3 * np.pi ** 4 * range_K ** 3)
+
+        # the following para will change with VO and VT
+        Nn_mean = ((var_0 + VT)[:, None] * lambda_n[None, :])  # every row K numbers (one path)
+        Nn = np.random.poisson(lam=Nn_mean).flatten()
+        rv_exp_sum = np.zeros(len(Nn))
+        for ii in range(len(Nn)):
+            rv_exp_sum[ii] = np.sum(np.random.exponential(scale=1, size=Nn[ii]))
+        rv_exp_sum = rv_exp_sum.reshape(len(VT), len(lambda_n))
+        X1_main = np.sum((rv_exp_sum / gamma_n), axis=1)
+
+        gamma_mean = (var_0 + VT) * E_X1_K_0[-1]
+        gamma_var = (var_0 + VT) * Var_X1_K_0[-1]
+        beta = gamma_mean / gamma_var
+        alpha = gamma_mean * beta
+        X1_truncation = np.random.gamma(alpha, 1 / beta)
+        # X1_truncation = np.random.normal(loc=gamma_mean, scale=np.sqrt(gamma_var))
+        X1 = X1_main + X1_truncation
+
+        return X1
+
+
+    def generate_X2_and_Z_AW(self, mu_X2_0, sigma_square_X2_0, ncx_df, texp, num_rv):
+        """
+        Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        mu_X2_0:  float
+            mean of X2 from formula(4.2)
+        sigma_square_X2_0: float
+            variance of X2 from formula(4.3)
+        ncx_df: float
+            a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
+        texp: float
+            time-to-expiry
+        num_rv: int
+            number of random variables you want to generate
+
+        Returns
+        -------
+         an 1-d array with shape (num_rv,), random variables X2 or Z
+        """
+
+        mu_X2 = ncx_df * mu_X2_0
+        sigma_square_X2 = ncx_df * sigma_square_X2_0
+
+        mu_e = mu_X2 + 14 * np.sqrt(sigma_square_X2)
+        w = 0.01
+        M = 200
+        xi = w * mu_X2 + np.arange(M + 1) / M * (mu_e - w * mu_X2)  # x1,...,x M+1
+        L = lambda x: np.sqrt(2 * self.vov ** 2 * x + self.mr ** 2)
+        fha_2 = lambda x: (L(x) / self.mr * (np.sinh(0.5 * self.mr * texp) / np.sinh(0.5 * L(x) * texp))) ** (
+                    0.5 * ncx_df)
+        fha_2_vec = np.vectorize(fha_2)
+        err_limit = np.pi * 1e-5 * 0.5  # the up limit error of distribution Fx1(x)
+
+        h = 2 * np.pi / (xi + mu_e)
+        # increase N to make truncation error less than up limit error, N is sensitive to xi and the model parameter
+        F_X2_part = np.zeros(len(xi))
+        for pos in range(len(xi)):
+            Nfunc = lambda N: abs(fha_2(-1j * h[pos] * N)) - err_limit * N
+            N = int(spop.brentq(Nfunc, 0, 5000)) + 1
+            N_all = np.arange(1, N + 1)
+            F_X2_part[pos] = np.sum(np.sin(h[pos] * xi[pos] * N_all) * fha_2_vec(-1j * h[pos] * N_all).real / N_all)
+
+        F_X2 = (h * xi + 2 * F_X2_part) / np.pi
+
+        # Next we can sample from this tabulated distribution using linear interpolation
+        rv_uni = np.random.uniform(size=num_rv)
+        xi = np.insert(xi, 0, 0.)
+        F_X2 = np.insert(F_X2, 0, 0.)
+        F_X2_inv = interpolate.interp1d(F_X2, xi, kind="slinear")
+        X2 = F_X2_inv(rv_uni)
+
+        return X2
+
+    def generate_eta(self, v, z):
+        """
+        generate Bessel random variables from inverse of CDF, formula(2.4) in George and Dimitris (2010)
+
+        Parameters
+        ----------
+        v:  float
+            parameter in Bessel distribution
+        z: an 1-d array with shape (n_paths,)
+            parameter in Bessel distribution
+
+        Returns
+        -------
+         an 1-d array with shape (n_paths,), Bessel random variables eta
+        """
+
+        p0 = np.power(0.5 * z, v) / (spsp.iv(v, z) * math.gamma(v + 1))
+        temp = np.arange(1, 31)[:, None]  # Bessel distribution has sort tail, 30 maybe enough
+        p = z ** 2 / (4 * temp * (temp + v))
+        p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
+        rv_uni = np.random.uniform(size=len(z))
+        eta = np.sum(p < rv_uni, axis=0)
+
+        return eta
+
+    def generate_X2_and_Z_gamma_expansion(self, ncx_df, texp, num_rv):
+        """
+        Simulation of X2 or Z using truncated Gamma expansion in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        ncx_df: float
+            a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
+        texp: float
+            time-to-expiry
+        num_rv: int
+            number of random variables you want to generate
+
+        Returns
+        -------
+         an 1-d array with shape (num_rv,), random variables X2 or Z
+        """
+
+        range_K = np.arange(1, self.KK + 1)
+        temp = 4 * np.pi ** 2 * range_K ** 2
+        gamma_n = (self.mr ** 2 * texp ** 2 + temp) / (2 * self.vov ** 2 * texp ** 2)
+
+        rv_gamma = np.random.gamma(0.5 * ncx_df, 1, size=(num_rv, self.KK))
+        X2_main = np.sum(rv_gamma / gamma_n, axis=1)
+
+        gamma_mean = ncx_df * (self.vov * texp) ** 2 / (4 * np.pi ** 2 * self.KK)
+        gamma_var = ncx_df * (self.vov * texp) ** 4 / (24 * np.pi ** 4 * self.KK ** 3)
+        beta = gamma_mean / gamma_var
+        alpha = gamma_mean * beta
+        X2_truncation = np.random.gamma(alpha, 1 / beta, size=num_rv)
+        X2 = X2_main + X2_truncation
+
+        return X2
