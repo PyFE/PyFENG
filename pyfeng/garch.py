@@ -17,7 +17,11 @@ class GarchApproxUncor(sv.SvABC):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        V0, mr, vov, theta = self.sigma, self.mr, self.vov, self.theta
+
+        if not np.isclose(self.rho, 0.0):
+            print(f"Pricing ignores rho = {self.rho}.")
+
+        var0, mr, vov, theta = self.sigma, self.mr, self.vov, self.theta
 
         mr2 = mr * mr
         vov2 = vov * vov
@@ -25,25 +29,21 @@ class GarchApproxUncor(sv.SvABC):
         decay = np.exp(-mr * texp)
 
         # Eq (12) of Barone-Adesi et al. (2005)
-        M1 = theta + (V0 - theta) * (1 - decay) / (mr * texp)
+        M1 = theta + (var0 - theta) * (1 - decay) / (mr * texp)
 
         term1 = vov2 - mr
-        term2 = vov2 - 2 * mr
+        term2 = vov2 - 2*mr
 
         # Eq (13)
-        M2c_1 = - (decay * (V0 - theta)) ** 2
-        M2c_2 = 2 * np.exp(term2 * texp) * (2 * mr * theta * (mr * theta + term2 * V0) + term1 * term2 * V0 ** 2)
-        M2c_3 = -vov2 * (theta2 * (4 * mr * (3 - texp * mr) + (2 * texp * mr - 5) * vov2)
-                               + 2 * theta * term2 * V0 + term2 * V0 ** 2)
+        M2c_1 = - (decay * (var0 - theta)) ** 2
+        M2c_2 = 2*np.exp(term2 * texp) * (2*mr * theta * (mr * theta + term2 * var0) + term1 * term2 * var0**2)
+        M2c_3 = -vov2 * (theta2 * (4*mr * (3 - texp * mr) + (2*texp * mr - 5) * vov2) + term2 * var0 * (2*theta + var0))
 
-        M2c_4 = 2 * decay * vov2 * mr2
-        M2c_4 *= 2 * theta2 * (texp * mr2 - (1 + texp * mr) * vov2) \
-                 + 2 * mr * theta * (1 + texp * term1) * V0 \
-                 + term1 * V0 ** 2
+        M2c_4 = 2*decay * vov2
+        M2c_4 *= 2*theta2 * (texp * mr2 - (1 + texp * mr) * vov2) \
+                 + var0 * (2*mr * theta * (1 + texp * term1) + term1 * var0)
 
-        M2c = M2c_1 / mr2 + M2c_2 / (term1 * term2) ** 2 + M2c_3 / mr2 / (term2) ** 2 \
-              + M2c_4 / (mr2 * term1) ** 2
-
+        M2c = M2c_1 / mr2 + M2c_2 / (term1 * term2)**2 + M2c_3 / mr2 / term2**2 + M2c_4 / mr2 / term1**2
         M2c /= texp ** 2
         # M3c=None
         # M4c=None
