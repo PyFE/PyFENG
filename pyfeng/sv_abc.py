@@ -21,11 +21,11 @@ class SvABC(smile.OptSmileABC, abc.ABC):
     ):
         """
         Args:
-            sigma: model volatility at t=0. variance = sigma**2
+            sigma: model volatility or variance at t=0.
             vov: volatility of volatility
             rho: correlation between price and volatility
             mr: mean-reversion speed (kappa)
-            theta: long-term mean of volatility. For variance process, use theta**2. If None, same as sigma
+            theta: long-term mean of volatility or variance. If None, same as sigma
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
@@ -59,6 +59,9 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rn_seed = None
     rng_array = [None, None]  # rng for (vol, price)
     antithetic = True
+
+    var_process = True
+    scheme = None
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
@@ -130,23 +133,26 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     @abc.abstractmethod
     def vol_paths(self, tobs):
         """
-        Volatility or variance paths at 0 and tobs.
+        Volatility (or variance) paths at 0 and tobs.
+        Variance is calculated if self.var_process = True
 
         Args:
-            tobs: observation time (array)
+            tobs: observation time (array). No need to include 0.
 
         Returns:
             2d array of (time, path)
+
         """
 
         return np.ones(size=(len(tobs), self.n_path))
 
     @abc.abstractmethod
-    def cond_fwd_vol(self, texp):
+    def cond_spot_sigma(self, texp):
         """
         Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
         The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
-        Therefore, they should be scaled by the original F_0 and sigma_0 values
+        Therefore, they should be scaled by the original F_0 and sigma_0 values.
+        Volatility, not variance, is returned.
 
         Args:
             texp: time-to-expiry
@@ -154,7 +160,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns: (forward, volatility)
         """
 
-        return np.ones(self.n_path), self.sigma * np.ones(self.n_path)
+        return np.ones(self.n_path), np.ones(self.n_path)
 
     def price(self, strike, spot, texp, cp=1):
 
@@ -162,9 +168,10 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         scalar_output = np.isscalar(kk)
         kk = np.atleast_1d(kk)
 
-        fwd_cond, vol_cond = self.cond_fwd_vol(texp)
+        fwd_cond, sigma_cond = self.cond_spot_sigma(texp)
 
-        base_model = self.base_model(self.sigma * vol_cond)
+        sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
+        base_model = self.base_model(sigma * sigma_cond)
         price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
 
         price = spot * np.mean(price_grid, axis=1)

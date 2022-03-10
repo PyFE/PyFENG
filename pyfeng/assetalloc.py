@@ -73,7 +73,8 @@ class RiskParity(AssetAllocABC):
     Risk parity (equal risk contribution) asset allocation.
 
     References:
-        - Maillard, S., Roncalli, T., & Teïletche, J. (2010). The Properties of Equally Weighted Risk Contribution Portfolios. The Journal of Portfolio Management, 36(4), 60–70. https://doi.org/10.3905/jpm.2010.36.4.060
+        - Maillard S, Roncalli T, Teïletche J (2010) The Properties of Equally Weighted Risk Contribution Portfolios. The Journal of Portfolio Management 36:60–70. https://doi.org/10.3905/jpm.2010.36.4.060
+        - Choi J, Chen R (2022) Improved iterative methods for solving risk parity portfolio. Journal of Derivatives and Quantitative Studies 30. https://doi.org/10.1108/JDQS-12-2021-0031
 
     Examples:
         >>> import numpy as np
@@ -155,6 +156,9 @@ class RiskParity(AssetAllocABC):
 
         Returns:
             risk parity weight
+
+        References:
+            - Choi J, Chen R (2022) Improved iterative methods for solving risk parity portfolio. Journal of Derivatives and Quantitative Studies 30. https://doi.org/10.1108/JDQS-12-2021-0031
         """
 
         cor = self.cor_m
@@ -184,7 +188,7 @@ class RiskParity(AssetAllocABC):
 
     def weight_ccd_original(self, tol=1e-6):
         """
-        Risk parity weight using original CCD method of Griveau-Billion et al. (2013).
+        Risk parity weight using original CCD method of Griveau-Billion et al (2013).
         This is implemented for performance comparison. Use weight() for better performance.
 
         Args:
@@ -194,7 +198,7 @@ class RiskParity(AssetAllocABC):
             risk parity weight
 
         References:
-            - Griveau-Billion, T., Richard, J.-C., & Roncalli, T. (2013). A Fast Algorithm for Computing High-dimensional Risk Parity Portfolios. ArXiv:1311.4057 [q-Fin]. http://arxiv.org/abs/1311.4057
+            - Griveau-Billion T, Richard J-C, Roncalli T (2013) A Fast Algorithm for Computing High-dimensional Risk Parity Portfolios. arXiv:13114057 [q-fin]
 
         """
 
@@ -236,7 +240,7 @@ class RiskParity(AssetAllocABC):
 
     def weight_newton(self, tol=1e-6):
         """
-        Risk parity weight using Newton method
+        Risk parity weight using the 'improved' Newton method by Choi & Chen (2022).
         This is implemented for performance comparison. Use weight() for better performance.
 
         Args:
@@ -246,8 +250,8 @@ class RiskParity(AssetAllocABC):
             risk parity weight
 
         References:
-            - Spinu, F. (2013). An Algorithm for Computing Risk Parity Weights (SSRN Scholarly Paper ID 2297383). Social Science Research Network. https://doi.org/10.2139/ssrn.2297383
-
+            - Spinu F (2013) An Algorithm for Computing Risk Parity Weights. SSRN Electronic Journal. https://doi.org/10.2139/ssrn.2297383
+            - Choi J, Chen R (2022) Improved iterative methods for solving risk parity portfolio. Journal of Derivatives and Quantitative Studies 30. https://doi.org/10.1108/JDQS-12-2021-0031
         """
         cor = self.cor_m
 

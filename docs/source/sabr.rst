@@ -1,4 +1,4 @@
-Stochastic Alpha Beta Rho
+Stochastic-Alpha-Beta-Rho (SABR) Model
 ==========================
 .. automodule:: pyfeng.sabr
    :members: SabrHagan2002, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P, SabrUncorrChoiWu2021
