@@ -140,8 +140,9 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far
     """
+    dist = 0
 
-    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True):
+    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, dist=0):
         """
         Set MC parameters
 
@@ -149,12 +150,14 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
             n_path: number of paths
             rn_seed: random number seed
             antithetic: antithetic
+            dist: distribution to use for approximation. 0 for inverse Gaussian (default), 1 for lognormal.
         """
         self.n_path = int(n_path)
         self.rn_seed = rn_seed
         self.antithetic = antithetic
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
+        self.dist = dist
 
     def vol_paths(self, tobs):
         return np.ones(size=(len(tobs), self.n_path))
@@ -197,11 +200,12 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         var_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, self.n_path)
         return var_t
 
-    def ch_f(self, texp, var_final):
+    def ch_f(self, aa, texp, var_final):
         """
             Characteristic function
 
         Args:
+            aa: dummy variable in the transformation
             texp: time to expiry
             var_final: volatility at time T
 
@@ -209,47 +213,31 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
             ch_f: characteristic function of the distribution of integral sigma_t
         """
 
-        chi_dim = self.chi_dim()
         var_0 = self.sigma
+        vov2 = self.vov ** 2
+        iv_index = 0.5 * self.chi_dim() - 1
 
-        gamma_f = lambda a: np.sqrt(self.mr ** 2 - 2 * self.vov ** 2 * a * 1j)
-        temp_f = lambda a: gamma_f(a) * texp
+        gamma = np.sqrt(self.mr ** 2 - 2 * vov2 * aa * 1j)
+        #decay = np.exp(-self.mr * texp)
+        #decay_gamma = np.exp(-gamma * texp)
 
-        ch_f_part_1 = (
-            lambda a: gamma_f(a)
-            * np.exp(-0.5 * (temp_f(a) - self.mr * texp))
-            * (1 - np.exp(-self.mr * texp))
-            / (self.mr * (1 - np.exp(-temp_f(a))))
-        )
+        var_mean = np.sqrt(var_0 * var_final)
+        phi_mr = 2 * self.mr / vov2 / np.sinh(self.mr * texp / 2)
+        cosh_mr = np.cosh(self.mr * texp / 2)
 
-        ch_f_part_2 = lambda a: np.exp(
-            (var_0 + var_final)
-            / self.vov ** 2
-            * (
-                self.mr
-                * (1 + np.exp(-self.mr * texp))
-                / (1 - np.exp(-self.mr * texp))
-                - gamma_f(a) * (1 + np.exp(-temp_f(a))) / (1 - np.exp(-temp_f(a)))
-            )
-        )
+        phi_gamma = 2 * gamma / vov2 / np.sinh(gamma * texp / 2)
+        cosh_gamma = np.cosh(gamma * texp / 2)
 
-        ch_f_part_3 = lambda a: spsp.iv(
-            0.5 * chi_dim - 1,
-            np.sqrt(var_0 * var_final)
-            * 4
-            * gamma_f(a)
-            * np.exp(-0.5 * temp_f(a))
-            / (self.vov ** 2 * (1 - np.exp(-temp_f(a)))),
-        ) / spsp.iv(
-            0.5 * chi_dim - 1,
-            np.sqrt(var_0 * var_final)
-            * 4
-            * self.mr
-            * np.exp(-0.5 * self.mr * texp)
-            / (self.vov ** 2 * (1 - np.exp(-self.mr * texp))),
-        )
+        #part1 = gamma * np.exp(-0.5 * (gamma * texp - self.mr * texp)) * (1 - decay) / (self.mr * (1 - decay_gamma))
+        part1 = phi_gamma / phi_mr
 
-        ch_f = lambda a: ch_f_part_1(a) * ch_f_part_2(a) * ch_f_part_3(a)
+        #part2 = np.exp((var_0 + var_final) / vov2
+        #    * (self.mr * (1 + decay) / (1 - decay) - gamma * (1 + decay_gamma) / (1 - decay_gamma)))
+        part2 = np.exp((var_0 + var_final)*(cosh_mr*phi_mr - cosh_gamma*phi_gamma)/2)
+
+        part3 = spsp.iv(iv_index, var_mean * phi_gamma) / spsp.iv(iv_index, var_mean * phi_mr)
+
+        ch_f = part1 * part2 * part3
         return ch_f
 
 
@@ -259,19 +247,23 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         rhoc = np.sqrt(1.0 - self.rho ** 2)
 
         var_final = self.var_final(texp)
-        ch_f = self.ch_f(texp, var_final)
 
-        moment_1st = (derivative(ch_f, 0, n=1, dx=1e-5) / 1j).real
-        moment_2st = (derivative(ch_f, 0, n=2, dx=1e-5) / (1j ** 2)).real
+        def ch_f(aa):
+            return self.ch_f(aa, texp, var_final)
 
-        #if dis_can == "Inverse-Gaussian":
-        #    scale_ig = moment_1st ** 3 / (moment_2st - moment_1st ** 2)
-        #    miu_ig = moment_1st / scale_ig
-        #    int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig)
-        #elif dis_can == "Log-normal":
-        scale_ln = np.sqrt(np.log(moment_2st) - 2 * np.log(moment_1st))
-        miu_ln = np.log(moment_1st) - 0.5 * scale_ln ** 2
-        int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
+        moment_1st = derivative(ch_f, 0, n=1, dx=1e-5).imag
+        moment_2st = -derivative(ch_f, 0, n=2, dx=1e-5).real
+
+        if self.dist == 0:
+            scale_ig = moment_1st ** 3 / (moment_2st - moment_1st ** 2)
+            miu_ig = moment_1st / scale_ig
+            int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig) / texp
+        elif self.dist == 1:
+            scale_ln = np.sqrt(np.log(moment_2st) - 2 * np.log(moment_1st))
+            miu_ln = np.log(moment_1st) - 0.5 * scale_ln ** 2
+            int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
+        else:
+            raise ValueError(f"Incorrect distribution.")
 
         ### Common Part
         int_var_dw = ((var_final - var0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
