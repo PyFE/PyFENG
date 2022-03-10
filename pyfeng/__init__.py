@@ -33,5 +33,8 @@ from .ousv import OusvIFT, OusvCondMC
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .asian import BsmAsianLinetsky2004, BsmAsianJsu
 
+# SV models
+from .heston_mc import HestonCondMcQE
+
 # Asset Allocation
 from .assetalloc import RiskParity
