@@ -33,7 +33,7 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
         log_sig_s = np.insert(log_sig_s, 0, np.zeros(log_sig_s.shape[1]), axis=0)
         return np.exp(log_sig_s), log_rn_deriv
 
-    def cond_fwd_vol(self, texp, mu=0):
+    def cond_spot_sigma(self, texp, mu=0):
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         rho_sigma = self.rho * self.sigma
 
@@ -58,7 +58,7 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)
-        fwd_cond, vol_cond, log_rn_deriv = self.cond_fwd_vol(texp)
+        fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma(texp)
         if np.isclose(self.beta, 0):
             base_model = self._m_base(self.sigma * vol_cond, is_fwd=True)
             price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
@@ -88,7 +88,7 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
             mu = 0.5 * (vov_std + np.log(1 + eta ** 2) / vov_std)
             # print(f'mu = {mu}')
 
-        fwd_cond, vol_cond, log_rn_deriv = self.cond_fwd_vol(texp, mu=mu)
+        fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma(texp, mu=mu)
         base_model = cev.Cev(sigma=self.sigma * vol_cond, beta=self.beta)
         if log:
             log_mass_grid = base_model.mass_zero(spot, texp, log=True) + log_rn_deriv

@@ -20,7 +20,9 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
     """
 
-    def vol_paths(self, tobs, n_path=None):
+    var_process = True
+
+    def vol_paths(self, tobs):
         """
         Milstein Schemes:
         w_(t+dt) = w_t + (mr * theta * exp(-w_t) - mr - vov^2 / 2) * dt + vov * Z * sqrt(dt)
@@ -31,11 +33,11 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
             Z : std normal distributed RN
             dt : delta t, time step
 
-        Returns: volatility path (time, path) including the value at t=0
+        Returns: Variance path (time, path) including the value at t=0
         """
         n_dt = len(tobs)
-        n_path = n_path or self.n_path
-        rn_norm = self.rng.normal(size=(n_dt, int(n_path)))
+        n_path = self.n_path
+        rn_norm = self._bm_incr(tobs=np.arange(1, n_dt + 0.1), cum=False)
 
         w_t = np.zeros((n_dt + 1, int(n_path)))
         w_t[0, :] = 2 * np.log(self.sigma)
@@ -52,32 +54,19 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
                 + self.vov * np.sqrt(self.dt) * rn_norm[i - 1, :]
             )
 
-        v_t = np.exp(w_t)
+        return np.exp(w_t)
 
-        return v_t
+    def cond_spot_sigma(self, texp):
 
-    def cond_fwd_vol(self, texp):
-        """
-        Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
-        The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
-        Therefore, they should be scaled by the original F_0 and sigma_0 values
-
-        Args:
-            theta: the long term average
-            mr: coefficient of dt
-            texp: time-to-expiry
-
-        Returns: (forward, volatility)
-        """
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         tobs = self.tobs(texp)
         n_dt = len(tobs)
-        v_paths = self.vol_paths(tobs)
-        sigma_paths = np.sqrt(v_paths)
+        var_paths = self.vol_paths(tobs)
+        sigma_paths = np.sqrt(var_paths)
         sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=texp / n_dt, axis=0)
-        int_var = scint.simps(sigma_paths ** 2, dx=texp / n_dt, axis=0)
-        int_sigma_inv = scint.simps(1 / sigma_paths, dx=texp / n_dt, axis=0)
+        int_sigma = scint.simps(sigma_paths, dx=1, axis=0) * texp/n_dt
+        int_var = scint.simps(var_paths, dx=1, axis=0) * texp/n_dt
+        int_sigma_inv = scint.simps(1/sigma_paths, dx=1, axis=0) * texp/n_dt
 
         fwd_cond = np.exp(
             self.rho
@@ -89,33 +78,6 @@ class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
             )
         )  # scaled by initial value
 
-        vol_cond = rhoc * np.sqrt(int_var / texp)
+        sigma_cond = rhoc * np.sqrt(int_var)
 
-        return fwd_cond, vol_cond
-
-    def price(self, strike, spot, texp, cp=1):
-        """
-        Calculate option price based on BSM
-        Args:
-            strike: strike price
-            spot: spot price
-            texp: time to maturity
-            cp: cp=1 if call option else put option
-
-        Returns: price
-        """
-        price = []
-        texp = [texp] if isinstance(texp, (int, float)) else texp
-        for t in texp:
-            kk = strike / spot
-            kk = np.atleast_1d(kk)
-
-            fwd_cond, vol_cond = self.cond_fwd_vol(t)
-
-            base_model = self.base_model(vol_cond)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp=t, cp=cp)
-
-            np.set_printoptions(suppress=True, precision=6)
-            price.append(spot * np.mean(price_grid, axis=1))  # in cond_fwd_vol, S_0 = 1
-
-        return np.array(price).T
+        return fwd_cond, sigma_cond

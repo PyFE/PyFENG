@@ -20,6 +20,8 @@ class OusvIFT(sv.SvABC):
         array([21.41873, 15.16798, 10.17448])
     """
 
+    var_process = False
+
     def D_B_C(self, s1, s2, s3, texp):
         # implement the formula for D(t,T), B(t,T), C(t,T) in paper appendix
         mr, theta, vov = self.mr, self.theta, self.vov
@@ -107,6 +109,8 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
     The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T
     """
 
+    var_process = False
+
     def vol_paths(self, tobs):
         # 2d array of (time, path) including t=0
         exp_tobs = np.exp(self.mr * tobs)
@@ -118,28 +122,17 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         sigma_t = np.insert(sigma_t, 0, self.sigma, axis=0)
         return sigma_t
 
-    def cond_fwd_vol(self, texp):
-        """
-        Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
-        The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
-        Therefore, they should be scaled by the original F_0 and sigma_0 values
+    def cond_spot_sigma(self, texp):
 
-        Args:
-            theta: the long term average
-            mr: coefficient of dt
-            texp: time-to-expiry
-
-        Returns: (forward, volatility)
-        """
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         tobs = self.tobs(texp)
         n_dt = len(tobs)
         sigma_paths = self.vol_paths(tobs)
         sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=texp / n_dt, axis=0)
-        int_var = scint.simps(sigma_paths ** 2, dx=texp / n_dt, axis=0)
+        int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
+        int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
 
-        fwd_cond = np.exp(
+        spot_cond = np.exp(
             self.rho
             * (
                 (sigma_final ** 2 - self.sigma ** 2) / (2 * self.vov)
@@ -150,6 +143,6 @@ class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
         )  # scaled by initial value
 
         # scaled by initial volatility
-        vol_cond = rhoc * np.sqrt(int_var) / (self.sigma * np.sqrt(texp))
+        sigma_cond = rhoc * np.sqrt(int_var) / self.sigma
 
-        return fwd_cond, vol_cond
+        return spot_cond, sigma_cond
