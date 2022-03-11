@@ -38,3 +38,6 @@ from .heston_mc import HestonCondMcQE
 
 # Asset Allocation
 from .assetalloc import RiskParity
+
+# Other utilities
+from .mgf2mom import Mgf2Mom
