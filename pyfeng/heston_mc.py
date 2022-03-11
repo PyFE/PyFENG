@@ -200,10 +200,10 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         chi_lambda = self.chi_lambda(texp)
 
         cof = self.vov ** 2 * (1 - np.exp(-self.mr * texp)) / (4 * self.mr)
-        var_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, self.n_path)
+        var_t = cof * self.rng.noncentral_chisquare(df=chi_dim, nonc=chi_lambda, size=self.n_path)
         return var_t
 
-    def ch_f(self, aa, texp, var_final):
+    def mgf(self, aa, texp, var_final):
         """
             Characteristic function
 
@@ -220,7 +220,7 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         vov2 = self.vov ** 2
         iv_index = 0.5 * self.chi_dim() - 1
 
-        gamma = np.sqrt(self.mr ** 2 - 2 * vov2 * aa * 1j)
+        gamma = np.sqrt(self.mr ** 2 - 2 * vov2 * aa)
         #decay = np.exp(-self.mr * texp)
         #decay_gamma = np.exp(-gamma * texp)
 
@@ -251,20 +251,24 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
 
         var_final = self.var_final(texp)
 
-        def ch_f(aa):
-            return self.ch_f(aa, texp, var_final)
+        # conditional MGF function
+        def mgf_cond(aa):
+            return self.mgf(aa, texp, var_final)
 
-        moment_1st = derivative(ch_f, 0, n=1, dx=1e-5).imag
-        moment_2st = -derivative(ch_f, 0, n=2, dx=1e-5).real
+        # Get the first 2 moments
+        m1 = derivative(mgf_cond, 0, n=1, dx=1e-5)
+        m2 = derivative(mgf_cond, 0, n=2, dx=1e-5)
 
         if self.dist == 0:
-            scale_ig = moment_1st ** 3 / (moment_2st - moment_1st ** 2)
-            miu_ig = moment_1st / scale_ig
-            int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig) / texp
+            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+            # RNG.wald takes the same parameters
+            mu = m1
+            lam = m1 ** 3 / (m2 - m1 ** 2)
+            int_var_std = self.rng.wald(mean=mu, scale=lam) / texp
         elif self.dist == 1:
-            scale_ln = np.sqrt(np.log(moment_2st) - 2 * np.log(moment_1st))
-            miu_ln = np.log(moment_1st) - 0.5 * scale_ln ** 2
-            int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
+            scale_ln = np.sqrt(np.log(m2) - 2 * np.log(m1))
+            miu_ln = np.log(m1) - 0.5 * scale_ln ** 2
+            int_var_std = self.rng.lognormal(mean=miu_ln, sigma=scale_ln) / texp
         else:
             raise ValueError(f"Incorrect distribution.")
 
