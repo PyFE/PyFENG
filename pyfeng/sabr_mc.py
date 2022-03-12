@@ -116,6 +116,28 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
     References:
         - Cai N, Song Y, Chen N (2017) Exact Simulation of the SABR Model. Oper Res 65:931–951. https://doi.org/10.1287/opre.2017.1617
     """
+    m_inv = 20
+    n_inv = 35
+
+    def set_mc_params(self, n_path=10000, m_inv=20, n_inv=35, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            m_inv: parameter M used in Laplace inversion
+            n_inv: parameter n used in Laplace inversion
+            rn_seed: random number seed
+            antithetic: antithetic
+        """
+        self.n_path = int(n_path)
+        self.m_inv = m_inv
+        self.n_inv = n_inv
+        self.dt = None
+        self.rn_seed = rn_seed
+        self.antithetic = antithetic
+        self.rn_seed = rn_seed
+        self.rng = np.random.default_rng(rn_seed)
 
     def vol_paths(self, tobs, mu=0):
         return None
@@ -131,7 +153,9 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         -------
         vol at maturity
         """
-        zz = self.rng.normal(size=self.n_path)
+        zz = self.rng.normal(size=self.n_path//2)
+        zz = np.hstack([zz, -zz])
+
         sigma_T = np.exp(vovn * (zz - vovn/2))
         return sigma_T
 
@@ -158,31 +182,31 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         denominator = 2 * vovn ** 2
         return 1 / theta * np.exp(-numerator / denominator)
 
-    def inv_laplace(self, texp, sigma_T, u, m=20, n=35):
+    def inv_laplace(self, u, vovn, sigma_T):
         '''
         Eq. (16) in the article
         Return the original function from transform function
         Parameters
         ----------
-        texp: time to expiration
+        u: variable
+        vovn: vov * sqrt(texp)
         sigma_T: simulated sigma at time of expiration
-        u: the u of original function
         Returns
         -------
         original functions with parameter u
         '''
 
-        sum_term = np.zeros(m + 1)
-        comb_vec = np.frompyfunc(spsp.comb, 2, 1)
-        comb_term = comb_vec(m, np.arange(0, m + 1)).astype(int)
-        for i in range(0, m + 1):
-            sum_term[i] = np.sum(
-                (-1) ** np.arange(0, n + i + 1) * self.cond_laplace((m - 2j * np.pi * np.arange(0, n + i + 1)) / u,
-                                                                    texp, sigma_T).real)
-        Euler_term = np.sum(comb_term * sum_term * 2 ** (-m))
+        ## index from 0 to m + n
+        nn = np.arange(0, self.m_inv + self.n_inv + 0.1)
+        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * nn) / u, vovn, sigma_T).real
+        term1 = 0.5 * ss_j[0]
+        ss_j[1::2] *= -1
+        np.cumsum(ss_j, out=ss_j)
 
-        origin_L = 1 / (2 * u) * self.cond_laplace(m / (2 * u), texp, sigma_T).real \
-                   * np.exp(m / 2) + Euler_term / u * np.exp(m / 2) - np.exp(-m)
+        comb_coef = spsp.comb(self.m_inv, np.arange(0, self.m_inv+0.1)) * np.power(0.5, self.m_inv)
+        term2 = np.sum(comb_coef * ss_j[self.n_inv:])
+
+        origin_L = np.exp(self.m_inv/2) / u * (-term1 + term2)
 
         return origin_L
 
@@ -199,13 +223,12 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         (sigma at the time of expiration, Exact integrated variance)
         """
 
-        _u = self.rng.uniform(size=self.n_path)
+        u_rn = self.rng.uniform(size=self.n_path)
         int_var = np.zeros(self.n_path)
         sigma_final = self.sigma_final(vovn)
 
         for i in range(self.n_path):
-            Lh_func = partial(self.inv_laplace, vovn, sigma_final[i])
-            obj_func = lambda x: Lh_func(x) - _u[i]
+            obj_func = lambda x: self.inv_laplace(x, vovn, sigma_final[i]) - u_rn[i]
             sol = spop.root(obj_func, 1 / vovn ** 3)
             int_var[i] = 1 / sol.x
         return sigma_final, int_var
