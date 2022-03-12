@@ -109,17 +109,21 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
             return mass
 
 
-class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
+class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
     """
-    SABR model with exact simulation
+    Cai et al (2017)'s exact simulation of the SABR model
+
     References:
-    Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model.
-    Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
+        - Cai N, Song Y, Chen N (2017) Exact Simulation of the SABR Model. Oper Res 65:931–951. https://doi.org/10.1287/opre.2017.1617
     """
 
-    def simu_sigma_T(self, sigma_0, texp):
+    def vol_paths(self, tobs, mu=0):
+        return None
+
+    def sigma_final(self, vovn):
         """
-        Volatility at maturity.
+        Final Sigma
+
         Parameters
         ----------
         texp: time to expiry
@@ -127,35 +131,36 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         -------
         vol at maturity
         """
-        zz = np.random.normal(size=self.n_path)
-        sigma_T = sigma_0 * np.exp(-1 / 2 * self.vov ** 2 * texp + self.vov * zz * np.sqrt(texp))
+        zz = self.rng.normal(size=self.n_path)
+        sigma_T = np.exp(vovn * (zz - vovn/2))
         return sigma_T
 
-    def laplace_tranfrom(self, theta, texp, sigma_T):
+    def cond_laplace(self, theta, vovn, sigma_T):
         """
-        formula (15) in the article
+        Eq. (15) of the paper
         Return the laplace transform function
-        Parameters
-        ----------
-        theta: represent the input variable
-        texp: time-to-expiry
-        Returns
-        -------
-        (Laplace transform function)
+
+        Args:
+            theta: dummy variable
+            vovn: vov * sqrt(texp)
+            sigma_T: normalized sigma final
+
+        Returns:
+            (Laplace transform function)
         """
 
-        l = theta * self.vov ** 2 / self.sigma ** 2
-        x = np.log(sigma_T / self.sigma)
-        z = l * np.exp(-x) + np.cosh(x)
+        lam = theta * vovn**2
+        x = np.log(sigma_T)
+        z = lam/sigma_T + 0.5*(sigma_T + 1/sigma_T)
         phi_value = np.log(z + np.sqrt(z ** 2 - 1))
 
         numerator = phi_value ** 2 - x ** 2
-        denominator = 2 * (self.vov ** 2) * texp
+        denominator = 2 * vovn ** 2
         return 1 / theta * np.exp(-numerator / denominator)
 
-    def origin_func(self, texp, sigma_T, u, m=20, n=35):
+    def inv_laplace(self, texp, sigma_T, u, m=20, n=35):
         '''
-        formula (16) in the article
+        Eq. (16) in the article
         Return the original function from transform function
         Parameters
         ----------
@@ -166,61 +171,61 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         -------
         original functions with parameter u
         '''
-        Euler_term = np.zeros(self.n_path)
+
         sum_term = np.zeros(m + 1)
         comb_vec = np.frompyfunc(spsp.comb, 2, 1)
         comb_term = comb_vec(m, np.arange(0, m + 1)).astype(int)
         for i in range(0, m + 1):
             sum_term[i] = np.sum(
-                (-1) ** np.arange(0, n + i + 1) * self.laplace_tranfrom((m - 2j * np.pi * np.arange(0, n + i + 1)) / u,
-                                                                        texp, sigma_T).real)
+                (-1) ** np.arange(0, n + i + 1) * self.cond_laplace((m - 2j * np.pi * np.arange(0, n + i + 1)) / u,
+                                                                    texp, sigma_T).real)
         Euler_term = np.sum(comb_term * sum_term * 2 ** (-m))
 
-        origin_L = 1 / (2 * u) * self.laplace_tranfrom(m / (2 * u), texp, sigma_T).real \
+        origin_L = 1 / (2 * u) * self.cond_laplace(m / (2 * u), texp, sigma_T).real \
                    * np.exp(m / 2) + Euler_term / u * np.exp(m / 2) - np.exp(-m)
 
         return origin_L
 
-    def conditional_state(self, texp):
+    def conditional_state(self, vovn):
         """
         Return Exact integrated variance from samples of disturibution
         The returns values are for sigma_0 = self.sigma and t = T
         Parameters
         ----------
-        texp: float
+        vovn: float
             time-to-expiry
         Returns
         -------
         (sigma at the time of expiration, Exact integrated variance)
         """
-        _u = np.random.uniform(size=self.n_path)
+
+        _u = self.rng.uniform(size=self.n_path)
         int_var = np.zeros(self.n_path)
-        sigma_final = self.simu_sigma_T(self.sigma, texp)
+        sigma_final = self.sigma_final(vovn)
+
         for i in range(self.n_path):
-            Lh_func = partial(self.origin_func, texp, sigma_final[i])
+            Lh_func = partial(self.inv_laplace, vovn, sigma_final[i])
             obj_func = lambda x: Lh_func(x) - _u[i]
-            sol = spop.root(obj_func, 1 / texp ** 3)
+            sol = spop.root(obj_func, 1 / vovn ** 3)
             int_var[i] = 1 / sol.x
         return sigma_final, int_var
 
-    def exact_fwd_vol(self, spot, texp):
-        """
-        Returns forward prices and volatility conditional on sigma at time of expiration  and integrated variance)
-        Parameters
-        ----------
-        spot: spot prices
-        texp: time-to-expiry
-        Returns
-        -------
-        (forward price, volatility)
-        """
-        assert abs(self.beta - 1.0) < 1e-8
+    def cond_spot_sigma(self, texp):
 
         rhoc = np.sqrt(1.0 - self.rho ** 2)
-        sigma_final, int_var = self.conditional_state(texp)
-        fwd_exact = spot * np.exp(self.rho / self.vov * (sigma_final - self.sigma) - 0.5 * self.rho ** 2 * int_var)
-        vol_exact = rhoc * np.sqrt(int_var / texp)
-        return fwd_exact, vol_exact
+        rho_sigma = self.rho * self.sigma
+        vovn = self.vov * np.sqrt(texp)
+        sigma_final, int_var = self.conditional_state(vovn)
+
+        vol_cond = rhoc * np.sqrt(int_var)
+        if np.isclose(self.beta, 0):
+            fwd_cond = rho_sigma / self.vov * (sigma_final - 1)
+        else:
+            fwd_cond = np.exp(
+                rho_sigma * (1.0/self.vov * (sigma_final - 1) - 0.5 * rho_sigma * int_var * texp)
+            )
+        return fwd_cond, vol_cond
+
 
     # The algorithem below is about pricing when 0<=beta<1
     def simu_ST(self, beta, VT, spot):
@@ -236,7 +241,8 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         ----------
         cdf of a central chi2 distribution with x=A0, degree of freedom = 1/(1 - beta)
         '''
-        u_lst = np.random.uniform(size=self.n_path)
+
+        u_lst = self.rng.uniform(size=self.n_path)
         forward_ls = np.zeros(self.n_path)
 
         for i in range(self.n_path):
@@ -266,6 +272,7 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         ----------
         cdf of a central chi2 distribution with x=A0, degree of freedom = 1/(1 - beta)
         '''
+
         A0 = 1 / VT * (spot ** (1 - beta) / (1 - beta)) ** 2
         return spst.chi2.cdf(A0, 1 / (1 - beta))
 
@@ -286,8 +293,8 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         numerator = u ** (2 * (1 - beta))
         return 1 / VT * numerator / (1 - beta) ** 2
 
-    @staticmethod
-    def sabr_chi2_cdf(beta, VT, spot, u):
+    @classmethod
+    def sabr_chi2_cdf(cls, beta, VT, spot, u):
         '''
         Equation (18) in Cai(2017)'s paper
         calculate chi2_cdf only for sabr model
@@ -303,8 +310,8 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         cdf of the chi-square distribution specified by a sabr model's parameter and u
         '''
         A0 = 1 / VT * (spot ** (1 - beta) / (1 - beta)) ** 2  # Equation (6) in Cai's paper
-        C0 = SabrExactMcModel.C0_func(VT, beta, u)
-        return SabrExactMcModel.chi2_cdf_appr(A0, 1 / (1 - beta), C0)
+        C0 = cls.C0_func(VT, beta, u)
+        return cls.chi2_cdf_appr(A0, 1 / (1 - beta), C0)
 
     @staticmethod
     def chi2_cdf_appr(x, sigma, l):
@@ -398,9 +405,9 @@ class SabrExactMcModel(sabr.SabrABC, sv.CondMcBsmABC):
         if isinstance(strike, float):
             strike = np.array([strike])
         if self.beta == 1:
-            fwd_exact, vol_exact = self.exact_fwd_vol(spot, texp)
-            base_model = bsm.BsmModel(vol_exact[:, None], intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
-            price_grid = base_model.price(strike, fwd_exact[:, None], texp, cp_sign)
+            fwd_cond, vol_cond = self.cond_spot_sigma(texp)
+            base_model = self.base_model(vol_cond[:, None])
+            price_grid = base_model.price(strike, spot*fwd_cond[:, None], texp, cp_sign)
             price = np.mean(price_grid, axis=0)
             return price[0] if price.size == 1 else price
         else:  # 0 < beta < 1
