@@ -5,7 +5,7 @@ from . import sv_abc as sv
 from . import bsm
 
 
-class GarchApproxUncor(sv.SvABC):
+class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
     The implementation of Barone-Adesi et al (2004)'s approximation pricing formula for European
     options under uncorrelated (rho=0) GARCH diffusion model.
@@ -71,7 +71,7 @@ class GarchApproxUncor(sv.SvABC):
         return c_ga_2
 
 
-class GarchCondMC(sv.SvABC, sv.CondMcBsmABC):
+class GarchMcCond(sv.SvABC, sv.CondMcBsmABC):
     """
     Garch model with conditional Monte-Carlo simulation
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
