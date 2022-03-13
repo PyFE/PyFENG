@@ -120,7 +120,7 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
     fwd_cv = False
 
     @abc.abstractmethod
-    def fwd_vol_eff(self, fwd, texp):
+    def cond_spot_sigma(self, fwd, texp):
         # return (fwd, vol, weight) each 1d array
         pass
 
@@ -134,7 +134,7 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
         #else:
         kk = strike / fwd
 
-        fwd_eff, vol_eff, ww = self.fwd_vol_eff(fwd, texp)
+        fwd_eff, vol_eff, ww = self.cond_spot_sigma(fwd, texp)
         # print(f'E(F) = {np.sum(fwd_eff*ww)}')
         if self.fwd_cv:
             fwd_eff /= np.sum(fwd_eff*ww)
@@ -203,9 +203,7 @@ class SabrCondQuad(SabrCondDistABC):
         ww = ww[:, None]
         return zhat, ww
 
-    def cond_int_var(self, vovn, zhat, fwd):
-        betac = 1.0 - self.beta
-        alpha = self.sigma / np.power(fwd, betac) #if self.beta > 0.0 else self.sigma
+    def cond_int_var(self, vovn, zhat):
 
         m1 = self.condvar_m1(zhat, vovn)
         m2 = self.condvar_m2(zhat, vovn)
@@ -232,12 +230,12 @@ class SabrCondQuad(SabrCondDistABC):
         assert r_var.shape == w2.shape
         return r_var, r_vol, w2
 
-    def fwd_vol_eff(self, fwd, texp):
+    def cond_spot_sigma(self, fwd, texp):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
         rho_alpha = self.rho * alpha
 
         zhat, w0 = self.zhat_weight(vovn)  # column vectors
-        r_var, r_vol, w123 = self.cond_int_var(vovn, zhat, fwd)
+        r_var, r_vol, w123 = self.cond_int_var(vovn, zhat)
         w0123 = w0 * w123
 
         r_vol *= rhoc  # matrix
