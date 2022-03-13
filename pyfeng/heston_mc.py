@@ -9,7 +9,7 @@ from scipy.misc import derivative
 from . import sv_abc as sv
 
 
-class HestonCondMcQE(sv.SvABC, sv.CondMcBsmABC):
+class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
     """
     Heston model with conditional Monte-Carlo simulation
 
@@ -26,7 +26,7 @@ class HestonCondMcQE(sv.SvABC, sv.CondMcBsmABC):
         >>> strike = np.array([60, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pf.HestonCondMcQE(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_mc_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296

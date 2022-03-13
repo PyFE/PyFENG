@@ -12,7 +12,7 @@ from .sabr import (
     SabrChoiWu2021P,
 )
 from .sabr_int import SabrUncorrChoiWu2021
-from .sabr_mc import SabrCondMc
+from .sabr_mc import SabrMcCond
 from .nsvh import Nsvh1, NsvhMc
 from .multiasset import (
     BsmSpreadKirk,
@@ -27,10 +27,6 @@ from .multiasset import (
     BsmBasketJsu,
 )
 from .multiasset_mc import BsmNdMc, NormNdMc
-from .ousv import OusvIFT, OusvCondMC
-
-# SV models
-from .heston_mc import HestonCondMcQE
 
 # Asset Allocation
 from .assetalloc import RiskParity

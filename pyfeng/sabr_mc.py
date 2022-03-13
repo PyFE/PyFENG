@@ -10,7 +10,7 @@ from . import sv_abc as sv
 from . import cev
 
 
-class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
+class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
     """
     Conditional MC for SABR model (beta=0,1 or rho=0) with conditional Monte-Carlo simulation
 
