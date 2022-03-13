@@ -2,11 +2,14 @@ import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
 import scipy.integrate as spint
+import scipy.optimize as spop
+import math
+from scipy import interpolate
 from scipy.misc import derivative
 from . import sv_abc as sv
 
 
-class HestonCondMcQE(sv.SvABC, sv.CondMcBsmABC):
+class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
     """
     Heston model with conditional Monte-Carlo simulation
 
@@ -23,7 +26,7 @@ class HestonCondMcQE(sv.SvABC, sv.CondMcBsmABC):
         >>> strike = np.array([60, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pf.HestonCondMcQE(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_mc_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
@@ -140,8 +143,9 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far
     """
+    dist = 0
 
-    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True):
+    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, dist=0):
         """
         Set MC parameters
 
@@ -149,12 +153,14 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
             n_path: number of paths
             rn_seed: random number seed
             antithetic: antithetic
+            dist: distribution to use for approximation. 0 for inverse Gaussian (default), 1 for lognormal.
         """
         self.n_path = int(n_path)
         self.rn_seed = rn_seed
         self.antithetic = antithetic
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
+        self.dist = dist
 
     def vol_paths(self, tobs):
         return np.ones(size=(len(tobs), self.n_path))
@@ -194,14 +200,15 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         chi_lambda = self.chi_lambda(texp)
 
         cof = self.vov ** 2 * (1 - np.exp(-self.mr * texp)) / (4 * self.mr)
-        var_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, self.n_path)
+        var_t = cof * self.rng.noncentral_chisquare(df=chi_dim, nonc=chi_lambda, size=self.n_path)
         return var_t
 
-    def ch_f(self, texp, var_final):
+    def mgf(self, aa, texp, var_final):
         """
             Characteristic function
 
         Args:
+            aa: dummy variable in the transformation
             texp: time to expiry
             var_final: volatility at time T
 
@@ -209,47 +216,31 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
             ch_f: characteristic function of the distribution of integral sigma_t
         """
 
-        chi_dim = self.chi_dim()
         var_0 = self.sigma
+        vov2 = self.vov ** 2
+        iv_index = 0.5 * self.chi_dim() - 1
 
-        gamma_f = lambda a: np.sqrt(self.mr ** 2 - 2 * self.vov ** 2 * a * 1j)
-        temp_f = lambda a: gamma_f(a) * texp
+        gamma = np.sqrt(self.mr ** 2 - 2 * vov2 * aa)
+        #decay = np.exp(-self.mr * texp)
+        #decay_gamma = np.exp(-gamma * texp)
 
-        ch_f_part_1 = (
-            lambda a: gamma_f(a)
-            * np.exp(-0.5 * (temp_f(a) - self.mr * texp))
-            * (1 - np.exp(-self.mr * texp))
-            / (self.mr * (1 - np.exp(-temp_f(a))))
-        )
+        var_mean = np.sqrt(var_0 * var_final)
+        phi_mr = 2 * self.mr / vov2 / np.sinh(self.mr * texp / 2)
+        cosh_mr = np.cosh(self.mr * texp / 2)
 
-        ch_f_part_2 = lambda a: np.exp(
-            (var_0 + var_final)
-            / self.vov ** 2
-            * (
-                self.mr
-                * (1 + np.exp(-self.mr * texp))
-                / (1 - np.exp(-self.mr * texp))
-                - gamma_f(a) * (1 + np.exp(-temp_f(a))) / (1 - np.exp(-temp_f(a)))
-            )
-        )
+        phi_gamma = 2 * gamma / vov2 / np.sinh(gamma * texp / 2)
+        cosh_gamma = np.cosh(gamma * texp / 2)
 
-        ch_f_part_3 = lambda a: spsp.iv(
-            0.5 * chi_dim - 1,
-            np.sqrt(var_0 * var_final)
-            * 4
-            * gamma_f(a)
-            * np.exp(-0.5 * temp_f(a))
-            / (self.vov ** 2 * (1 - np.exp(-temp_f(a)))),
-        ) / spsp.iv(
-            0.5 * chi_dim - 1,
-            np.sqrt(var_0 * var_final)
-            * 4
-            * self.mr
-            * np.exp(-0.5 * self.mr * texp)
-            / (self.vov ** 2 * (1 - np.exp(-self.mr * texp))),
-        )
+        #part1 = gamma * np.exp(-0.5 * (gamma * texp - self.mr * texp)) * (1 - decay) / (self.mr * (1 - decay_gamma))
+        part1 = phi_gamma / phi_mr
 
-        ch_f = lambda a: ch_f_part_1(a) * ch_f_part_2(a) * ch_f_part_3(a)
+        #part2 = np.exp((var_0 + var_final) / vov2
+        #    * (self.mr * (1 + decay) / (1 - decay) - gamma * (1 + decay_gamma) / (1 - decay_gamma)))
+        part2 = np.exp((var_0 + var_final)*(cosh_mr*phi_mr - cosh_gamma*phi_gamma)/2)
+
+        part3 = spsp.iv(iv_index, var_mean * phi_gamma) / spsp.iv(iv_index, var_mean * phi_mr)
+
+        ch_f = part1 * part2 * part3
         return ch_f
 
 
@@ -259,19 +250,27 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         rhoc = np.sqrt(1.0 - self.rho ** 2)
 
         var_final = self.var_final(texp)
-        ch_f = self.ch_f(texp, var_final)
 
-        moment_1st = (derivative(ch_f, 0, n=1, dx=1e-5) / 1j).real
-        moment_2st = (derivative(ch_f, 0, n=2, dx=1e-5) / (1j ** 2)).real
+        # conditional MGF function
+        def mgf_cond(aa):
+            return self.mgf(aa, texp, var_final)
 
-        #if dis_can == "Inverse-Gaussian":
-        #    scale_ig = moment_1st ** 3 / (moment_2st - moment_1st ** 2)
-        #    miu_ig = moment_1st / scale_ig
-        #    int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig)
-        #elif dis_can == "Log-normal":
-        scale_ln = np.sqrt(np.log(moment_2st) - 2 * np.log(moment_1st))
-        miu_ln = np.log(moment_1st) - 0.5 * scale_ln ** 2
-        int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
+        # Get the first 2 moments
+        m1 = derivative(mgf_cond, 0, n=1, dx=1e-5)
+        m2 = derivative(mgf_cond, 0, n=2, dx=1e-5)
+
+        if self.dist == 0:
+            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+            # RNG.wald takes the same parameters
+            mu = m1
+            lam = m1 ** 3 / (m2 - m1 ** 2)
+            int_var_std = self.rng.wald(mean=mu, scale=lam) / texp
+        elif self.dist == 1:
+            scale_ln = np.sqrt(np.log(m2) - 2 * np.log(m1))
+            miu_ln = np.log(m1) - 0.5 * scale_ln ** 2
+            int_var_std = self.rng.lognormal(mean=miu_ln, sigma=scale_ln) / texp
+        else:
+            raise ValueError(f"Incorrect distribution.")
 
         ### Common Part
         int_var_dw = ((var_final - var0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
@@ -280,3 +279,232 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
+
+
+class HestonMcExactGK(HestonMcAe):
+
+    KK = 1
+
+    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, KK=1):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            rn_seed: random number seed
+            antithetic: antithetic
+            KK:
+
+        References:
+            -
+        """
+        self.n_path = int(n_path)
+        self.rn_seed = rn_seed
+        self.antithetic = antithetic
+        self.rn_seed = rn_seed
+        self.rng = np.random.default_rng(rn_seed)
+        self.KK = KK
+
+    def cond_spot_sigma(self, texp):
+
+        var0 = self.sigma  # inivial variance
+        rhoc = np.sqrt(1.0 - self.rho ** 2)
+
+        ncx_df = self.chi_dim()
+        var_final = self.var_final(texp)
+
+        # sample int_var(integrated variance): Gamma expansion / transform inversion
+        # int_var = X1+X2+X3 from formula(2.7) in Glasserman and Kim (2011)
+
+        # Simulation X1: truncated Gamma expansion
+        X1 = self.generate_X1_gamma_expansion(var_final, texp)
+
+        # Simulation X2: transform inversion
+        coth = 1 / np.tanh(self.mr * texp * 0.5)
+        csch = 1 / np.sinh(self.mr * texp * 0.5)
+        mu_X2_0 = self.vov ** 2 * (-2 + self.mr * texp * coth) / (4 * self.mr ** 2)
+        sigma_square_X2_0 = self.vov ** 4 * (-8 + 2 * self.mr * texp * coth + (self.mr * texp * csch) ** 2) / (
+                    8 * self.mr ** 4)
+        X2 = self.generate_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, ncx_df, texp, self.n_path)
+        # X2 = self.generate_X2_and_Z_gamma_expansion(ncx_df, texp, self.n_path)
+
+        # Simulation X3: X3=sum(Z, eta), Z is a special case of X2 with ncx_df=4
+        Z = self.generate_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, 4, texp, self.n_path * 10)
+        # Z = self.generate_X2_and_Z_gamma_expansion(4, texp, self.n_path*10)
+
+        v = 0.5 * ncx_df - 1
+        z = 2 * self.mr * self.sigma * np.sqrt(var_final) * csch / self.vov ** 2
+        eta = self.generate_eta(v, z)
+
+        X3 = np.zeros(len(eta))
+        for ii in range(len(eta)):
+            X3[ii] = np.sum(Z[np.random.randint(0, len(Z), int(eta[ii]))])
+
+        int_var_std = (X1 + X2 + X3) / texp
+
+        ### Common Part
+        int_var_dw = ((var_final - var0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
+        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
+        sigma_cond = rhoc * np.sqrt(int_var_std / var0)  # normalize by initial variance
+
+        # return normalized forward and volatility
+        return spot_cond, sigma_cond
+
+    def generate_X1_gamma_expansion(self, VT, texp):
+        """
+        Simulation of X1 using truncated Gamma expansion in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        VT : an 1-d array with shape (n_paths,)
+            final variance
+        texp: float
+            time-to-expiry
+
+        Returns
+        -------
+         an 1-d array with shape (n_paths,), random variables X1
+        """
+        var_0 = self.sigma
+        # For fixed k, theta, vov, texp, generate some parameters firstly
+        range_K = np.arange(1, self.KK + 1)
+        temp = 4 * np.pi ** 2 * range_K ** 2
+        gamma_n = (self.mr ** 2 * texp ** 2 + temp) / (2 * self.vov ** 2 * texp ** 2)
+        lambda_n = 4 * temp / (self.vov ** 2 * texp * (self.mr ** 2 * texp ** 2 + temp))
+
+        E_X1_K_0 = 2 * texp / (np.pi ** 2 * range_K)
+        Var_X1_K_0 = 2 * self.vov ** 2 * texp ** 3 / (3 * np.pi ** 4 * range_K ** 3)
+
+        # the following para will change with VO and VT
+        Nn_mean = ((var_0 + VT)[:, None] * lambda_n[None, :])  # every row K numbers (one path)
+        Nn = self.rng.poisson(lam=Nn_mean).flatten()
+        rv_exp_sum = np.zeros(len(Nn))
+        for ii in range(len(Nn)):
+            rv_exp_sum[ii] = np.sum(self.rng.exponential(scale=1, size=Nn[ii]))
+        rv_exp_sum = rv_exp_sum.reshape(len(VT), len(lambda_n))
+        X1_main = np.sum((rv_exp_sum / gamma_n), axis=1)
+
+        gamma_mean = (var_0 + VT) * E_X1_K_0[-1]
+        gamma_var = (var_0 + VT) * Var_X1_K_0[-1]
+        beta = gamma_mean / gamma_var
+        alpha = gamma_mean * beta
+        X1_truncation = self.rng.gamma(alpha, 1 / beta)
+        # X1_truncation = self.rng.normal(loc=gamma_mean, scale=np.sqrt(gamma_var))
+        X1 = X1_main + X1_truncation
+
+        return X1
+
+
+    def generate_X2_and_Z_AW(self, mu_X2_0, sigma_square_X2_0, ncx_df, texp, num_rv):
+        """
+        Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        mu_X2_0:  float
+            mean of X2 from formula(4.2)
+        sigma_square_X2_0: float
+            variance of X2 from formula(4.3)
+        ncx_df: float
+            a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
+        texp: float
+            time-to-expiry
+        num_rv: int
+            number of random variables you want to generate
+
+        Returns
+        -------
+         an 1-d array with shape (num_rv,), random variables X2 or Z
+        """
+
+        mu_X2 = ncx_df * mu_X2_0
+        sigma_square_X2 = ncx_df * sigma_square_X2_0
+
+        mu_e = mu_X2 + 14 * np.sqrt(sigma_square_X2)
+        w = 0.01
+        M = 200
+        xi = w * mu_X2 + np.arange(M + 1) / M * (mu_e - w * mu_X2)  # x1,...,x M+1
+        L = lambda x: np.sqrt(2 * self.vov ** 2 * x + self.mr ** 2)
+        fha_2 = lambda x: (L(x) / self.mr * (np.sinh(0.5 * self.mr * texp) / np.sinh(0.5 * L(x) * texp))) ** (
+                    0.5 * ncx_df)
+        fha_2_vec = np.vectorize(fha_2)
+        err_limit = np.pi * 1e-5 * 0.5  # the up limit error of distribution Fx1(x)
+
+        h = 2 * np.pi / (xi + mu_e)
+        # increase N to make truncation error less than up limit error, N is sensitive to xi and the model parameter
+        F_X2_part = np.zeros(len(xi))
+        for pos in range(len(xi)):
+            Nfunc = lambda N: abs(fha_2(-1j * h[pos] * N)) - err_limit * N
+            N = int(spop.brentq(Nfunc, 0, 5000)) + 1
+            N_all = np.arange(1, N + 1)
+            F_X2_part[pos] = np.sum(np.sin(h[pos] * xi[pos] * N_all) * fha_2_vec(-1j * h[pos] * N_all).real / N_all)
+
+        F_X2 = (h * xi + 2 * F_X2_part) / np.pi
+
+        # Next we can sample from this tabulated distribution using linear interpolation
+        rv_uni = self.rng.uniform(size=num_rv)
+        xi = np.insert(xi, 0, 0.)
+        F_X2 = np.insert(F_X2, 0, 0.)
+        F_X2_inv = interpolate.interp1d(F_X2, xi, kind="slinear")
+        X2 = F_X2_inv(rv_uni)
+
+        return X2
+
+    def generate_eta(self, v, z):
+        """
+        generate Bessel random variables from inverse of CDF, formula(2.4) in George and Dimitris (2010)
+
+        Parameters
+        ----------
+        v:  float
+            parameter in Bessel distribution
+        z: an 1-d array with shape (n_paths,)
+            parameter in Bessel distribution
+
+        Returns
+        -------
+         an 1-d array with shape (n_paths,), Bessel random variables eta
+        """
+
+        p0 = np.power(0.5 * z, v) / (spsp.iv(v, z) * math.gamma(v + 1))
+        temp = np.arange(1, 31)[:, None]  # Bessel distribution has sort tail, 30 maybe enough
+        p = z ** 2 / (4 * temp * (temp + v))
+        p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
+        rv_uni = self.rng.uniform(size=len(z))
+        eta = np.sum(p < rv_uni, axis=0)
+
+        return eta
+
+    def generate_X2_and_Z_gamma_expansion(self, ncx_df, texp, num_rv):
+        """
+        Simulation of X2 or Z using truncated Gamma expansion in Glasserman and Kim (2011)
+
+        Parameters
+        ----------
+        ncx_df: float
+            a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
+        texp: float
+            time-to-expiry
+        num_rv: int
+            number of random variables you want to generate
+
+        Returns
+        -------
+         an 1-d array with shape (num_rv,), random variables X2 or Z
+        """
+
+        range_K = np.arange(1, self.KK + 1)
+        temp = 4 * np.pi ** 2 * range_K ** 2
+        gamma_n = (self.mr ** 2 * texp ** 2 + temp) / (2 * self.vov ** 2 * texp ** 2)
+
+        rv_gamma = self.rng.gamma(0.5 * ncx_df, 1, size=(num_rv, self.KK))
+        X2_main = np.sum(rv_gamma / gamma_n, axis=1)
+
+        gamma_mean = ncx_df * (self.vov * texp) ** 2 / (4 * np.pi ** 2 * self.KK)
+        gamma_var = ncx_df * (self.vov * texp) ** 4 / (24 * np.pi ** 4 * self.KK ** 3)
+        beta = gamma_mean / gamma_var
+        alpha = gamma_mean * beta
+        X2_truncation = self.rng.gamma(alpha, 1 / beta, size=num_rv)
+        X2 = X2_main + X2_truncation
+
+        return X2

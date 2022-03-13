@@ -3,7 +3,7 @@ import scipy.integrate as scint
 from . import sv_abc as sv
 
 
-class OusvIFT(sv.SvABC):
+class OusvSchobelZhu1998(sv.SvABC):
     """
     The implementation of Schobel & Zhu (1998)'s inverse FT pricing formula for European
     options the Ornstein-Uhlenbeck driven stochastic volatility process.
@@ -13,10 +13,10 @@ class OusvIFT(sv.SvABC):
 
     Examples:
         >>> import pyfeng as pf
-        >>> model = pf.OusvIFT(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
+        >>> model = pf.OusvSchobelZhu1998(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
         >>> model.price(100, 100, texp=np.array([1, 5, 10]))
         array([13.21493, 40.79773, 62.76312])
-        >>> model = pf.OusvIFT(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
+        >>> model = pf.OusvSchobelZhu1998(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
         >>> model.price(np.array([90, 100, 110]), 100, texp=1)
         array([21.41873, 15.16798, 10.17448])
     """
@@ -104,7 +104,7 @@ class OusvIFT(sv.SvABC):
         return df * fwd * price
 
 
-class OusvCondMC(sv.SvABC, sv.CondMcBsmABC):
+class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
     """
     OUSV model with conditional Monte-Carlo simulation
     The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T
