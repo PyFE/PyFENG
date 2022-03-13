@@ -118,6 +118,8 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
     """
     m_inv = 20
     n_inv = 35
+    comb_coef = None
+    nn = None
 
     def set_mc_params(self, n_path=10000, m_inv=20, n_inv=35, rn_seed=None, antithetic=True):
         """
@@ -138,6 +140,9 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         self.antithetic = antithetic
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
+        self.comb_coef = spsp.comb(self.m_inv, np.arange(0, self.m_inv+0.1)) * np.power(0.5, self.m_inv)
+        assert abs(self.comb_coef.sum()-1) < 1e-8
+        self.nn = np.arange(0, self.m_inv + self.n_inv + 0.1)
 
     def vol_paths(self, tobs, mu=0):
         return None
@@ -173,14 +178,12 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
             (Laplace transform function)
         """
 
-        lam = theta * vovn**2
         x = np.log(sigma_T)
-        z = lam/sigma_T + 0.5*(sigma_T + 1/sigma_T)
-        phi_value = np.log(z + np.sqrt(z ** 2 - 1))
+        lam = theta * vovn**2
+        z = 0.5*sigma_T + (0.5 + lam)/sigma_T
+        phi = np.log(z + np.sqrt(z ** 2 - 1))
 
-        numerator = phi_value ** 2 - x ** 2
-        denominator = 2 * vovn ** 2
-        return 1 / theta * np.exp(-numerator / denominator)
+        return np.exp((x**2 - phi**2) / (2*vovn**2)) / theta
 
     def inv_laplace(self, u, vovn, sigma_T):
         '''
@@ -197,14 +200,11 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         '''
 
         ## index from 0 to m + n
-        nn = np.arange(0, self.m_inv + self.n_inv + 0.1)
-        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * nn) / u, vovn, sigma_T).real
+        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn) / (2*u), vovn, sigma_T).real
         term1 = 0.5 * ss_j[0]
         ss_j[1::2] *= -1
         np.cumsum(ss_j, out=ss_j)
-
-        comb_coef = spsp.comb(self.m_inv, np.arange(0, self.m_inv+0.1)) * np.power(0.5, self.m_inv)
-        term2 = np.sum(comb_coef * ss_j[self.n_inv:])
+        term2 = np.sum(self.comb_coef * ss_j[self.n_inv:])
 
         origin_L = np.exp(self.m_inv/2) / u * (-term1 + term2)
 
@@ -223,14 +223,22 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         (sigma at the time of expiration, Exact integrated variance)
         """
 
-        u_rn = self.rng.uniform(size=self.n_path)
+        u_rn = self.rng.uniform(size=self.n_path//2)
+        u_rn = np.hstack([u_rn, 1-u_rn])
+
         int_var = np.zeros(self.n_path)
         sigma_final = self.sigma_final(vovn)
 
         for i in range(self.n_path):
             obj_func = lambda x: self.inv_laplace(x, vovn, sigma_final[i]) - u_rn[i]
-            sol = spop.root(obj_func, 1 / vovn ** 3)
-            int_var[i] = 1 / sol.x
+
+            if sigma_final[i] > 1:
+                x0 = 1/sigma_final[i]
+            else:
+                x0 = 2/(1+sigma_final[i])
+
+            sol = spop.brentq(obj_func, 0.000001, 100)
+            int_var[i] = 1 / sol
         return sigma_final, int_var
 
     def cond_spot_sigma(self, texp):
@@ -248,7 +256,6 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
                 rho_sigma * (1.0/self.vov * (sigma_final - 1) - 0.5 * rho_sigma * int_var * texp)
             )
         return fwd_cond, vol_cond
-
 
     # The algorithem below is about pricing when 0<=beta<1
     def simu_ST(self, beta, VT, spot):
@@ -398,7 +405,7 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
             cdf = spst.norm.cdf(z)
         return cdf
 
-    def price(self, strike, spot, texp, cp_sign=1):
+    def price(self, strike, spot, texp, cp=1):
         """
         over ride the price method in parent class to incorporate 0< beta < 1
         if beta = 1 or 0, use bsm model
@@ -407,7 +414,7 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
             strike: 1d array,  an array of strike prices
             spot: float, spot prices
             texp: time to expiry
-            cp_sign:
+            cp:
         Returns:
             1d array of option prices
             when x < 500 and l < 500:
@@ -429,8 +436,8 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
             strike = np.array([strike])
         if self.beta == 1:
             fwd_cond, vol_cond = self.cond_spot_sigma(texp)
-            base_model = self.base_model(vol_cond[:, None])
-            price_grid = base_model.price(strike, spot*fwd_cond[:, None], texp, cp_sign)
+            base_model = self.base_model(self.sigma*vol_cond[:, None])
+            price_grid = base_model.price(strike, spot*fwd_cond[:, None], texp, cp)
             price = np.mean(price_grid, axis=0)
             return price[0] if price.size == 1 else price
         else:  # 0 < beta < 1
