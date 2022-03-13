@@ -18,7 +18,7 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
 
     def vol_paths(self, tobs, mu=0):
         """
-        exp(vov_std B_s - 0.5*vov_std^2 * s)  where s = 0, ..., 1, vov_std = vov*sqrt(T)
+        exp(vovn B_s - 0.5*vovn^2 * s)  where s = 0, ..., 1, vovn = vov * sqrt(T)
 
         Args:
             tobs: observation time (array)
@@ -29,12 +29,12 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
 
         texp = tobs[-1]
         tobs01 = tobs / texp  # normalized time: 0<s<1
-        vov_std = self.vov * np.sqrt(texp)
+        vovn = self.vov * np.sqrt(texp)
 
         log_sig_s = self._bm_incr(tobs01, cum=True)  # B_s (0 <= s <= 1)
         log_rn_deriv = 0.0 if mu == 0 else -mu * (log_sig_s[-1, :] + 0.5 * mu)
 
-        log_sig_s = vov_std * (log_sig_s + (mu - 0.5 * vov_std) * tobs01[:, None])
+        log_sig_s = vovn * (log_sig_s + (mu - 0.5 * vovn) * tobs01[:, None])
         log_sig_s = np.insert(log_sig_s, 0, np.zeros(log_sig_s.shape[1]), axis=0)
         return np.exp(log_sig_s), log_rn_deriv
 
@@ -87,10 +87,10 @@ class SabrCondMc(sabr.SabrABC, sv.CondMcBsmABC):
             * np.power(spot, 1.0 - self.beta)
             / (self.sigma * (1.0 - self.beta))
         )
-        vov_std = self.vov * np.sqrt(texp)
+        vovn = self.vov * np.sqrt(texp)
 
         if mu is None:
-            mu = 0.5 * (vov_std + np.log(1 + eta ** 2) / vov_std)
+            mu = 0.5 * (vovn + np.log(1 + eta ** 2) / vovn)
             # print(f'mu = {mu}')
 
         fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma(texp, mu=mu)
@@ -117,32 +117,35 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         - Cai N, Song Y, Chen N (2017) Exact Simulation of the SABR Model. Oper Res 65:931–951. https://doi.org/10.1287/opre.2017.1617
     """
     m_inv = 20
-    n_inv = 35
+    m_euler = 20
+    n_euler = 35
     comb_coef = None
     nn = None
 
-    def set_mc_params(self, n_path=10000, m_inv=20, n_inv=35, rn_seed=None, antithetic=True):
+    def set_mc_params(self, n_path=10000, m_inv=20, m_euler=20, n_euler=35, rn_seed=None, antithetic=True):
         """
         Set MC parameters
 
         Args:
             n_path: number of paths
-            m_inv: parameter M used in Laplace inversion
-            n_inv: parameter n used in Laplace inversion
+            m_inv: parameter M in Laplace inversion, Eq. (16)
+            m_euler: parameter m in Euler transformation E(m,n)
+            n_euler: parameter n in Euler transformation E(m,n)
             rn_seed: random number seed
             antithetic: antithetic
         """
         self.n_path = int(n_path)
         self.m_inv = m_inv
-        self.n_inv = n_inv
+        self.m_euler = m_euler
+        self.n_euler = n_euler
         self.dt = None
         self.rn_seed = rn_seed
         self.antithetic = antithetic
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
-        self.comb_coef = spsp.comb(self.m_inv, np.arange(0, self.m_inv+0.1)) * np.power(0.5, self.m_inv)
+        self.comb_coef = spsp.comb(self.m_euler, np.arange(0, self.m_euler+0.1)) * np.power(0.5, self.m_euler)
         assert abs(self.comb_coef.sum()-1) < 1e-8
-        self.nn = np.arange(0, self.m_inv + self.n_inv + 0.1)
+        self.nn = np.arange(0, self.m_euler + self.n_euler + 0.1)
 
     def vol_paths(self, tobs, mu=0):
         return None
@@ -158,8 +161,12 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         -------
         vol at maturity
         """
-        zz = self.rng.normal(size=self.n_path//2)
-        zz = np.hstack([zz, -zz])
+
+        if self.antithetic:
+            zz = self.rng.normal(size=self.n_path // 2)
+            zz = np.hstack([zz, -zz])
+        else:
+            zz = self.rng.normal(size=self.n_path)
 
         sigma_T = np.exp(vovn * (zz - vovn/2))
         return sigma_T
@@ -186,67 +193,67 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         return np.exp((x**2 - phi**2) / (2*vovn**2)) / theta
 
     def inv_laplace(self, u, vovn, sigma_T):
-        '''
+        """
         Eq. (16) in the article
         Return the original function from transform function
-        Parameters
-        ----------
-        u: variable
-        vovn: vov * sqrt(texp)
-        sigma_T: simulated sigma at time of expiration
-        Returns
-        -------
-        original functions with parameter u
-        '''
+
+        Args:
+            u: original variable
+            vovn: vov * sqrt(texp)
+            sigma_T: final volatility
+
+        Returns:
+            original function value at u
+        """
 
         ## index from 0 to m + n
         ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn) / (2*u), vovn, sigma_T).real
         term1 = 0.5 * ss_j[0]
         ss_j[1::2] *= -1
         np.cumsum(ss_j, out=ss_j)
-        term2 = np.sum(self.comb_coef * ss_j[self.n_inv:])
+        term2 = np.sum(self.comb_coef * ss_j[self.n_euler:])
 
         origin_L = np.exp(self.m_inv/2) / u * (-term1 + term2)
 
         return origin_L
 
-    def conditional_state(self, vovn):
+    def cond_int_var(self, vovn, sigma_final):
         """
-        Return Exact integrated variance from samples of disturibution
-        The returns values are for sigma_0 = self.sigma and t = T
-        Parameters
-        ----------
-        vovn: float
-            time-to-expiry
-        Returns
-        -------
-        (sigma at the time of expiration, Exact integrated variance)
+        Normalized integraged variance samples.
+
+        Args:
+            vovn: vov * sqrt(texp)
+            sigma_final: final volatility
+
+        Returns:
+            (n_path, 1) array
         """
 
-        u_rn = self.rng.uniform(size=self.n_path//2)
-        u_rn = np.hstack([u_rn, 1-u_rn])
+        if self.antithetic:
+            u_rn = self.rng.uniform(size=self.n_path // 2)
+            u_rn = np.hstack([u_rn, 1 - u_rn])
+        else:
+            u_rn = self.rng.uniform(size=self.n_path)
 
         int_var = np.zeros(self.n_path)
-        sigma_final = self.sigma_final(vovn)
 
         for i in range(self.n_path):
             obj_func = lambda x: self.inv_laplace(x, vovn, sigma_final[i]) - u_rn[i]
 
-            if sigma_final[i] > 1:
-                x0 = 1/sigma_final[i]
-            else:
-                x0 = 2/(1+sigma_final[i])
-
             sol = spop.brentq(obj_func, 0.000001, 100)
             int_var[i] = 1 / sol
-        return sigma_final, int_var
+
+        return int_var
 
     def cond_spot_sigma(self, texp):
 
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         rho_sigma = self.rho * self.sigma
         vovn = self.vov * np.sqrt(texp)
-        sigma_final, int_var = self.conditional_state(vovn)
+
+        sigma_final = self.sigma_final(vovn)
+        int_var = self.cond_int_var(vovn, sigma_final)
+        #print(1/np.max(int_var), 1/np.min(int_var))
 
         vol_cond = rhoc * np.sqrt(int_var)
         if np.isclose(self.beta, 0):
@@ -256,6 +263,25 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
                 rho_sigma * (1.0/self.vov * (sigma_final - 1) - 0.5 * rho_sigma * int_var * texp)
             )
         return fwd_cond, vol_cond
+
+    def price(self, strike, spot, texp, cp=1):
+        # The formula is exactly same as that of SabrCondMc except rn_deriv. Need to merge
+        fwd = self.forward(spot, texp)
+        fwd_cond, vol_cond = self.cond_spot_sigma(texp)
+        if np.isclose(self.beta, 0):
+            base_model = self._m_base(self.sigma * vol_cond, is_fwd=True)
+            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
+            price = np.mean(price_grid, axis=1)
+        else:
+            alpha = self.sigma / np.power(spot, 1.0 - self.beta)
+            kk = strike / fwd
+
+            base_model = self._m_base(alpha * vol_cond, is_fwd=True)
+            price_grid = base_model.price(kk[:, None], fwd_cond, texp, cp=cp)
+            price = fwd * np.mean(price_grid, axis=1)
+
+        return price
+
 
     # The algorithem below is about pricing when 0<=beta<1
     def simu_ST(self, beta, VT, spot):
@@ -404,48 +430,3 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
                                   + 2 * theta_s(s) / sigma) ** 0.5
             cdf = spst.norm.cdf(z)
         return cdf
-
-    def price(self, strike, spot, texp, cp=1):
-        """
-        over ride the price method in parent class to incorporate 0< beta < 1
-        if beta = 1 or 0, use bsm model
-        if 0 < beta < 1, use  mc simulation
-        Args:
-            strike: 1d array,  an array of strike prices
-            spot: float, spot prices
-            texp: time to expiry
-            cp:
-        Returns:
-            1d array of option prices
-            when x < 500 and l < 500:
-                equation (19) in Cai(2017)
-                The recursive alogorithm propose by Ding(1992) to calculate chi-2 cdf
-            when x > 500 or l > 500:
-                analytic approximation of Penev and Raykov(2000)
-        Example(beta = 1):
-            fwd = 100
-            strike = np.arange(50,151,10)
-            texp = 1
-            params = {"sigma": 0.2, "vov": 0.3, "rho": 0, "beta":1}
-            sabr_mc_model = pyfe.ExactMcSabr(**params)
-            sabr_mc_model.set_mc_params(n_path=1000)
-            price = sabr_mc_model.price(strike, fwd, texp)
-        """
-
-        if isinstance(strike, float):
-            strike = np.array([strike])
-        if self.beta == 1:
-            fwd_cond, vol_cond = self.cond_spot_sigma(texp)
-            base_model = self.base_model(self.sigma*vol_cond[:, None])
-            price_grid = base_model.price(strike, spot*fwd_cond[:, None], texp, cp)
-            price = np.mean(price_grid, axis=0)
-            return price[0] if price.size == 1 else price
-        else:  # 0 < beta < 1
-            assert self.rho == 0, "rho has to be 0 fro 0<beta<1"
-            price_lst = []
-            for kk in strike:
-                _, VT = self.conditional_state(texp)
-                price = np.maximum(self.simu_ST(self.beta, VT, spot) - kk, 0) * np.exp(-self.intr * texp)
-                price = np.mean(price)
-                price_lst.append(price)
-            return np.array(price_lst)
