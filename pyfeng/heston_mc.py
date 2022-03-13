@@ -377,10 +377,10 @@ class HestonMcExactGK(HestonMcAe):
 
         # the following para will change with VO and VT
         Nn_mean = ((var_0 + VT)[:, None] * lambda_n[None, :])  # every row K numbers (one path)
-        Nn = np.random.poisson(lam=Nn_mean).flatten()
+        Nn = self.rng.poisson(lam=Nn_mean).flatten()
         rv_exp_sum = np.zeros(len(Nn))
         for ii in range(len(Nn)):
-            rv_exp_sum[ii] = np.sum(np.random.exponential(scale=1, size=Nn[ii]))
+            rv_exp_sum[ii] = np.sum(self.rng.exponential(scale=1, size=Nn[ii]))
         rv_exp_sum = rv_exp_sum.reshape(len(VT), len(lambda_n))
         X1_main = np.sum((rv_exp_sum / gamma_n), axis=1)
 
@@ -388,8 +388,8 @@ class HestonMcExactGK(HestonMcAe):
         gamma_var = (var_0 + VT) * Var_X1_K_0[-1]
         beta = gamma_mean / gamma_var
         alpha = gamma_mean * beta
-        X1_truncation = np.random.gamma(alpha, 1 / beta)
-        # X1_truncation = np.random.normal(loc=gamma_mean, scale=np.sqrt(gamma_var))
+        X1_truncation = self.rng.gamma(alpha, 1 / beta)
+        # X1_truncation = self.rng.normal(loc=gamma_mean, scale=np.sqrt(gamma_var))
         X1 = X1_main + X1_truncation
 
         return X1
@@ -442,7 +442,7 @@ class HestonMcExactGK(HestonMcAe):
         F_X2 = (h * xi + 2 * F_X2_part) / np.pi
 
         # Next we can sample from this tabulated distribution using linear interpolation
-        rv_uni = np.random.uniform(size=num_rv)
+        rv_uni = self.rng.uniform(size=num_rv)
         xi = np.insert(xi, 0, 0.)
         F_X2 = np.insert(F_X2, 0, 0.)
         F_X2_inv = interpolate.interp1d(F_X2, xi, kind="slinear")
@@ -470,7 +470,7 @@ class HestonMcExactGK(HestonMcAe):
         temp = np.arange(1, 31)[:, None]  # Bessel distribution has sort tail, 30 maybe enough
         p = z ** 2 / (4 * temp * (temp + v))
         p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
-        rv_uni = np.random.uniform(size=len(z))
+        rv_uni = self.rng.uniform(size=len(z))
         eta = np.sum(p < rv_uni, axis=0)
 
         return eta
@@ -497,14 +497,14 @@ class HestonMcExactGK(HestonMcAe):
         temp = 4 * np.pi ** 2 * range_K ** 2
         gamma_n = (self.mr ** 2 * texp ** 2 + temp) / (2 * self.vov ** 2 * texp ** 2)
 
-        rv_gamma = np.random.gamma(0.5 * ncx_df, 1, size=(num_rv, self.KK))
+        rv_gamma = self.rng.gamma(0.5 * ncx_df, 1, size=(num_rv, self.KK))
         X2_main = np.sum(rv_gamma / gamma_n, axis=1)
 
         gamma_mean = ncx_df * (self.vov * texp) ** 2 / (4 * np.pi ** 2 * self.KK)
         gamma_var = ncx_df * (self.vov * texp) ** 4 / (24 * np.pi ** 4 * self.KK ** 3)
         beta = gamma_mean / gamma_var
         alpha = gamma_mean * beta
-        X2_truncation = np.random.gamma(alpha, 1 / beta, size=num_rv)
+        X2_truncation = self.rng.gamma(alpha, 1 / beta, size=num_rv)
         X2 = X2_main + X2_truncation
 
         return X2
