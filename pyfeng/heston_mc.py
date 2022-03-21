@@ -73,6 +73,37 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         var_t = (exp / phi) * 2 * self.rng.standard_gamma(shape=chi_df / 2 + nn, size=self.n_path)
         return var_t, nn
 
+    @abc.abstractmethod
+    def cond_states(self, var_0, dt):
+        """
+        Final variance and integrated variance over dt given var_0
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+            (var_final, int_var_std)
+        """
+        pass
+
+    def cond_spot_sigma(self, texp):
+
+        var_0 = self.sigma  # inivial variance
+        rhoc = np.sqrt(1.0 - self.rho**2)
+
+        var_final, int_var_std = self.cond_states(var_0, texp)
+
+        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
+        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
+        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
+
+        if self.correct_fwd:
+            spot_cond /= spot_cond.mean()
+
+        # return normalized forward and volatility
+        return spot_cond, sigma_cond
+
 
 class HestonMcAndersen2008(HestonMcABC):
     """
@@ -203,25 +234,15 @@ class HestonMcAndersen2008(HestonMcABC):
 
         return var_path
 
-    def cond_spot_sigma(self, texp):
+    def cond_states(self, var_0, texp):
 
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
         tobs = self.tobs(texp)
         n_dt = len(tobs)
         var_paths = self.vol_paths(tobs)
         var_final = var_paths[-1, :]
         int_var_std = spint.simps(var_paths, dx=1, axis=0) / n_dt
 
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
 
 class HestonMcAe(HestonMcABC):
@@ -301,11 +322,7 @@ class HestonMcAe(HestonMcABC):
         ch_f = part1 * part2 * part3
         return ch_f
 
-
-    def cond_spot_sigma(self, texp):
-
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
+    def cond_states(self, var_0, texp):
 
         var_final = self.var_step_ncx2(self.sigma, texp)
 
@@ -330,16 +347,7 @@ class HestonMcAe(HestonMcABC):
         else:
             raise ValueError(f"Incorrect distribution.")
 
-        ### Common Part
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
 
 class HestonMcGlassermanKim2011(HestonMcAe):
@@ -370,10 +378,7 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         self.rng = np.random.default_rng(rn_seed)
         self.KK = KK
 
-    def cond_spot_sigma(self, texp):
-
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
+    def cond_states(self, var_0, texp):
 
         if self.simulate_var_eta:
             var_final, eta = self.var_step_gamma_eta(var_0=self.sigma, dt=texp)
@@ -410,17 +415,7 @@ class HestonMcGlassermanKim2011(HestonMcAe):
 
         int_var_std = (X1 + X2_X3) / texp
 
-        ### Common Part
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            #print(spot_cond.mean())
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
     def draw_X1(self, var_0, var_final, dt):
         """
