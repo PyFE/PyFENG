@@ -146,18 +146,17 @@ class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
         # scaled by initial volatility
         sigma_cond = rhoc * np.sqrt(int_var) / self.sigma
 
-        return fwd_cond, sigma_cond
+        return spot_cond, sigma_cond
 
 
-class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
-
+class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
 
     # rng_index: 0 for vol_path, 1 for sin, 2 for price
     int_sig = None
     int_var = None
     sighat = None
 
-    vol_paths = OusvCondMC.vol_paths
+    vol_paths = OusvMcCond.vol_paths
 
     def set_mc_params(self, n_path=10000, dt=0.05, n_sin=2, rn_seed=None):
         """
@@ -172,12 +171,12 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
         self.n_sin = n_sin
         super().set_mc_params(n_path, dt, rn_seed, True)
 
-    @staticmethod
-    def _a2sum(mr_t, ns=0, odd=None):
+    @classmethod
+    def _a2sum(cls, mr_t, ns=0, odd=None):
         if odd == 2:  # even
-            rv = OusvExactMC._a2sum(mr_t / 2) / 2 ** 2
+            rv = cls._a2sum(mr_t / 2) / 2 ** 2
         elif odd == 1:  # odd
-            rv = (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2 - OusvExactMC._a2sum(mr_t / 2) / 2 ** 2
+            rv = (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2 - cls._a2sum(mr_t / 2) / 2 ** 2
         else:  # all
             rv = (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2
 
@@ -195,12 +194,12 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             rv -= np.sum(a2)
         return rv
 
-    @staticmethod
-    def _a2overn2sum(mr_t, ns=0, odd=None):
+    @classmethod
+    def _a2overn2sum(cls, mr_t, ns=0, odd=None):
         if odd == 2:  # even
-            rv = OusvExactMC._a2overn2sum(mr_t / 2) / 2 ** 4
+            rv = cls._a2overn2sum(mr_t / 2) / 2 ** 4
         elif odd == 1:  # odd
-            rv = (1 / 3 - (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2) / mr_t ** 2 - OusvExactMC._a2overn2sum(mr_t / 2) / 2 ** 4
+            rv = (1 / 3 - (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2) / mr_t ** 2 - cls._a2overn2sum(mr_t / 2) / 2 ** 4
         else:  # all
             rv = (1 / 3 - (mr_t / np.tanh(mr_t) - 1) / mr_t ** 2) / mr_t ** 2
 
@@ -218,12 +217,12 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             rv -= np.sum(a2overn2)
         return rv
 
-    @staticmethod
-    def _a4sum(mr_t, ns=0, odd=None):
+    @classmethod
+    def _a4sum(cls, mr_t, ns=0, odd=None):
         if odd == 2:  # even
-            rv = OusvExactMC._a4sum(mr_t / 2) / 2 ** 4
+            rv = cls._a4sum(mr_t / 2) / 2 ** 4
         elif odd == 1:  # odd
-            rv = (mr_t / np.tanh(mr_t) + mr_t ** 2 / np.sinh(mr_t) ** 2 - 2) / mr_t ** 4 - OusvExactMC._a4sum(mr_t / 2) / 2 ** 4
+            rv = (mr_t / np.tanh(mr_t) + mr_t ** 2 / np.sinh(mr_t) ** 2 - 2) / mr_t ** 4 - cls._a4sum(mr_t / 2) / 2 ** 4
         else:  # all
             rv = (mr_t / np.tanh(mr_t) + mr_t ** 2 / np.sinh(mr_t) ** 2 - 2) / mr_t ** 4
 
@@ -241,13 +240,13 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             rv -= np.sum(a4)
         return rv
 
-    @staticmethod
-    def _a6sum(mr_t, ns=0, odd=None):
+    @classmethod
+    def _a6sum(cls, mr_t, ns=0, odd=None):
         if odd == 2:  # even
-            rv = OusvExactMC._a6sum(mr_t / 2) / 2 ** 6
+            rv = cls._a6sum(mr_t / 2) / 2 ** 6
         elif odd == 1:  # odd
             rv = (3 * mr_t / np.tanh(mr_t) + (3 + 2 * mr_t / np.tanh(mr_t)) * mr_t ** 2 / np.sinh(mr_t) ** 2 - 8) / (
-                        2 * mr_t ** 6) - OusvExactMC._a6sum(mr_t / 2) / 2 ** 6
+                        2 * mr_t ** 6) - cls._a6sum(mr_t / 2) / 2 ** 6
         else:  # all
             rv = (3 * mr_t / np.tanh(mr_t) + (3 + 2 * mr_t / np.tanh(mr_t)) * mr_t ** 2 / np.sinh(mr_t) ** 2 - 8) / (
                         2 * mr_t ** 6)
@@ -266,14 +265,14 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             rv -= np.sum(a6)
         return rv
 
-    @staticmethod
-    def _a6n2sum(mr_t, ns=0, odd=None):
+    @classmethod
+    def _a6n2sum(cls, mr_t, ns=0, odd=None):
         if odd == 2:  # even
-            rv = OusvExactMC._a6n2sum(mr_t / 2) / 2 ** 4
+            rv = cls._a6n2sum(mr_t / 2) / 2 ** 4
         elif odd == 1:  # odd
-            rv = 2 * OusvExactMC._a4sum(mr_t) - mr_t ** 2 * OusvExactMC._a6sum(mr_t) - OusvExactMC._a6n2sum(mr_t / 2) / 2 ** 4
+            rv = 2 * cls._a4sum(mr_t) - mr_t ** 2 * cls._a6sum(mr_t) - cls._a6n2sum(mr_t / 2) / 2 ** 4
         else:  # all
-            rv = 2 * OusvExactMC._a4sum(mr_t) - mr_t ** 2 * OusvExactMC._a6sum(mr_t)
+            rv = 2 * cls._a4sum(mr_t) - mr_t ** 2 * cls._a6sum(mr_t)
 
         if ns == 0:
             return rv
@@ -321,7 +320,8 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             z_p = zn[i, :, 1]
             z_q = zn[i, :, 2]
             z_r = zn[i, :, 3]
-            z_sin = zn[i, :, 4:n_sin + 4]
+            z0 = zn[i, :, 4]
+            z_sin = zn[i, :, 5:n_sin + 5]
 
             self.sighat[i, :] = sighat = vov * np.sqrt(e_mr * sinh / mr) * z0
 
@@ -330,10 +330,10 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
             an = np.sqrt(an2)
             an3_n_pi = an2 * an * n_pi
 
-            g_std = np.sqrt(OusvExactMC._a2overn2sum(mr_t, ns=n_sin, odd=1))
-            p_std = np.sqrt(OusvExactMC._a6n2sum(mr_t, ns=n_sin, odd=1))
-            q_std = np.sqrt(OusvExactMC._a6n2sum(mr_t, ns=n_sin, odd=2))  # even
-            corr = OusvExactMC._a4sum(mr_t, ns=n_sin, odd=1) / (g_std * p_std)
+            g_std = np.sqrt(self._a2overn2sum(mr_t, ns=n_sin, odd=1))
+            p_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=1))
+            q_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=2))  # even
+            corr = OusvMcExactChoi2023._a4sum(mr_t, ns=n_sin, odd=1) / (g_std * p_std)
 
             z_g = corr * z_p + np.sqrt(1 - corr ** 2) * z_g
             z_g *= g_std
@@ -358,8 +358,8 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
                         z_p - z_q)
 
             # LN variate (even term)
-            m1 = OusvExactMC._a2sum(mr_t, ns=n_sin)
-            var = 2 * OusvExactMC._a4sum(mr_t, ns=n_sin)
+            m1 = self._a2sum(mr_t, ns=n_sin)
+            var = 2 * self._a4sum(mr_t, ns=n_sin)
             ln_sig = np.sqrt(np.log(1 + var / m1 ** 2))
             VT += 0.5 * (dt * vov) ** 2 * (
                         z_sin ** 2 @ an ** 2 + m1 * np.exp(ln_sig * (np.array([z_r, -z_r]) - 0.5 * ln_sig)))
@@ -368,7 +368,7 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
 
         return sighat.flatten('F'), UT.flatten('F'), VT.flatten('F')
 
-    def cond_fwd_vol(self, texp):
+    def cond_spot_vol(self, texp):
         n_sin = np.min(np.int(self.n_sin * texp / 2) * 2, 2)
         s_t, u_t, v_t = self.cond_states(texp, self.n_path, n_sin)
 
@@ -406,7 +406,3 @@ class OusvExactMC(sv.SvABC, sv.CondMcBsmABC):
         np.exp(price, out=price)
 
         return price
-
-
-    def price_variance_swap(self, tobs):
-        p_path = self.price_paths(self, tobs)
