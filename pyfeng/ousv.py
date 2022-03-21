@@ -116,7 +116,7 @@ class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
         # 2d array of (time, path) including t=0
         exp_tobs = np.exp(self.mr * tobs)
 
-        bm_path = self._bm_incr(exp_tobs**2 - 1, cum=True, rng_index=0)  # B_s (0 <= s <= 1)
+        bm_path = self._bm_incr(exp_tobs**2 - 1, cum=True)  # B_s (0 <= s <= 1)
         sigma_t = self.theta + (
             self.sigma - self.theta + self.vov / np.sqrt(2 * self.mr) * bm_path
         ) / exp_tobs[:, None]
@@ -151,7 +151,6 @@ class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
 
 class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
 
-    # rng_index: 0 for vol_path, 1 for sin, 2 for price
     int_sig = None
     int_var = None
     sighat = None
@@ -303,10 +302,10 @@ class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
         self.int_sig = np.zeros((n_dt, n_path_half))
         self.int_var = np.zeros((n_dt, n_path))
 
-        sig0 = self.sigma
+        sig_0 = self.sigma
 
         # random number for (time, path,
-        zn = self.rng_array[1].standard_normal(size=(int(n_path//2), n_dt, n_sin_max + 5)).transpose((1, 0, 2))
+        zn = self.rng.standard_normal(size=(int(n_path//2), n_dt, n_sin_max + 5)).transpose((1, 0, 2))
         zn = np.stack([zn, -zn], axis=2).reshape(n_dt, 2*n_path, -1)
 
         for (i, dt) in enumerate(dt_arr):
@@ -344,15 +343,15 @@ class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
             z_q += z_sin[:, 1::2] @ an3_n_pi[1::2]
 
             UT = (cosh - 1) / (mr * sinh) * sighat + 2 * vov * dt * np.sqrt(dt) * z_g
-            UT = vinf * dt + (sig0 - vinf) * (1 - e_mr) / mr + np.array([UT, -UT])
+            UT = vinf * dt + (sig_0 - vinf) * (1 - e_mr) / mr + np.array([UT, -UT])
 
             # VT: odd terms
-            VT = sighat * (sig0 - vinf) * (dt / sinh - e_mr / mr) + (sig0 - vinf) * vov * dt * np.sqrt(dt) * (
+            VT = sighat * (sig_0 - vinf) * (dt / sinh - e_mr / mr) + (sig_0 - vinf) * vov * dt * np.sqrt(dt) * (
                         (1 + e_mr) * z_p + (1 - e_mr) * z_q)
             VT = 2 * vinf * UT + np.array([VT, -VT])
 
             ## VT: constant terms
-            VT += -vinf ** 2 * dt + (sig0 - vinf) ** 2 * (1 - e_mr ** 2) / (2 * mr)
+            VT += -vinf ** 2 * dt + (sig_0 - vinf) ** 2 * (1 - e_mr ** 2) / (2 * mr)
             ## VT: even terms
             VT += (sinh * cosh - mr_t) / (2 * mr * sinh ** 2) * sighat ** 2 + sighat * vov * dt * np.sqrt(dt) * (
                         z_p - z_q)
@@ -364,7 +363,7 @@ class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
             VT += 0.5 * (dt * vov) ** 2 * (
                         z_sin ** 2 @ an ** 2 + m1 * np.exp(ln_sig * (np.array([z_r, -z_r]) - 0.5 * ln_sig)))
 
-            sighat = vinf + (sig0 - vinf) * e_mr + np.array([sighat, -sighat])
+            sighat = vinf + (sig_0 - vinf) * e_mr + np.array([sighat, -sighat])
 
         return sighat.flatten('F'), UT.flatten('F'), VT.flatten('F')
 
@@ -376,7 +375,8 @@ class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
             self.rho * ((s_t ** 2 - self.sigma ** 2) / (2 * self.vov) - self.vov * texp / 2 \
             - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - self.rho / 2) * v_t) \
         )
-        if self.correct:
+
+        if self.correct_fwd:
             fwd_err = np.mean(fwd_cond) - 1
             fwd_cond /= (1 + fwd_err)
         else:
@@ -389,19 +389,19 @@ class OusvMcExactChoi2023(sv.SvABC, sv.CondMcBsmABC):
     def price_paths(self, tobs):
         price = np.zeros((len(tobs)+1, self.n_path))
         dt_arr = np.diff(np.atleast_1d(tobs), prepend=0)
-        s_0 = self.sigma
+        sig_0 = self.sigma
 
-        price[0, :] = s_0
+        price[0, :] = sig_0
         for k, dt in enumerate(dt_arr):
-            s_t, u_t, v_t = self.cond_states(s_0, dt)
+            s_t, u_t, v_t = self.cond_states(sig_0, dt)
 
             xx = np.random.normal(int(self.n_path // 2))
             xx = np.array([xx, -xx]).flatten('F')
 
-            price[k+1, :] = (self.intr - self.vov/2)*dt + self.rho*((s_t ** 2 - s_0 ** 2) / (2 * self.vov) \
+            price[k+1, :] = (self.intr - self.vov/2)*dt + self.rho*((s_t ** 2 - sig_0 ** 2) / (2 * self.vov) \
                 - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - 0.5 / self.rho) * v_t) \
                 + np.sqrt((1-self.rho**2)*v_t) * xx
-            s_0 = s_t
+            sig_0 = s_t
 
         np.exp(price, out=price)
 
