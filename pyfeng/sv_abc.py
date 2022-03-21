@@ -177,7 +177,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         return bm_incr
 
     @abc.abstractmethod
-    def cond_spot_sigma(self, texp):
+    def cond_spot_sigma(self, var_0, texp):
         """
         Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
         The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
@@ -185,6 +185,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Volatility, not variance, is returned.
 
         Args:
+            var_0: initial variance (or vol)
             texp: time-to-expiry
 
         Returns: (forward, volatility)
@@ -198,7 +199,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         scalar_output = np.isscalar(kk)
         kk = np.atleast_1d(kk)
 
-        fwd_cond, sigma_cond = self.cond_spot_sigma(texp)
+        fwd_cond, sigma_cond = self.cond_spot_sigma(self.sigma, texp)
 
         sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
         base_model = self.base_model(sigma * sigma_cond)
@@ -207,3 +208,20 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         price = spot * np.mean(price_grid, axis=1)
 
         return price[0] if scalar_output else price
+
+    def price_paths(self, tobs):
+        price = np.ones((len(tobs)+1, self.n_path))
+        dt_arr = np.diff(np.atleast_1d(tobs), prepend=0)
+        s_0 = np.full(self.n_path, self.sigma)
+
+        for k, dt in enumerate(dt_arr):
+            spot, sigma = self.cond_spot_sigma(s_0, dt)
+
+            xx = np.random.standard_normal(int(self.n_path // 2))
+            xx = np.array([xx, -xx]).flatten('F')
+
+            price[k+1, :] = spot * np.exp(sigma*np.sqrt(dt) * xx)
+
+        np.cumprod(price, axis=0, out=price)
+
+        return price

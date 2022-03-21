@@ -88,9 +88,7 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         pass
 
-    def cond_spot_sigma(self, texp):
-
-        var_0 = self.sigma  # inivial variance
+    def cond_spot_sigma(self, var_0, texp):
         rhoc = np.sqrt(1.0 - self.rho**2)
 
         var_final, int_var_std = self.cond_states(var_0, texp)

@@ -124,8 +124,8 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         pass
 
-    def cond_spot_sigma(self, texp):
-        s_t, u_t_std, v_t_std = self.cond_states(self.sigma, texp)
+    def cond_spot_sigma(self, sig_0, texp):
+        s_t, u_t_std, v_t_std = self.cond_states(sig_0, texp)
 
         fwd_cond = np.exp(
             self.rho * ((s_t**2 - self.sigma**2) / (2 * self.vov) - self.vov * texp / 2 \
@@ -326,6 +326,7 @@ class OusvMcChoi2023(OusvMcABC):
         e_mr = np.exp(-mr_t)
         sinh = np.sinh(mr_t)
         cosh = np.cosh(mr_t)
+        vovn = self.vov * np.sqrt(dt)  # normalized vov
 
         z_0 = zn[:, 0]
         z_g = zn[:, 1]
@@ -356,43 +357,21 @@ class OusvMcChoi2023(OusvMcABC):
         z_q += z_sin[:, 1::2] @ an3_n_pi[1::2]
 
         UT = vinf + (sig_0 - vinf) * (1 - e_mr) / mr_t  # * dt
-        UT += (cosh - 1) / (mr_t * sinh) * sighat + 2 * vov * np.sqrt(dt) * z_g  # * dt
+        UT += (cosh - 1) / (mr_t * sinh) * sighat + 2 * vovn * z_g  # * dt
 
         VT = vinf * (2 * UT - vinf) + (sig_0 - vinf)**2 * (1 - e_mr**2) / (2 * mr_t)
-        VT += sighat * (sig_0 - vinf) * (1 / sinh - e_mr / mr_t) + (sig_0 - vinf) * vov * np.sqrt(dt) * (
+        VT += sighat * (sig_0 - vinf) * (1 / sinh - e_mr / mr_t) + (sig_0 - vinf) * vovn * (
                     (1 + e_mr) * z_p + (1 - e_mr) * z_q)
 
         ## VT: even terms
-        VT += (sinh * cosh - mr_t) / (2 * mr_t * sinh**2) * sighat**2 + sighat * vov * np.sqrt(dt) * (z_p - z_q)
+        VT += (sinh * cosh - mr_t) / (2 * mr_t * sinh**2) * sighat**2 + sighat * vovn * (z_p - z_q)
 
         # LN variate (even term)
         m1 = self._a2sum(mr_t, ns=n_sin)
         var = 2 * self._a4sum(mr_t, ns=n_sin)
         ln_sig = np.sqrt(np.log(1 + var / m1**2))
-        VT += 0.5 * dt * vov**2 * (z_sin**2 @ an**2 + m1 * np.exp(ln_sig * (z_r - 0.5 * ln_sig)))
+        VT += 0.5 * vovn**2 * (z_sin**2 @ an**2 + m1 * np.exp(ln_sig * (z_r - 0.5 * ln_sig)))
 
         sighat += vinf + (sig_0 - vinf) * e_mr
 
         return sighat, UT, VT
-
-
-    def price_paths(self, tobs):
-        price = np.zeros((len(tobs)+1, self.n_path))
-        dt_arr = np.diff(np.atleast_1d(tobs), prepend=0)
-        sig_0 = self.sigma
-
-        price[0, :] = sig_0
-        for k, dt in enumerate(dt_arr):
-            s_t, u_t, v_t = self.cond_states(sig_0, dt)
-
-            xx = np.random.standard_normal(int(self.n_path // 2))
-            xx = np.array([xx, -xx]).flatten('F')
-
-            price[k+1, :] = (self.intr - self.vov/2)*dt + self.rho*((s_t**2 - sig_0**2) / (2 * self.vov) \
-                - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - 0.5 / self.rho) * v_t) \
-                + np.sqrt((1-self.rho**2)*v_t) * xx
-            sig_0 = s_t
-
-        np.exp(price, out=price)
-
-        return price
