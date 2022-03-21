@@ -1,3 +1,4 @@
+import abc
 import numpy as np
 import scipy.integrate as scint
 from . import sv_abc as sv
@@ -104,13 +105,38 @@ class OusvSchobelZhu1998(sv.SvABC):
         return df * fwd * price
 
 
-class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
+class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
+
+    var_process = False
+
+    @abc.abstractmethod
+    def cond_states(self, sig_0, texp):
+        pass
+
+    def cond_spot_sigma(self, texp):
+        s_t, u_t, v_t = self.cond_states(self.sigma, texp)
+
+        fwd_cond = np.exp(
+            self.rho * ((s_t**2 - self.sigma**2) / (2 * self.vov) - self.vov * texp / 2 \
+            - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - self.rho / 2) * v_t) \
+        )
+
+        if self.correct_fwd:
+            fwd_err = np.mean(fwd_cond) - 1
+            fwd_cond /= (1 + fwd_err)
+        else:
+            fwd_err = None
+
+        sigma_cond = np.sqrt((1 - self.rho**2) * v_t / texp) / self.sigma
+
+        return fwd_cond, sigma_cond
+
+
+class OusvMcTimeStep(OusvMcABC):
     """
     OUSV model with conditional Monte-Carlo simulation
     The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T
     """
-
-    var_process = False
 
     def vol_paths(self, tobs):
         # 2d array of (time, path) including t=0
@@ -123,35 +149,18 @@ class OusvMcCond(sv.SvABC, sv.CondMcBsmABC):
         sigma_t = np.insert(sigma_t, 0, self.sigma, axis=0)
         return sigma_t
 
-    def cond_spot_sigma(self, texp):
-
-        rhoc = np.sqrt(1.0 - self.rho**2)
+    def cond_states(self, sig_0, texp):
         tobs = self.tobs(texp)
         n_dt = len(tobs)
         sigma_paths = self.vol_paths(tobs)
-        sigma_final = sigma_paths[-1, :]
-        int_sigma = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
-        int_var = scint.simps(sigma_paths**2, dx=1, axis=0) / n_dt
+        s_t = sigma_paths[-1, :]
+        u_t = scint.simps(sigma_paths, dx=1, axis=0) / n_dt * texp
+        v_t = scint.simps(sigma_paths**2, dx=1, axis=0) / n_dt * texp
 
-        spot_cond = np.exp(
-            self.rho
-            * (
-                (sigma_final**2 - self.sigma**2) / (2 * self.vov)
-                - self.vov * texp / 2
-                - self.mr * self.theta / self.vov * int_sigma
-                + (self.mr / self.vov - self.rho / 2) * int_var
-            )
-        )  # scaled by initial value
-
-        # scaled by initial volatility
-        sigma_cond = rhoc * np.sqrt(int_var) / self.sigma
-
-        return spot_cond, sigma_cond
+        return s_t, u_t, v_t
 
 
-class OusvMcChoi2023(sv.SvABC, sv.CondMcBsmABC):
-
-    var_process = False
+class OusvMcChoi2023(OusvMcABC):
 
     def set_mc_params(self, n_path=10000, n_sin=2, n_sin_max=None, rn_seed=None, antithetic=True):
         """
@@ -355,23 +364,6 @@ class OusvMcChoi2023(sv.SvABC, sv.CondMcBsmABC):
 
         return sighat, UT, VT
 
-    def cond_spot_sigma(self, texp):
-        s_t, u_t, v_t = self.cond_states(self.sigma, texp)
-
-        fwd_cond = np.exp(
-            self.rho * ((s_t**2 - self.sigma**2) / (2 * self.vov) - self.vov * texp / 2 \
-            - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - self.rho / 2) * v_t) \
-        )
-
-        if self.correct_fwd:
-            fwd_err = np.mean(fwd_cond) - 1
-            fwd_cond /= (1 + fwd_err)
-        else:
-            fwd_err = None
-
-        sigma_cond = np.sqrt((1 - self.rho**2) * v_t / texp) / self.sigma
-
-        return fwd_cond, sigma_cond
 
     def price_paths(self, tobs):
         price = np.zeros((len(tobs)+1, self.n_path))
