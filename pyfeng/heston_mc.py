@@ -1,3 +1,4 @@
+import abc
 import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
@@ -8,7 +9,102 @@ from scipy.misc import derivative
 from . import sv_abc as sv
 
 
-class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
+class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
+    var_process = True
+
+    def chi_dim(self):
+        """
+        Noncentral Chi-square (NCX) distribution's degree of freedom
+
+        Returns:
+            degree of freedom (scalar)
+        """
+        chi_dim = 4 * self.theta * self.mr / self.vov**2
+        return chi_dim
+
+    def chi_lambda(self, df):
+        """
+        Noncentral Chi-square (NCX) distribution's noncentrality parameter
+
+        Returns:
+            noncentrality parameter (scalar)
+        """
+        chi_lambda = 4 * self.sigma * self.mr / self.vov**2
+        chi_lambda /= np.exp(self.mr * df) - 1
+        return chi_lambda
+
+    def phi_exp(self, texp):
+        exp = np.exp(-self.mr*texp/2)
+        phi = 4*self.mr / self.vov**2 / (1/exp - exp)
+        return phi, exp
+
+    def var_step_ncx2(self, var_0, dt):
+        """
+        Draw final variance from NCX distribution
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+            final variance (at t=T)
+        """
+        chi_df = self.chi_dim()
+        phi, exp = self.phi_exp(dt)
+        chi_nonc = var_0 * exp * phi
+        var_t = (exp / phi) * self.rng.noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
+        return var_t
+
+    def var_step_gamma_eta(self, var_0, dt):
+        """
+        Draw final variance from NCX2 distribution
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+            final variance and eta (at t=T)
+        """
+        chi_df = self.chi_dim()
+        phi, exp = self.phi_exp(dt)
+        chi_nonc = var_0 * exp * phi
+        nn = self.rng.poisson(chi_nonc / 2, size=self.n_path)
+        var_t = (exp / phi) * 2 * self.rng.standard_gamma(shape=chi_df / 2 + nn, size=self.n_path)
+        return var_t, nn
+
+    @abc.abstractmethod
+    def cond_states(self, var_0, dt):
+        """
+        Final variance and integrated variance over dt given var_0
+        The int_var is normalized by dt
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+            (var_final, int_var_std)
+        """
+        pass
+
+    def cond_spot_sigma(self, var_0, texp):
+        rhoc = np.sqrt(1.0 - self.rho**2)
+
+        var_final, int_var_std = self.cond_states(var_0, texp)
+
+        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
+        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
+        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
+
+        if self.correct_fwd:
+            spot_cond /= spot_cond.mean()
+
+        # return normalized forward and volatility
+        return spot_cond, sigma_cond
+
+
+class HestonMcAndersen2008(HestonMcABC):
     """
     Heston model with conditional Monte-Carlo simulation
 
@@ -21,17 +117,16 @@ class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
 
     Examples:
         >>> import numpy as np
-        >>> import pyfeng as pf
+        >>> import pyfeng.ex as pfex
         >>> strike = np.array([60, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m = pfex.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_mc_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
         array([44.31943535, 13.09371251,  0.29580431])
     """
-    var_process = True
     psi_c = 1.5  # parameter used by the Andersen QE scheme
     scheme = 2
 
@@ -52,6 +147,57 @@ class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
         super().set_mc_params(n_path, dt, rn_seed, antithetic)
         self.scheme = scheme
 
+    def var_step_euler(self, var_0, dt, milstein=False):
+        if self.antithetic:
+            zz = self.rng.standard_normal(size=self.n_path // 2)
+            zz = np.hstack([zz, -zz])
+        else:
+            zz = self.rng.standarad_normal(size=self.n_path)
+
+        # Euler (or Milstein) scheme
+        var_t = var_0 + self.mr * (self.theta - var_0) * dt + np.sqrt(var_0) * self.vov * zz
+        # Extra-term for Milstein scheme
+        if milstein == 1:
+            var_t += 0.25 * self.vov**2 * (zz**2 - dt)
+
+        var_t[var_t < 0] = 0  # variance should be larger than zero
+        return var_t
+
+    def var_step_qe(self, var_0, dt):
+        expo = np.exp(-self.mr * dt)
+        m = self.theta + (var_0 - self.theta) * expo
+        s2 = var_0 * expo + self.theta * (1 - expo) / 2
+        s2 *= self.vov**2 * (1 - expo) / self.mr
+        psi = s2 / m**2
+
+        if self.antithetic:
+            zz = self.rng.standard_normal(size=self.n_path // 2)
+            zz = np.hstack([zz, -zz])
+        else:
+            zz = self.rng.standarad_normal(size=self.n_path)
+
+        # compute vt(i+1) given psi
+        # psi < psi_c
+        idx_below = (psi <= self.psi_c)
+        ins = 2 / psi[idx_below]
+        b2 = (ins - 1) + np.sqrt(ins * (ins - 1))
+        a = m[idx_below] / (1 + b2)
+
+        var_t = np.zeros(self.n_path)
+        var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2
+
+        # psi_c < psi
+        uu = spst.norm.cdf(zz)
+        pp = (psi - 1) / (psi + 1)
+        beta = (1 - pp) / m
+
+        idx_above = (uu <= pp) & ~idx_below
+        var_t[idx_above] = 0.0
+        idx_above = (uu > pp) & ~idx_below
+        var_t[idx_above] = (np.log((1 - pp) / (1 - uu)) / beta)[idx_above]
+
+        return var_t
+
     def vol_paths(self, tobs):
         var_0 = self.sigma
         dt = np.diff(tobs, prepend=0)
@@ -61,74 +207,44 @@ class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
         var_t = np.full(self.n_path, var_0)
 
         if self.scheme < 2:
-            dB_t = self._bm_incr(tobs, cum=False)  # B_t (0 <= s <= 1)
+            milstein = (self.scheme == 1)
             for i in range(n_dt):
-            # Euler (or Milstein) scheme
-                var_t += self.mr * (self.theta - var_t) * dt[i] + np.sqrt(var_t) * self.vov * dB_t[i, :]
-
-                # Extra-term for Milstein scheme
-                if self.scheme == 1:
-                    var_t += 0.25 * self.vov**2 * (dB_t[i, :]**2 - dt[i])
-
-                var_t[var_t < 0] = 0  # variance should be larger than zero
+                # Euler (or Milstein) scheme
+                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
                 var_path[i + 1, :] = var_t
 
         elif self.scheme == 2:
-            # obtain the standard normals
-            zz = self._bm_incr(tobs=np.arange(1, n_dt+0.1), cum=False)
-
             for i in range(n_dt):
-                # compute m, s_square, psi given vt(i)
-                expo = np.exp(-self.mr * dt[i])
-                m = self.theta + (var_t - self.theta) * expo
-                s2 = var_t * expo + self.theta * (1 - expo)/2
-                s2 *= self.vov**2 * (1 - expo) / self.mr
-                psi = s2 / m**2
-
-                # compute vt(i+1) given psi
-                # psi < psi_c
-                idx_below = (psi <= self.psi_c)
-                ins = 2 / psi[idx_below]
-                b2 = (ins - 1) + np.sqrt(ins * (ins - 1))
-                a = m[idx_below] / (1 + b2)
-                var_t[idx_below] = a * (np.sqrt(b2) + zz[i, idx_below])**2
-
-                # psi_c < psi
-                uu = spst.norm.cdf(zz[i, :])
-                pp = (psi - 1) / (psi + 1)
-                beta = (1 - pp) / m
-
-                idx_above = (uu <= pp) & ~idx_below
-                var_t[idx_above] = 0.0
-                idx_above = (uu > pp) & ~idx_below
-                var_t[idx_above] = (np.log((1 - pp)/(1 - uu))/beta)[idx_above]
-
+                var_t = self.var_step_qe(var_t, dt[i])
                 var_path[i + 1, :] = var_t
+
+        elif self.scheme == 3:
+            for i in range(n_dt):
+                var_t = self.var_step_ncx2(var_t, dt[i])
+                var_path[i + 1, :] = var_t
+
+        elif self.scheme == 4:
+            for i in range(n_dt):
+                var_t, _ = self.var_step_gamma_eta(var_t, dt[i])
+                var_path[i + 1, :] = var_t
+
+        else:
+            raise ValueError(f'Invalid scheme: {self.scheme}')
 
         return var_path
 
-    def cond_spot_sigma(self, texp):
+    def cond_states(self, var_0, texp):
 
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
         tobs = self.tobs(texp)
         n_dt = len(tobs)
         var_paths = self.vol_paths(tobs)
         var_final = var_paths[-1, :]
         int_var_std = spint.simps(var_paths, dx=1, axis=0) / n_dt
 
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
 
-class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
+class HestonMcAe(HestonMcABC):
     """
     Almost exact MC for Heston model.
 
@@ -164,52 +280,6 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.dist = dist
-
-    def vol_paths(self, tobs):
-        return np.ones(size=(len(tobs), self.n_path))
-
-    def chi_dim(self):
-        """
-        Noncentral Chi-square (NCX) distribution's degree of freedom
-
-        Returns:
-            degree of freedom (scalar)
-        """
-        chi_dim = 4 * self.theta * self.mr / self.vov**2
-        return chi_dim
-
-    def chi_lambda(self, texp):
-        """
-        Noncentral Chi-square (NCX) distribution's noncentrality parameter
-
-        Returns:
-            noncentrality parameter (scalar)
-        """
-        chi_lambda = 4 * self.sigma * self.mr / self.vov**2
-        chi_lambda /= np.exp(self.mr * texp) - 1
-        return chi_lambda
-
-    def phi_exp(self, texp):
-        exp = np.exp(-self.mr*texp/2)
-        phi = 4*self.mr / self.vov**2 / (1/exp - exp)
-        return phi, exp
-
-    def var_final(self, var_0, dt):
-        """
-        Draw final variance from NCX distribution
-
-        Args:
-            var_0: initial variance
-            dt: time step
-
-        Returns:
-            final variance (at t=T)
-        """
-        chi_df = self.chi_dim()
-        phi, exp = self.phi_exp(dt)
-        chi_nonc = var_0 * exp * phi
-        var_t = (exp / phi) * self.rng.noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
-        return var_t
 
     def mgf(self, aa, var_0, var_final, dt):
         """
@@ -251,13 +321,9 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         ch_f = part1 * part2 * part3
         return ch_f
 
+    def cond_states(self, var_0, texp):
 
-    def cond_spot_sigma(self, texp):
-
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
-
-        var_final = self.var_final(self.sigma, texp)
+        var_final = self.var_step_ncx2(self.sigma, texp)
 
         # conditional MGF function
         def mgf_cond(aa):
@@ -280,54 +346,46 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         else:
             raise ValueError(f"Incorrect distribution.")
 
-        ### Common Part
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
 
-class HestonMcExactGK(HestonMcAe):
+class HestonMcGlassermanKim2011(HestonMcAe):
     """
-    Exact simulation using the gamma series based on  Glasserman and Kim (2011)
+    Exact simulation using the gamma series based on Glasserman and Kim (2011)
 
     References:
         - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
     """
-    KK = 1
 
-    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, KK=1):
+    antithetic = False
+    KK = 1  # K for series truncation.
+    simulate_var_eta = False
+
+    def set_mc_params(self, n_path=10000, rn_seed=None, KK=1):
         """
         Set MC parameters
 
         Args:
             n_path: number of paths
             rn_seed: random number seed
-            antithetic: antithetic
-            KK:
+            KK: truncation index
 
-        References:
-            -
         """
         self.n_path = int(n_path)
         self.rn_seed = rn_seed
-        self.antithetic = antithetic
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.KK = KK
 
-    def cond_spot_sigma(self, texp):
+    def cond_states(self, var_0, texp):
 
-        var_0 = self.sigma  # inivial variance
-        rhoc = np.sqrt(1.0 - self.rho**2)
-
-        ncx_df = self.chi_dim()
-        var_final = self.var_final(var_0=self.sigma, dt=texp)
+        if self.simulate_var_eta:
+            var_final, eta = self.var_step_gamma_eta(var_0=self.sigma, dt=texp)
+        else:
+            phi, exp = self.phi_exp(texp)
+            var_final = self.var_step_ncx2(var_0=self.sigma, dt=texp)
+            zz = np.sqrt(var_0 * var_final) * phi
+            eta = self.draw_eta(zz)
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman and Kim (2011)
@@ -337,42 +395,26 @@ class HestonMcExactGK(HestonMcAe):
 
         # Simulation X2: transform inversion
         # coth = 1 / np.tanh(self.mr * texp * 0.5)
-        phi, exp = self.phi_exp(texp)
+
+        # Simulation X3: X3=sum(Z, eta), Z is a special case of X2 with ncx_df=4
+        # Z = self.draw_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, 4, texp, self.n_path * 10)
+        idx = (eta > 0)
+        n_nz_eta = idx.sum()
+
+        #print(n_nz_eta, eta_max)
+        X2_X3 = self.draw_X2(4*eta + self.chi_dim(), texp, self.n_path)
+        #X3 = np.zeros(self.n_path)
+        #X3[idx] = X3_nz
 
         #mu_X2_0 = self.vov**2 * (-2 + self.mr * texp * coth) / (4 * self.mr**2)
         #sigma_square_X2_0 = self.vov**4 * (-8 + 2 * self.mr * texp * coth + (self.mr * texp / sinh)**2) / (
         #            8 * self.mr**4)
         # X2 = self.draw_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, ncx_df, texp, self.n_path)
-        X2 = self.draw_X2(ncx_df, texp, self.n_path)
+        #X2 = self.draw_X2(self.chi_dim(), texp, self.n_path)
 
-        # Simulation X3: X3=sum(Z, eta), Z is a special case of X2 with ncx_df=4
-        # Z = self.draw_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, 4, texp, self.n_path * 10)
-        zz = np.sqrt(var_0 * var_final) * phi
-        eta = self.draw_eta(zz)
-        eta_max = eta.max()
-        idx = (eta > 0)
-        n_nz_eta = idx.sum()
+        int_var_std = (X1 + X2_X3) / texp
 
-        #print(n_nz_eta, eta_max)
-        Z = self.draw_X2(4, texp, n_nz_eta * eta_max).reshape(n_nz_eta, eta_max)
-        np.cumsum(Z, axis=1, out=Z)
-
-        X3 = np.zeros(self.n_path)
-        X3[idx] = Z[np.arange(n_nz_eta), eta[idx]-1]
-
-        int_var_std = (X1 + X2 + X3) / texp
-
-        ### Common Part
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            #print(spot_cond.mean())
-            spot_cond /= spot_cond.mean()
-
-        # return normalized forward and volatility
-        return spot_cond, sigma_cond
+        return var_final, int_var_std
 
     def draw_X1(self, var_0, var_final, dt):
         """
@@ -391,24 +433,24 @@ class HestonMcExactGK(HestonMcAe):
         """
         # For fixed k, theta, vov, texp, generate some parameters firstly
         temp = (2 * np.pi * np.arange(1, self.KK + 1))**2
-        gamma_n = ((self.mr * dt) ** 2 + temp) / (2 * (self.vov * dt) ** 2)
-        lambda_n = 4 * temp / (self.vov ** 2 * dt * ((self.mr * dt) ** 2 + temp))
+        gamma_n = ((self.mr * dt)**2 + temp) / (2 * (self.vov * dt)**2)
+        lambda_n = 4 * temp / (self.vov**2 * dt * ((self.mr * dt)**2 + temp))
 
         # the following para will change with VO and VT
-        Nn_mean = (var_0 + var_final) * lambda_n[:, None]  # every row K numbers (one path)
+        Nn_mean = (var_0 + var_final) * lambda_n[:, None]  # (KK, n_path)
         Nn = self.rng.poisson(lam=Nn_mean)
 
-        rv_exp_sum = self.rng.gamma(shape=Nn)
+        rv_exp_sum = self.rng.standard_gamma(shape=Nn)
         X1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
-        E_X1_K_0 = 2 * dt / (np.pi ** 2 * self.KK)
-        Var_X1_K_0 = 2 * self.vov ** 2 * dt ** 3 / (3 * np.pi ** 4 * self.KK ** 3)
+        E_X1_K_0 = 2 * dt / (np.pi**2 * self.KK)
+        Var_X1_K_0 = 2 * self.vov**2 * dt**3 / (3 * np.pi**4 * self.KK**3)
 
         rem_scale = Var_X1_K_0 / E_X1_K_0
         rem_shape = (var_0 + var_final) * E_X1_K_0 / rem_scale
 
-        X1 += self.rng.gamma(rem_shape, rem_scale, size=len(var_final))
+        X1 += rem_scale * self.rng.standard_gamma(rem_shape)
         return X1
 
     def draw_X2_AW(self, mu_X2_0, sigma_square_X2_0, ncx_df, texp, num_rv):
@@ -470,35 +512,31 @@ class HestonMcExactGK(HestonMcAe):
         """
         generate Bessel random variables from inverse of CDF, formula(2.4) in George and Dimitris (2010)
 
-        Parameters
-        ----------
-        v:  float
-            parameter in Bessel distribution
-        zz: an 1-d array with shape (n_paths,)
-            parameter in Bessel distribution
+        Args:
+            zz:  Bessel RV parameter (n, )
 
-        Returns
-        -------
-         an 1-d array with shape (n_paths,), Bessel random variables eta
+        Returns:
+            eta (integer >= 0) values (n, )
         """
+
         iv_index = 0.5 * self.chi_dim() - 1
         p0 = np.power(0.5 * zz, iv_index) / (spsp.iv(iv_index, zz) * spsp.gamma(iv_index + 1))
         temp = np.arange(1, 8)[:, None]  # Bessel distribution has short tail, 30 maybe enough
-        p = zz ** 2 / (4 * temp * (temp + iv_index))
+        p = zz**2 / (4 * temp * (temp + iv_index))
         p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
         rv_uni = self.rng.uniform(size=len(zz))
         eta = np.sum(p < rv_uni, axis=0)
 
         return eta
 
-    def draw_X2(self, ncx_df, texp, n_path):
+    def draw_X2(self, ncx_df, dt, n_path):
         """
         Simulation of X2 (or Z) using truncated Gamma expansion in Glasserman and Kim (2011)
         Z is the special case with ncx_df = 4
         
         Args:
             ncx_df: ncx2 degree of freedom
-            texp: time-to-expiry
+            dt: time-to-expiry
             n_path: number of RVs to generate
 
         Returns:
@@ -506,16 +544,17 @@ class HestonMcExactGK(HestonMcAe):
         """
 
         range_K = np.arange(1, self.KK + 1)
-        gamma_n = ((self.mr * texp)**2 + (2 * np.pi * range_K)**2) / (2 * (self.vov * texp)**2)
+        gamma_n = ((self.mr * dt)**2 + (2 * np.pi * range_K)**2) / (2 * (self.vov * dt)**2)
 
-        gamma_rv = self.rng.gamma(0.5 * ncx_df, 1, size=(n_path, self.KK))
-        X2 = np.sum(gamma_rv / gamma_n, axis=1)
+        gamma_rv = self.rng.standard_gamma(0.5 * ncx_df, size=(self.KK, n_path))
+        X2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
-        rem_mean = ncx_df * (self.vov * texp)**2 / (4 * np.pi**2 * self.KK)
-        rem_var = ncx_df * (self.vov * texp)**4 / (24 * np.pi**4 * self.KK**3)
+        rem_mean = ncx_df * (self.vov * dt)**2 / (4 * np.pi**2 * self.KK)
+        rem_var = ncx_df * (self.vov * dt)**4 / (24 * np.pi**4 * self.KK**3)
         rem_scale = rem_var / rem_mean
         rem_shape = rem_mean / rem_scale
 
-        X2 += self.rng.gamma(rem_shape, rem_scale, size=n_path)
+        X2 += rem_scale * self.rng.standard_gamma(rem_shape, size=n_path)
         return X2
+
