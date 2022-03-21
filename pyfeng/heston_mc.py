@@ -77,6 +77,7 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
     def cond_states(self, var_0, dt):
         """
         Final variance and integrated variance over dt given var_0
+        The int_var is normalized by dt
 
         Args:
             var_0: initial variance

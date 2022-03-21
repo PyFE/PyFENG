@@ -111,14 +111,26 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
     @abc.abstractmethod
     def cond_states(self, sig_0, texp):
+        """
+        Final variance and integrated variance over dt given var_0
+        The integrated variance is normalized by dt
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+            (var_final, int_var_std)
+        """
         pass
 
     def cond_spot_sigma(self, texp):
-        s_t, u_t, v_t = self.cond_states(self.sigma, texp)
+        s_t, u_t_std, v_t_std = self.cond_states(self.sigma, texp)
 
         fwd_cond = np.exp(
             self.rho * ((s_t**2 - self.sigma**2) / (2 * self.vov) - self.vov * texp / 2 \
-            - (self.mr * self.theta / self.vov) * u_t + (self.mr / self.vov - self.rho / 2) * v_t) \
+            - (self.mr * self.theta / self.vov) * texp * u_t_std \
+            + (self.mr / self.vov - self.rho / 2) * texp * v_t_std) \
         )
 
         if self.correct_fwd:
@@ -127,7 +139,7 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         else:
             fwd_err = None
 
-        sigma_cond = np.sqrt((1 - self.rho**2) * v_t / texp) / self.sigma
+        sigma_cond = np.sqrt((1 - self.rho**2) * v_t_std) / self.sigma
 
         return fwd_cond, sigma_cond
 
@@ -154,10 +166,10 @@ class OusvMcTimeStep(OusvMcABC):
         n_dt = len(tobs)
         sigma_paths = self.vol_paths(tobs)
         s_t = sigma_paths[-1, :]
-        u_t = scint.simps(sigma_paths, dx=1, axis=0) / n_dt * texp
-        v_t = scint.simps(sigma_paths**2, dx=1, axis=0) / n_dt * texp
+        u_t_std = scint.simps(sigma_paths, dx=1, axis=0) / n_dt
+        v_t_std = scint.simps(sigma_paths**2, dx=1, axis=0) / n_dt
 
-        return s_t, u_t, v_t
+        return s_t, u_t_std, v_t_std
 
 
 class OusvMcChoi2023(OusvMcABC):
@@ -343,22 +355,21 @@ class OusvMcChoi2023(OusvMcABC):
         z_p += z_sin[:, ::2] @ an3_n_pi[::2]
         z_q += z_sin[:, 1::2] @ an3_n_pi[1::2]
 
-        UT = vinf * dt + (sig_0 - vinf) * (1 - e_mr) / mr
-        UT += (cosh - 1) / (mr * sinh) * sighat + 2 * vov * dt * np.sqrt(dt) * z_g
+        UT = vinf + (sig_0 - vinf) * (1 - e_mr) / mr_t  # * dt
+        UT += (cosh - 1) / (mr_t * sinh) * sighat + 2 * vov * np.sqrt(dt) * z_g  # * dt
 
-        VT = vinf * (2 * UT - vinf * dt) + (sig_0 - vinf)**2 * (1 - e_mr**2) / (2 * mr)
-        VT += sighat * (sig_0 - vinf) * (dt / sinh - e_mr / mr) + (sig_0 - vinf) * vov * dt * np.sqrt(dt) * (
+        VT = vinf * (2 * UT - vinf) + (sig_0 - vinf)**2 * (1 - e_mr**2) / (2 * mr_t)
+        VT += sighat * (sig_0 - vinf) * (1 / sinh - e_mr / mr_t) + (sig_0 - vinf) * vov * np.sqrt(dt) * (
                     (1 + e_mr) * z_p + (1 - e_mr) * z_q)
 
         ## VT: even terms
-        VT += (sinh * cosh - mr_t) / (2 * mr * sinh**2) * sighat**2 + sighat * vov * dt * np.sqrt(dt) * (
-                    z_p - z_q)
+        VT += (sinh * cosh - mr_t) / (2 * mr_t * sinh**2) * sighat**2 + sighat * vov * np.sqrt(dt) * (z_p - z_q)
 
         # LN variate (even term)
         m1 = self._a2sum(mr_t, ns=n_sin)
         var = 2 * self._a4sum(mr_t, ns=n_sin)
         ln_sig = np.sqrt(np.log(1 + var / m1**2))
-        VT += 0.5 * (dt * vov)**2 * (z_sin**2 @ an**2 + m1 * np.exp(ln_sig * (z_r - 0.5 * ln_sig)))
+        VT += 0.5 * dt * vov**2 * (z_sin**2 @ an**2 + m1 * np.exp(ln_sig * (z_r - 0.5 * ln_sig)))
 
         sighat += vinf + (sig_0 - vinf) * e_mr
 
