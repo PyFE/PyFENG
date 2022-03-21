@@ -12,3 +12,4 @@ numpy==1.20.1
 m2r2==0.2.7
 pandas==1.2.3
 scipy==1.6.1
+mistune==0.8.4
