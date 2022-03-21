@@ -147,9 +147,6 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         assert abs(self.comb_coef.sum()-1) < 1e-8
         self.nn = np.arange(0, self.m_euler + self.n_euler + 0.1)
 
-    def vol_paths(self, tobs, mu=0):
-        return None
-
     def sigma_final(self, vovn):
         """
         Final Sigma
@@ -163,10 +160,10 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
         """
 
         if self.antithetic:
-            zz = self.rng.normal(size=self.n_path // 2)
+            zz = self.rng.standard_normal(size=self.n_path // 2)
             zz = np.hstack([zz, -zz])
         else:
-            zz = self.rng.normal(size=self.n_path)
+            zz = self.rng.standarad_normal(size=self.n_path)
 
         sigma_T = np.exp(vovn * (zz - vovn/2))
         return sigma_T

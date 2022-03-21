@@ -177,22 +177,6 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         return bm_incr
 
     @abc.abstractmethod
-    def vol_paths(self, tobs):
-        """
-        Volatility (or variance) paths at 0 and tobs.
-        Variance is calculated if self.var_process = True
-
-        Args:
-            tobs: observation time (array). No need to include 0.
-
-        Returns:
-            2d array of (time, path)
-
-        """
-
-        return np.ones(size=(len(tobs), self.n_path))
-
-    @abc.abstractmethod
     def cond_spot_sigma(self, texp):
         """
         Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
