@@ -3,7 +3,7 @@
 # SV models (CMC, AE) from ASP 2021
 from .heston_mc import HestonMcAndersen2008, HestonMcAe, HestonMcGlassermanKim2011
 from .sv32_mc import Sv32McCondQE, Sv32McAe
-from .garch import GarchMcCond, GarchUncorrBaroneAdesi2004
+from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 
 # SABR / OUSV models for research
 from .sabr_int import SabrCondQuad
