@@ -185,12 +185,10 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
-        return var_t, mean_var, mean_vol, mean_inv_vol
-
+        return vol_t, mean_var, mean_vol, mean_inv_vol
 
     def cond_spot_sigma(self, var_0, texp):
 
-        rhoc = np.sqrt(1.0 - self.rho**2)
         vol_final, mean_var, mean_vol, mean_inv_vol = self.cond_states(var_0, texp)
         fwd_cond = np.exp(
             self.rho
@@ -202,6 +200,10 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
             )
         )
 
-        sigma_cond = rhoc * np.sqrt(mean_var/var_0)
+        if self.correct_fwd:
+            fwd_mean = fwd_cond.mean()
+            fwd_cond /= fwd_mean
+
+        sigma_cond = np.sqrt((1.0 - self.rho**2)*mean_var/var_0)
 
         return fwd_cond, sigma_cond
