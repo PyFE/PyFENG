@@ -14,6 +14,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
 
     This method is only used to compare with the method GarchCondMC.
     """
+    model_type = "GarchDiff"
 
     def price(self, strike, spot, texp, cp=1):
 
@@ -76,6 +77,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
     """
 
+    model_type = "GarchDiff"
     var_process = True
     scheme = 1  #
 

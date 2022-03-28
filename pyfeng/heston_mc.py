@@ -11,6 +11,7 @@ from . import sv_abc as sv
 
 class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
+    model_type = "Heston"
 
     def chi_dim(self):
         """
@@ -86,7 +87,7 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (var_final, int_var_std)
         """
-        pass
+        return NotImplementedError
 
     def cond_spot_sigma(self, var_0, texp):
         rhoc = np.sqrt(1.0 - self.rho**2)

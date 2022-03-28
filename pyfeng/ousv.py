@@ -22,6 +22,7 @@ class OusvSchobelZhu1998(sv.SvABC):
         array([21.41873, 15.16798, 10.17448])
     """
 
+    model_type = "OUSV"
     var_process = False
 
     def D_B_C(self, s1, s2, s3, texp):
@@ -107,6 +108,7 @@ class OusvSchobelZhu1998(sv.SvABC):
 
 class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
+    model_type = "OUSV"
     var_process = False
 
     @abc.abstractmethod
@@ -122,7 +124,7 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (var_final, int_var_std)
         """
-        pass
+        return NotImplementedError
 
     def cond_spot_sigma(self, sig_0, texp):
         s_t, u_t_std, v_t_std = self.cond_states(sig_0, texp)

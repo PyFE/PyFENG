@@ -20,6 +20,7 @@ class Nsvh1(sabr.SabrABC):
         array([22.45639334, 14.89800673,  8.88641613,  4.65917923,  2.10575204])
     """
 
+    model_type = "Nsvh"
     beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
     is_atmvol = False
 

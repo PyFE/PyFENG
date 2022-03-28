@@ -20,6 +20,7 @@ from . import cev
 
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
+    model_type = "SABR"
     _base_beta = None
 
     def __init__(
@@ -120,10 +121,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             args_model = {k: param[k] for k in ("sigma", "vov", "rho", "beta")}
             args_pricing = {k: param[k] for k in ("texp", "spot")}
 
-            assert df_val.columns[0] == "k" or df_val.columns[0] == "K"
+            assert df_val.columns[0] == "Strike"
             args_pricing["strike"] = df_val.values[:, 0]
-            if df_val.columns[0] == "k":
-                args_pricing["strike"] *= param["spot"]
 
             val = df_val[param["col_name"]].values
             is_iv = param["col_name"].startswith("IV")
@@ -231,7 +230,7 @@ class SabrVolApproxABC(SabrABC):
         Returns:
             equivalent volatility
         """
-        pass
+        return NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)
