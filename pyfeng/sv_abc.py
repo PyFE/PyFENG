@@ -8,6 +8,8 @@ from . import opt_smile_abc as smile
 
 class SvABC(smile.OptSmileABC, abc.ABC):
 
+    model_type: str = NotImplementedError
+    var_process: bool = NotImplementedError
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
     def __init__(
@@ -46,7 +48,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             "vov": self.vov,
             "rho": self.rho,
             "mr": self.mr,
-            "sig_inf": self.theta,
+            "theta": self.theta,
         }
         return {**params1, **params2}
 
@@ -66,7 +68,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         """
 
         this_dir, _ = os.path.split(__file__)
-        file = os.path.join(this_dir, "data/sv_benchmark.xlsx")
+        file = os.path.join(this_dir, f"data/{cls.model_type.lower()}_benchmark.xlsx")
         df_param = pd.read_excel(file, sheet_name="Param", index_col="Sheet")
 
         if set_no is None:
@@ -77,7 +79,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             args_model = {k: param[k] for k in ("sigma", "theta", "vov", "rho", "mr", "intr")}
             args_pricing = {k: param[k] for k in ("texp", "spot")}
 
-            assert df_val.columns[0] == "k" or df_val.columns[0] == "K"
+            assert df_val.columns[0] == "Strike"
             args_pricing["strike"] = df_val.values[:, 0]
             if df_val.columns[0] == "k":
                 args_pricing["strike"] *= param["spot"]
@@ -190,8 +192,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         Returns: (forward, volatility)
         """
-
-        return np.ones(self.n_path), np.ones(self.n_path)
+        return NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
 
