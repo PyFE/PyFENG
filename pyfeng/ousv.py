@@ -141,12 +141,7 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         e_mr = np.exp(-mr_t)
         sinh = np.sinh(mr_t)
 
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
-
+        zz = self.rv_normal()
         vol_t = self.vov * np.sqrt(e_mr * sinh / self.mr) * zz
         vol_t += self.theta + (vol_0 - self.theta) * e_mr
 
@@ -155,20 +150,13 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
     def cond_spot_sigma(self, vol_0, texp):
         vol_texp, var_mean, vol_mean = self.cond_states(vol_0, texp)
 
-        fwd_cond = np.exp(
-            self.rho * ((vol_texp**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
-                        - (self.mr * self.theta / self.vov) * texp * vol_mean \
-                        + (self.mr / self.vov - self.rho / 2) * texp * var_mean) \
-        )
+        fwd_cond = (vol_texp**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
+            - (self.mr * self.theta / self.vov) * texp * vol_mean \
+            + (self.mr / self.vov - self.rho / 2) * texp * var_mean
+        fwd_cond *= self.rho
+        np.exp(fwd_cond, out=fwd_cond)
 
-        if self.correct_fwd:
-            fwd_err = np.mean(fwd_cond) - 1
-            fwd_cond /= (1 + fwd_err)
-        else:
-            fwd_err = None
-
-        sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / self.sigma
-
+        sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / vol_0
         return fwd_cond, sigma_cond
 
 

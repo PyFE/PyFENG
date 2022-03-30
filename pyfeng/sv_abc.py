@@ -112,6 +112,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     var_process = True
     correct_fwd = True
+    result = {}
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
@@ -145,6 +146,22 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         n_steps = (texp // (2 * self.dt) + 1) * 2
         tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
         return tobs
+
+    def rv_normal(self):
+        if self.antithetic:
+            zz = self.rng.standard_normal(size=self.n_path // 2)
+            zz = np.stack([zz, -zz], axis=1).flatten()
+        else:
+            zz = self.rng.standard_normal(size=self.n_path)
+        return zz
+
+    def rv_uniform(self):
+        if self.antithetic:
+            zz = self.rng.uniform(size=self.n_path // 2)
+            zz = np.stack([zz, 1-zz], axis=1).flatten()
+        else:
+            zz = self.rng.uniform(size=self.n_path)
+        return zz
 
     def _bm_incr(self, tobs, cum=False, n_path=None):
         """
@@ -201,6 +218,11 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         kk = np.atleast_1d(kk)
 
         fwd_cond, sigma_cond = self.cond_spot_sigma(self.sigma, texp)
+
+        fwd_mean = fwd_cond.mean()
+        self.result['spot error'] = fwd_mean - 1
+        if self.correct_fwd:
+            fwd_cond /= fwd_mean
 
         sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
         base_model = self.base_model(sigma * sigma_cond)
