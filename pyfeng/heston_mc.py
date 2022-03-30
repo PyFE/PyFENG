@@ -85,21 +85,18 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             dt: time step
 
         Returns:
-            (var_final, int_var_std)
+            (var_final, var_mean)
         """
         return NotImplementedError
 
     def cond_spot_sigma(self, var_0, texp):
-        rhoc = np.sqrt(1.0 - self.rho**2)
+        var_final, var_mean = self.cond_states(var_0, texp)
 
-        var_final, int_var_std = self.cond_states(var_0, texp)
-
-        int_var_dw = ((var_final - var_0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-        sigma_cond = rhoc * np.sqrt(int_var_std / var_0)  # normalize by initial variance
-
-        if self.correct_fwd:
-            spot_cond /= spot_cond.mean()
+        spot_cond = ((var_final - var_0) - self.mr * texp * (self.theta - var_mean)) / self.vov \
+             - 0.5 * self.rho * var_mean * texp
+        spot_cond *= self.rho
+        np.exp(spot_cond, out=spot_cond)
+        sigma_cond = np.sqrt((1.0 - self.rho**2) * var_mean / var_0)  # normalize by initial variance
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
@@ -149,16 +146,12 @@ class HestonMcAndersen2008(HestonMcABC):
         self.scheme = scheme
 
     def var_step_euler(self, var_0, dt, milstein=False):
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
+        zz = self.rv_normal()
 
         # Euler (or Milstein) scheme
         var_t = var_0 + self.mr * (self.theta - var_0) * dt + np.sqrt(var_0) * self.vov * zz
         # Extra-term for Milstein scheme
-        if milstein == 1:
+        if milstein:
             var_t += 0.25 * self.vov**2 * (zz**2 - dt)
 
         var_t[var_t < 0] = 0  # variance should be larger than zero
@@ -171,11 +164,7 @@ class HestonMcAndersen2008(HestonMcABC):
         s2 *= self.vov**2 * (1 - expo) / self.mr
         psi = s2 / m**2
 
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
+        zz = self.rv_normal()
 
         # compute vt(i+1) given psi
         # psi < psi_c
@@ -240,9 +229,9 @@ class HestonMcAndersen2008(HestonMcABC):
         n_dt = len(tobs)
         var_paths = self.vol_paths(tobs)
         var_final = var_paths[-1, :]
-        int_var_std = spint.simps(var_paths, dx=1, axis=0) / n_dt
+        var_mean = spint.simps(var_paths, dx=1, axis=0) / n_dt
 
-        return var_final, int_var_std
+        return var_final, var_mean
 
 
 class HestonMcAe(HestonMcABC):
@@ -339,18 +328,18 @@ class HestonMcAe(HestonMcABC):
             # RNG.wald takes the same parameters
             mu = m1
             lam = m1**3 / (m2 - m1**2)
-            int_var_std = self.rng.wald(mean=mu, scale=lam) / texp
+            var_mean = self.rng.wald(mean=mu, scale=lam) / texp
         elif self.dist == 1:
             scale_ln = np.sqrt(np.log(m2) - 2 * np.log(m1))
             miu_ln = np.log(m1) - 0.5 * scale_ln**2
-            int_var_std = self.rng.lognormal(mean=miu_ln, sigma=scale_ln) / texp
+            var_mean = self.rng.lognormal(mean=miu_ln, sigma=scale_ln) / texp
         else:
             raise ValueError(f"Incorrect distribution.")
 
-        return var_final, int_var_std
+        return var_final, var_mean
 
 
-class HestonMcGlassermanKim2011(HestonMcAe):
+class HestonMcGlassermanKim2011(HestonMcABC):
     """
     Exact simulation using the gamma series based on Glasserman and Kim (2011)
 
@@ -360,7 +349,6 @@ class HestonMcGlassermanKim2011(HestonMcAe):
 
     antithetic = False
     KK = 1  # K for series truncation.
-    simulate_var_eta = False
 
     def set_mc_params(self, n_path=10000, rn_seed=None, KK=1):
         """
@@ -374,48 +362,37 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         """
         self.n_path = int(n_path)
         self.rn_seed = rn_seed
-        self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.KK = KK
 
     def cond_states(self, var_0, texp):
 
-        if self.simulate_var_eta:
-            var_final, eta = self.var_step_gamma_eta(var_0=self.sigma, dt=texp)
-        else:
-            phi, exp = self.phi_exp(texp)
-            var_final = self.var_step_ncx2(var_0=self.sigma, dt=texp)
-            zz = np.sqrt(var_0 * var_final) * phi
-            eta = self.draw_eta(zz)
+        phi, exp = self.phi_exp(texp)
+        var_final = self.var_step_ncx2(var_0=var_0, dt=texp)
+        zz = np.sqrt(var_0 * var_final) * phi
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman and Kim (2011)
 
         # Simulation X1: truncated Gamma expansion
-        X1 = self.draw_X1(var_0, var_final, texp)
+        X123 = self.draw_X1(var_0, var_final, texp)
+        X123 += self.draw_X2(self.chi_dim(), texp, size=self.n_path)
+        eta = self.draw_eta(zz)
+        ZZ = self.draw_X2(4, texp, size=eta.sum())
 
-        # Simulation X2: transform inversion
-        # coth = 1 / np.tanh(self.mr * texp * 0.5)
+        total = 0
+        for i in np.arange(eta.max()):
+            eta_above_i = (eta > i)
+            count = eta_above_i.sum()
+            if count == 0:
+                continue
+            X123[eta_above_i] += ZZ[total:total+count]
+            total += count
 
-        # Simulation X3: X3=sum(Z, eta), Z is a special case of X2 with ncx_df=4
-        # Z = self.draw_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, 4, texp, self.n_path * 10)
-        idx = (eta > 0)
-        n_nz_eta = idx.sum()
+        assert eta.sum() == total
+        var_mean = X123 / texp
 
-        #print(n_nz_eta, eta_max)
-        X2_X3 = self.draw_X2(4*eta + self.chi_dim(), texp, self.n_path)
-        #X3 = np.zeros(self.n_path)
-        #X3[idx] = X3_nz
-
-        #mu_X2_0 = self.vov**2 * (-2 + self.mr * texp * coth) / (4 * self.mr**2)
-        #sigma_square_X2_0 = self.vov**4 * (-8 + 2 * self.mr * texp * coth + (self.mr * texp / sinh)**2) / (
-        #            8 * self.mr**4)
-        # X2 = self.draw_X2_and_Z_AW(mu_X2_0, sigma_square_X2_0, ncx_df, texp, self.n_path)
-        #X2 = self.draw_X2(self.chi_dim(), texp, self.n_path)
-
-        int_var_std = (X1 + X2_X3) / texp
-
-        return var_final, int_var_std
+        return var_final, var_mean
 
     def draw_X1(self, var_0, var_final, dt):
         """
@@ -438,18 +415,20 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         lambda_n = 4 * temp / (self.vov**2 * dt * ((self.mr * dt)**2 + temp))
 
         # the following para will change with VO and VT
-        Nn_mean = (var_0 + var_final) * lambda_n[:, None]  # (KK, n_path)
-        Nn = self.rng.poisson(lam=Nn_mean)
+        Nn = self.rng.poisson(lam=(var_0 + var_final) * lambda_n[:, None])  # (KK, n_path)
 
         rv_exp_sum = self.rng.standard_gamma(shape=Nn)
         X1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
         E_X1_K_0 = 2 * dt / (np.pi**2 * self.KK)
-        Var_X1_K_0 = 2 * self.vov**2 * dt**3 / (3 * np.pi**4 * self.KK**3)
+        rem_var_X1 = 2 * self.vov**2 * dt**3 / (3 * np.pi**4 * self.KK**3)
 
-        rem_scale = Var_X1_K_0 / E_X1_K_0
-        rem_shape = (var_0 + var_final) * E_X1_K_0 / rem_scale
+        rem_scale = rem_var_X1 / E_X1_K_0
+        rem_shape = E_X1_K_0 / rem_scale * (var_0 + var_final)
+
+        #print(E_X1_K_0, np.sqrt(rem_var_X1))
+        #print(rem_shape, rem_scale)
 
         X1 += rem_scale * self.rng.standard_gamma(rem_shape)
         return X1
@@ -502,6 +481,7 @@ class HestonMcGlassermanKim2011(HestonMcAe):
 
         # Next we can sample from this tabulated distribution using linear interpolation
         rv_uni = self.rng.uniform(size=num_rv)
+
         xi = np.insert(xi, 0, 0.)
         F_X2 = np.insert(F_X2, 0, 0.)
         F_X2_inv = interpolate.interp1d(F_X2, xi, kind="slinear")
@@ -522,15 +502,15 @@ class HestonMcGlassermanKim2011(HestonMcAe):
 
         iv_index = 0.5 * self.chi_dim() - 1
         p0 = np.power(0.5 * zz, iv_index) / (spsp.iv(iv_index, zz) * spsp.gamma(iv_index + 1))
-        temp = np.arange(1, 8)[:, None]  # Bessel distribution has short tail, 30 maybe enough
+        temp = np.arange(1, 16)[:, None]  # Bessel distribution has short tail, 30 maybe enough
         p = zz**2 / (4 * temp * (temp + iv_index))
         p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
-        rv_uni = self.rng.uniform(size=len(zz))
-        eta = np.sum(p < rv_uni, axis=0)
+        rv_uni = self.rv_uniform()
+        eta = np.sum(p < rv_uni, axis=0).astype(np.uint32)
 
         return eta
 
-    def draw_X2(self, ncx_df, dt, n_path):
+    def draw_X2(self, ncx_df, dt, size):
         """
         Simulation of X2 (or Z) using truncated Gamma expansion in Glasserman and Kim (2011)
         Z is the special case with ncx_df = 4
@@ -538,7 +518,7 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         Args:
             ncx_df: ncx2 degree of freedom
             dt: time-to-expiry
-            n_path: number of RVs to generate
+            size: number of RVs to generate
 
         Returns:
             Random samples of X2 (or Z) with shape (n_path,)
@@ -547,7 +527,7 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         range_K = np.arange(1, self.KK + 1)
         gamma_n = ((self.mr * dt)**2 + (2 * np.pi * range_K)**2) / (2 * (self.vov * dt)**2)
 
-        gamma_rv = self.rng.standard_gamma(0.5 * ncx_df, size=(self.KK, n_path))
+        gamma_rv = self.rng.standard_gamma(0.5 * ncx_df, size=(self.KK, size))
         X2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
@@ -555,7 +535,53 @@ class HestonMcGlassermanKim2011(HestonMcAe):
         rem_var = ncx_df * (self.vov * dt)**4 / (24 * np.pi**4 * self.KK**3)
         rem_scale = rem_var / rem_mean
         rem_shape = rem_mean / rem_scale
-
-        X2 += rem_scale * self.rng.standard_gamma(rem_shape, size=n_path)
+        #print(rem_mean, np.sqrt(rem_var))
+        #print(rem_shape, rem_scale)
+        X2 += rem_scale * self.rng.standard_gamma(rem_shape, size=size)
         return X2
+
+
+class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
+
+    def draw_X123(self, var_0, var_final, eta, dt):
+        """
+        Simulation of X1 + X2 + X3 using truncated Gamma expansion in Glasserman and Kim (2011)
+
+        Args:
+            var_0: initial variance. (n_paths,)
+            var_final: final variance. (n_paths,)
+            dt: time step
+
+        Returns:
+            X1 + X2 + X3  (n_paths,)
+        """
+        ncx_df = self.chi_dim() + 4*eta
+
+        temp = (2 * np.pi * np.arange(1, self.KK + 1))**2
+        gamma_n = ((self.mr * dt)**2 + temp) / (2 * (self.vov * dt)**2)
+        lambda_n = 4 * temp / (self.vov**2 * dt * ((self.mr * dt)**2 + temp))
+
+        # the following para will change with VO and VT
+        Nn = self.rng.poisson(lam=(var_0 + var_final) * lambda_n[:, None])
+
+        X123 = np.sum(self.rng.standard_gamma(shape=Nn + ncx_df/2) / gamma_n[:, None], axis=0)
+
+        # remainder (truncated) terms
+        rem_mean_X1 = 2 * dt / (np.pi**2 * self.KK) * (var_0 + var_final)
+        rem_var_X1 = 2 * self.vov**2 * dt**3 / (3 * np.pi**4 * self.KK**3) * (var_0 + var_final)
+        rem_mean_X23 = (self.vov * dt)**2 / (4 * np.pi**2 * self.KK) * ncx_df
+        rem_var_X23 = (self.vov * dt)**4 / (24 * np.pi**4 * self.KK**3) * ncx_df
+
+        #print(np.sqrt(rem_var_X1 + rem_var_X23), (rem_mean_X1 + rem_mean_X23))
+        rem_scale = (rem_var_X1 + rem_var_X23) / (rem_mean_X1 + rem_mean_X23)
+        rem_shape = (rem_mean_X1 + rem_mean_X23) / rem_scale
+
+        X123 += rem_scale * self.rng.standard_gamma(rem_shape)
+
+        return X123
+
+    def cond_states(self, var_0, texp):
+        var_final, eta = self.var_step_gamma_eta(var_0=self.sigma, dt=texp)
+        var_mean = self.draw_X123(var_0, var_final, eta, texp) / texp
+        return var_final, var_mean
 
