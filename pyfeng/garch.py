@@ -185,13 +185,12 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
 
         vol_final, mean_var, mean_vol, mean_inv_vol = self.cond_states(var_0, texp)
 
-        fwd_cond = 2 * (vol_final - np.sqrt(var_0)) / self.vov \
+        spot_cond = 2 * (vol_final - np.sqrt(var_0)) / self.vov \
             - self.mr * self.theta * mean_inv_vol * texp / self.vov \
             + (self.mr / self.vov + self.vov / 4) * mean_vol * texp \
             - self.rho * mean_var * texp / 2
-        fwd_cond *= self.rho
-        np.exp(fwd_cond, out=fwd_cond)
+        np.exp(self.rho * spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1.0 - self.rho**2)*mean_var/var_0)
+        sigma_cond = np.sqrt((1.0 - self.rho**2)/var_0*mean_var)
 
-        return fwd_cond, sigma_cond
+        return spot_cond, sigma_cond

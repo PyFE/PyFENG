@@ -150,14 +150,13 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
     def cond_spot_sigma(self, vol_0, texp):
         vol_texp, var_mean, vol_mean = self.cond_states(vol_0, texp)
 
-        fwd_cond = (vol_texp**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
+        spot_cond = (vol_texp**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
             - (self.mr * self.theta / self.vov) * texp * vol_mean \
             + (self.mr / self.vov - self.rho / 2) * texp * var_mean
-        fwd_cond *= self.rho
-        np.exp(fwd_cond, out=fwd_cond)
+        np.exp(self.rho * spot_cond, out=spot_cond)
 
         sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / vol_0
-        return fwd_cond, sigma_cond
+        return spot_cond, sigma_cond
 
 
 class OusvMcTimeStep(OusvMcABC):
