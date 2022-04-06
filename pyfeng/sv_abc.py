@@ -143,8 +143,11 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns:
             array of observation time
         """
-        n_steps = (texp // (2 * self.dt) + 1) * 2
-        tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
+        if self.dt is None:
+            return np.array([texp])
+        else:
+            n_dt = np.ceil(texp / (2 * self.dt)) * 2
+            tobs = np.arange(1, n_dt + 1) / n_dt * texp
         return tobs
 
     def rv_normal(self):
