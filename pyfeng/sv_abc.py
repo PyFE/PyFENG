@@ -8,6 +8,8 @@ from . import opt_smile_abc as smile
 
 class SvABC(smile.OptSmileABC, abc.ABC):
 
+    model_type: str = NotImplementedError
+    var_process: bool = NotImplementedError
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
     def __init__(
@@ -46,7 +48,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             "vov": self.vov,
             "rho": self.rho,
             "mr": self.mr,
-            "sig_inf": self.theta,
+            "theta": self.theta,
         }
         return {**params1, **params2}
 
@@ -66,7 +68,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         """
 
         this_dir, _ = os.path.split(__file__)
-        file = os.path.join(this_dir, "data/sv_benchmark.xlsx")
+        file = os.path.join(this_dir, f"data/{cls.model_type.lower()}_benchmark.xlsx")
         df_param = pd.read_excel(file, sheet_name="Param", index_col="Sheet")
 
         if set_no is None:
@@ -77,7 +79,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             args_model = {k: param[k] for k in ("sigma", "theta", "vov", "rho", "mr", "intr")}
             args_pricing = {k: param[k] for k in ("texp", "spot")}
 
-            assert df_val.columns[0] == "k" or df_val.columns[0] == "K"
+            assert df_val.columns[0] == "Strike"
             args_pricing["strike"] = df_val.values[:, 0]
             if df_val.columns[0] == "k":
                 args_pricing["strike"] *= param["spot"]
@@ -110,6 +112,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     var_process = True
     correct_fwd = True
+    result = {}
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
@@ -140,9 +143,28 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns:
             array of observation time
         """
-        n_steps = (texp // (2 * self.dt) + 1) * 2
-        tobs = np.arange(1, n_steps + 0.1) / n_steps * texp
+        if self.dt is None:
+            return np.array([texp])
+        else:
+            n_dt = np.ceil(texp / (2 * self.dt)) * 2
+            tobs = np.arange(1, n_dt + 1) / n_dt * texp
         return tobs
+
+    def rv_normal(self):
+        if self.antithetic:
+            zz = self.rng.standard_normal(size=self.n_path // 2)
+            zz = np.stack([zz, -zz], axis=1).flatten()
+        else:
+            zz = self.rng.standard_normal(size=self.n_path)
+        return zz
+
+    def rv_uniform(self):
+        if self.antithetic:
+            zz = self.rng.uniform(size=self.n_path // 2)
+            zz = np.stack([zz, 1-zz], axis=1).flatten()
+        else:
+            zz = self.rng.uniform(size=self.n_path)
+        return zz
 
     def _bm_incr(self, tobs, cum=False, n_path=None):
         """
@@ -190,8 +212,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         Returns: (forward, volatility)
         """
-
-        return np.ones(self.n_path), np.ones(self.n_path)
+        return NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
 
@@ -200,6 +221,11 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         kk = np.atleast_1d(kk)
 
         fwd_cond, sigma_cond = self.cond_spot_sigma(self.sigma, texp)
+
+        fwd_mean = fwd_cond.mean()
+        self.result['spot error'] = fwd_mean - 1
+        if self.correct_fwd:
+            fwd_cond /= fwd_mean
 
         sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
         base_model = self.base_model(sigma * sigma_cond)

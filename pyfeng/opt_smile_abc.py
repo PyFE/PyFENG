@@ -63,7 +63,7 @@ class MassZeroABC(opt.OptABC, abc.ABC):
         Returns:
             (log) probability mass at zero
         """
-        pass
+        return NotImplementedError
 
     def vol_from_mass_zero(self, strike, spot, texp, mass=None):
         """

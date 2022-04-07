@@ -49,17 +49,12 @@ class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
         int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
         vol_cond = rhoc * np.sqrt(int_var)
         if np.isclose(self.beta, 0):
-            fwd_cond = rho_sigma / self.vov * (sigma_final - 1)
+            spot_cond = rho_sigma / self.vov * (sigma_final - 1)
         else:
-            fwd_cond = np.exp(
-                rho_sigma
-                * (
-                    1.0 / self.vov * (sigma_final - 1)
-                    - 0.5 * rho_sigma * int_var * texp
-                )
-            )
+            spot_cond = 1.0 / self.vov * (sigma_final - 1) - 0.5 * rho_sigma * int_var * texp
+            np.exp(rho_sigma * spot_cond, out=spot_cond)
 
-        return fwd_cond, vol_cond, log_rn_deriv
+        return spot_cond, vol_cond, log_rn_deriv
 
     def price(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)

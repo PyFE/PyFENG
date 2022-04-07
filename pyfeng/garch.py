@@ -14,6 +14,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
 
     This method is only used to compare with the method GarchCondMC.
     """
+    model_type = "GarchDiff"
 
     def price(self, strike, spot, texp, cp=1):
 
@@ -76,6 +77,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
     """
 
+    model_type = "GarchDiff"
     var_process = True
     scheme = 1  #
 
@@ -108,11 +110,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         Returns: Variance path (time, path) including the value at t=0
         """
 
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
+        zz = self.rv_normal()
 
         var_t = var_0 + self.mr * (self.theta - var_0) * dt + self.vov * var_0 * np.sqrt(dt) * zz
         if milstein:
@@ -135,11 +133,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         Returns: Variance path (time, path) including the value at t=0
         """
 
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
+        zz = self.rv_normal()
 
         log_var_t = log_var_0 + (self.mr * self.theta * np.exp(-log_var_0) - self.mr - self.vov**2 / 2) * dt \
                 + self.vov * np.sqrt(dt) * zz
@@ -190,20 +184,13 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
     def cond_spot_sigma(self, var_0, texp):
 
         vol_final, mean_var, mean_vol, mean_inv_vol = self.cond_states(var_0, texp)
-        fwd_cond = np.exp(
-            self.rho
-            * (
-                2 * (vol_final - np.sqrt(var_0)) / self.vov
-                - self.mr * self.theta * mean_inv_vol * texp / self.vov
-                + (self.mr / self.vov + self.vov / 4) * mean_vol * texp
-                - self.rho * mean_var * texp / 2
-            )
-        )
 
-        if self.correct_fwd:
-            fwd_mean = fwd_cond.mean()
-            fwd_cond /= fwd_mean
+        spot_cond = 2 * (vol_final - np.sqrt(var_0)) / self.vov \
+            - self.mr * self.theta * mean_inv_vol * texp / self.vov \
+            + (self.mr / self.vov + self.vov / 4) * mean_vol * texp \
+            - self.rho * mean_var * texp / 2
+        np.exp(self.rho * spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1.0 - self.rho**2)*mean_var/var_0)
+        sigma_cond = np.sqrt((1.0 - self.rho**2)/var_0*mean_var)
 
-        return fwd_cond, sigma_cond
+        return spot_cond, sigma_cond
