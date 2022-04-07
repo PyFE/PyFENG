@@ -108,6 +108,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     n_path = 10000
     rn_seed = None
     rng = np.random.default_rng(None)
+    rng_spawn = []
     antithetic = True
 
     var_process = True
@@ -128,7 +129,10 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         self.dt = dt
         self.rn_seed = rn_seed
         self.antithetic = antithetic
+
         self.rng = np.random.default_rng(rn_seed)
+        seed_seq = np.random.SeedSequence(rn_seed)
+        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(5)]
 
     def base_model(self, vol):
         return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
@@ -150,20 +154,20 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
             tobs = np.arange(1, n_dt + 1) / n_dt * texp
         return tobs
 
-    def rv_normal(self):
+    def rv_normal(self, spawn=0):
         if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
+            zz = self.rng_spawn[spawn].standard_normal(size=self.n_path // 2)
             zz = np.stack([zz, -zz], axis=1).flatten()
         else:
-            zz = self.rng.standard_normal(size=self.n_path)
+            zz = self.rng_spawn[spawn].standard_normal(size=self.n_path)
         return zz
 
-    def rv_uniform(self):
+    def rv_uniform(self, spawn=0):
         if self.antithetic:
-            zz = self.rng.uniform(size=self.n_path // 2)
+            zz = self.rng_spawn[spawn].uniform(size=self.n_path // 2)
             zz = np.stack([zz, 1-zz], axis=1).flatten()
         else:
-            zz = self.rng.uniform(size=self.n_path)
+            zz = self.rng_spawn[spawn].uniform(size=self.n_path)
         return zz
 
     def _bm_incr(self, tobs, cum=False, n_path=None):
@@ -186,12 +190,12 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.antithetic:
             # generate random number in the order of (path, time) first and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng.standard_normal((int(n_path//2), n_dt)).T * np.sqrt(
+            bm_incr = self.rng_spawn[0].standard_normal((int(n_path // 2), n_dt)).T * np.sqrt(
                 dt[:, None]
             )
             bm_incr = np.stack([bm_incr, -bm_incr], axis=1).reshape((-1, n_path))
         else:
-            bm_incr = self.rng.standard_normal(n_path, n_dt).T * np.sqrt(dt[:, None])
+            bm_incr = self.rng_spawn[0].standard_normal(n_path, n_dt).T * np.sqrt(dt[:, None])
 
         if cum:
             np.cumsum(bm_incr, axis=0, out=bm_incr)

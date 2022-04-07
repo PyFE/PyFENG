@@ -1,7 +1,7 @@
 #from .heston_fft import HestonFft
 
 # SV models (CMC, AE) from ASP 2021
-from .heston_mc import HestonMcAndersen2008, HestonMcAe, HestonMcGlassermanKim2011, HestonMcChoiKwok2023
+from .heston_mc import HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013, HestonMcChoiKwok2023
 from .sv32_mc import Sv32McCondQE, Sv32McAe
 from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 
