@@ -603,7 +603,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x2 += rem_scale * self.rng_spawn[1].standard_gamma(rem_shape, size=size)
         return x2
 
-    def cond_intvar_mean_var(self, var_0, var_t, dt, eta=None):
+    def cond_intvar_mean_var(self, var_0, var_t, dt, eta=None, KK=0):
         """
         Mean and variance of the integrated variance conditional on initial var, final var, and eta
 
@@ -631,20 +631,14 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             eta_mean, eta_var = eta, 0.0
 
         vovn = self.vov**2 * dt
-        mrt_h = 0.5 * self.mr * dt
-        csch = 1 / np.sinh(mrt_h)
-        coth = np.cosh(mrt_h) * csch
 
-        x1_mean = (coth/mrt_h - csch**2) / 2
-        x1_var = (coth / mrt_h**3 + csch**2 / mrt_h**2 - 2 * coth*csch**2 / mrt_h) / 8
-
+        x1_mean, x1_var = self.x1star_mean_var(dt, KK=KK)
         x1_mean *= (var_0 + var_t) * dt
         x1_var *= (var_0 + var_t) * vovn * dt**2
 
-        z_mean = (mrt_h * coth - 1) / (2 * mrt_h**2)
-        z_var = (mrt_h * coth + mrt_h**2 * csch**2 - 2) / (8 * mrt_h**4)
-        z_mean *= vovn * dt
-        z_var *= vovn**2 * dt**2
+        z_mean, z_var = self.x2star_mean_var(dt, KK=KK)
+        z_mean *= 4 * vovn * dt
+        z_var *= 4 * vovn**2 * dt**2
 
         x23_mean = (eta_mean + self.chi_dim()/4) * z_mean
         x23_var = (eta_mean + self.chi_dim()/4) * z_var
