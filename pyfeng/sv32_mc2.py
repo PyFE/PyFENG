@@ -10,10 +10,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
     model_type = "3/2"
     scheme = None
-
-    def _m_heston(self):
-        m = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, self.mr, self.theta)
-        return m
+    _m_heston = None
 
     @abc.abstractmethod
     def cond_states(self, var_0, dt):
@@ -59,13 +56,18 @@ class Sv32McTimeStep(Sv32McABC):
             dt: time step for Euler/Milstein steps
             rn_seed: random number seed
             antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson, 4 for 2 for Andersen (2008)'s QE scheme
+            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson
 
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
         super().set_mc_params(n_path, dt, rn_seed, antithetic)
+
         self.scheme = scheme
+        mr = self.mr * self.theta
+        theta = (self.mr + self.vov**2)/mr
+        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
+        self._m_heston.set_mc_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
 
     def var_step_euler(self, var_0, dt, milstein=True):
         """
@@ -106,10 +108,24 @@ class Sv32McTimeStep(Sv32McABC):
         var_t = np.full(self.n_path, var_0)
         var_mean = weight[0] * var_t
 
-        milstein = (self.scheme == 1)
-        for i in range(n_dt):
-            # Euler (or Milstein) scheme
-            var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-            var_mean += weight[i + 1] * var_t
+        if self.scheme < 2:
+            milstein = (self.scheme == 1)
+            for i in range(n_dt):
+                # Euler (or Milstein) scheme
+                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
+                var_mean += weight[i + 1] * var_t
+        elif self.scheme == 2:
+            for i in range(n_dt):
+                # Euler (or Milstein) scheme
+                var_t = 1/self._m_heston.var_step_ncx2(1/var_t, dt[i])
+                var_mean += weight[i + 1] * var_t
+        elif self.scheme == 3:
+            for i in range(n_dt):
+                # Euler (or Milstein) scheme
+                var_t, _ = self._m_heston.var_step_ncx2_eta(1/var_t, dt[i])
+                var_t = 1/var_t
+                var_mean += weight[i + 1] * var_t
+        else:
+            raise ValueError(f'Invalid scheme: {self.scheme}')
 
         return var_t, var_mean  # * texp
