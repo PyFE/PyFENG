@@ -1,5 +1,6 @@
 import abc
 import numpy as np
+import mpmath as mp
 from . import sv_abc as sv
 from . import heston_mc
 import scipy.optimize as spop
@@ -100,7 +101,6 @@ class Sv32McTimeStep(Sv32McABC):
         n_dt = len(tobs)
         dt = np.diff(tobs, prepend=0)
 
-        # precalculate the Simpson's rule weight
         weight = np.ones(n_dt + 1)
         weight[1:-1] = 2
         weight /= weight.sum()
@@ -129,3 +129,99 @@ class Sv32McTimeStep(Sv32McABC):
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
         return var_t, var_mean  # * texp
+
+
+class Sv32McExactBaldeaux2012(Sv32McABC):
+    """
+    EXACT SIMULATION OF THE 3/2 MODEL
+
+    Parameters:
+        sigma: float, initial volatility
+        vov, mr, rho, theta: float, parameters of the 3/2 model, similar to Heston model where
+            vov is the volatility of the variance process
+            mr is the rate at which the variance reverts toward its long-term mean
+            rho is correlation between asset price and volatility
+            theta is the mean long-term variance
+        intr, divr: float, interest rate and dividend yield
+        is_fwd: Bool, true if asset price is forward
+    """
+
+    error = 1e-5
+
+    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            dt: time step for Euler/Milstein steps
+            rn_seed: random number seed
+            antithetic: antithetic
+            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson
+
+        References:
+            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
+        """
+        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+
+        self.scheme = scheme
+        mr = self.mr * self.theta
+        theta = (self.mr + self.vov**2)/mr
+        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
+        self._m_heston.set_mc_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
+
+
+    def cond_states(self, var_0, texp):
+        '''
+        Sample variance at maturity and conditional integrated variance
+
+        Args:
+            texp: float, time to maturity
+        Returns:
+            tuple, variance at maturity and conditional integrated variance
+        '''
+
+        x_0 = 1 / var_0
+        mr_new = self.mr * self.theta
+        x_t = self._m_heston.var_step_ncx2(x_0, texp)
+
+        nu = self._m_heston.chi_dim() / 2 - 1
+        phi, _ = self._m_heston.phi_exp(texp)
+        zz = np.sqrt(x_0 * x_t) * phi
+        base_val = spsp.iv(nu, zz)
+
+        # Determine h, the grid size associated with the trapezoidal rule and N, the number of terms in the summation
+        Laplacefun_plus = spsp.iv(np.sqrt(nu**2 + 8e-5 / self.vov**2), zz) / base_val
+        Laplacefun_minus = spsp.iv(np.sqrt(nu**2 - 8e-5 / self.vov**2), zz) / base_val
+        moment1 = (Laplacefun_minus - Laplacefun_plus) / 2e-5
+        moment2 = (Laplacefun_plus + Laplacefun_minus - 2) / 1e-10
+        u_error = moment1 + 5 * np.sqrt(np.fmax(moment2 - moment1**2, 0))
+        h = np.pi / u_error
+
+        mp.dps = 8
+        besseli_ufun = np.frompyfunc(mp.besseli, 2, 1)
+        #N = np.ones(self.n_path)
+        #for i in range(self.n_path):
+        #    Nfun = lambda _N: mp.fabs(
+        #        besseli_ufun(np.sqrt(nu**2 - 8j * h[i] * _N / self.vov**2), z[i]) / base_val[i]) \
+        #                      - np.pi * self.error * _N / 2
+        #    N[i] = int(spop.brentq(Nfun, 0, 1000)) + 1
+        #N = N.max()
+        #print(N)
+        N = 60
+
+        # Store the value of characteristic function for each term in the summation when approximating the CDF
+        order = np.sqrt(nu**2 - 8j * np.arange(1, N + 1) * h[:, None] / self.vov**2)
+        phimat = besseli_ufun(order, zz[:, None]) / base_val[:, None]
+        phimat = phimat.astype('complex').real
+
+        # Sample the conditional integrated variance by inverse transform sampling
+        integ_var = np.ones(self.n_path)
+        uniformRN = self.rv_uniform()
+        for i in range(self.n_path):
+            conCDF = lambda _x: h[i] * _x / np.pi + 2 / np.pi * (
+                        np.sin(h[i] * _x * np.arange(1, N + 1)) * phimat[i, :] / np.arange(1, N + 1)).sum() - uniformRN[
+                                    i]
+            integ_var[i] = spop.brentq(conCDF, 0, 2 * u_error[i])
+
+        return 1 / x_t, integ_var/texp
