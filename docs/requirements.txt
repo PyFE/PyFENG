@@ -1,0 +1,15 @@
+# Defining the exact version will make sure things don't break
+sphinx==3.5.2
+sphinx-rtd-theme==0.5.1
+sphinxcontrib-applehelp==1.0.2
+sphinxcontrib-devhelp==1.0.2
+sphinxcontrib-htmlhelp==1.0.3
+sphinxcontrib-jsmath==1.0.1
+sphinxcontrib-qthelp==1.0.3
+sphinxcontrib-serializinghtml==1.1.4
+readthedocs-sphinx-search==0.1.0
+numpy==1.20.1
+m2r2==0.2.7
+pandas==1.2.3
+scipy==1.6.1
+mistune==0.8.4

@@ -3,39 +3,22 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-PyFENG: Python Financial ENGineering 
-====================================
+.. mdinclude:: ../../README.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-This a package for financial engineering in Python.
-
-Bsm, BsmDisp
-===================
-.. automodule:: pyfeng.bsm
-   :members:
-
-Cev
-===================
-.. automodule:: pyfeng.cev
-   :members:
-
-Norm
-===================
-.. automodule:: pyfeng.norm
-   :members:
-
-Nsvh1
-===================
-.. automodule:: pyfeng.nsvh
-   :members:
-
-SabrHagan2002, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P
-==============================================================
-.. automodule:: pyfeng.sabr
-   :members:
+   bsm
+   cev
+   norm
+   nsvh
+   sabr
+   sabr_int
+   gamma
+   multiasset
+   multiasset_mc
+   assetalloc
 
 Indices and tables
 ==================
