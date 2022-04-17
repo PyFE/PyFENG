@@ -1,10 +1,10 @@
 import abc
 import numpy as np
-import mpmath as mp
 from . import sv_abc as sv
 from . import heston_mc
 import scipy.optimize as spop
 import scipy.special as spsp
+import scipy.stats as spst
 
 
 class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
@@ -28,11 +28,20 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         return NotImplementedError
 
+    @staticmethod
+    def ivc(nu, zz):
+        p0 = np.power(0.5 * zz, nu) / spsp.gamma(nu + 1)
+        iv = p0.copy()
+        for kk in np.arange(1, 64):
+            p0 *= zz**2 / (4 * kk * (kk + nu))
+            iv += p0
+        return iv
+
     def cond_spot_sigma(self, var_0, texp):
         var_final, var_mean = self.cond_states(var_0, texp)
 
-        spot_cond = (np.log(var_final/var_0) - self.mr * texp *\
-            (self.theta - (1 + self.vov**2/2/self.mr)*var_mean))/self.vov\
+        spot_cond = (np.log(var_final/var_0) - self.mr * texp \
+            * (self.theta - (1 + self.vov**2/2/self.mr)*var_mean))/self.vov\
             - 0.5 * self.rho * var_mean * texp
         np.exp(self.rho * spot_cond, out=spot_cond)
         sigma_cond = np.sqrt((1.0 - self.rho**2) * var_mean / var_0 )  # normalize by initial variance
@@ -85,7 +94,7 @@ class Sv32McTimeStep(Sv32McABC):
         zz = self.rv_normal(spawn=0)
 
         # Euler scheme
-        var_t = 1.0 + self.mr * (self.theta - var_0) * dt + self.vov * np.sqrt(var_0 * dt) * zz \
+        var_t = 1.0 + self.mr * (self.theta - var_0) * dt + self.vov * np.sqrt(var_0 * dt) * zz
         # Extra-term for Milstein scheme
         if milstein:
             var_t += 0.75 * self.vov**2 * var_0 * (zz**2 - 1.0) * dt
@@ -146,9 +155,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         is_fwd: Bool, true if asset price is forward
     """
 
-    error = 1e-5
-
-    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
+    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=1):
         """
         Set MC parameters
 
@@ -170,6 +177,13 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
         self._m_heston.set_mc_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
 
+    def laplace(self, bb, var_mean, dt):
+        phi, _ = self._m_heston.phi_exp(dt)
+        nu = self._m_heston.chi_dim()/2 - 1
+        nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
+        zz = phi / var_mean
+        ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+        return ret
 
     def cond_states(self, var_0, texp):
         '''
@@ -181,25 +195,22 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         '''
 
-        x_0 = 1 / var_0
-        mr_new = self.mr * self.theta
-        x_t = self._m_heston.var_step_ncx2(x_0, texp)
+        x_t, _ = self._m_heston.var_step_ncx2_eta(1 / var_0, texp)
+        var_mean = np.sqrt(var_0 / x_t)
 
-        nu = self._m_heston.chi_dim() / 2 - 1
-        phi, _ = self._m_heston.phi_exp(texp)
-        zz = np.sqrt(x_0 * x_t) * phi
-        base_val = spsp.iv(nu, zz)
+        def laplace_cond(bb):
+            return self.laplace(bb, var_mean, texp)
 
-        # Determine h, the grid size associated with the trapezoidal rule and N, the number of terms in the summation
-        Laplacefun_plus = spsp.iv(np.sqrt(nu**2 + 8e-5 / self.vov**2), zz) / base_val
-        Laplacefun_minus = spsp.iv(np.sqrt(nu**2 - 8e-5 / self.vov**2), zz) / base_val
-        moment1 = (Laplacefun_minus - Laplacefun_plus) / 2e-5
-        moment2 = (Laplacefun_plus + Laplacefun_minus - 2) / 1e-10
-        u_error = moment1 + 5 * np.sqrt(np.fmax(moment2 - moment1**2, 0))
+        eps = 1e-5
+        val_up = laplace_cond(eps)
+        val_dn = laplace_cond(-eps)
+        m1 = (val_dn - val_up) / (2*eps)
+        var = (val_dn + val_up - 2.0)/eps**2 - m1**2
+        ln_sig = np.sqrt(np.log(1+var/m1**2))
+
+        u_error = m1 + 5 * np.sqrt(np.fmax(var, 0))
         h = np.pi / u_error
 
-        mp.dps = 8
-        besseli_ufun = np.frompyfunc(mp.besseli, 2, 1)
         #N = np.ones(self.n_path)
         #for i in range(self.n_path):
         #    Nfun = lambda _N: mp.fabs(
@@ -211,17 +222,79 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         N = 60
 
         # Store the value of characteristic function for each term in the summation when approximating the CDF
-        order = np.sqrt(nu**2 - 8j * np.arange(1, N + 1) * h[:, None] / self.vov**2)
-        phimat = besseli_ufun(order, zz[:, None]) / base_val[:, None]
-        phimat = phimat.astype('complex').real
+        jj = np.arange(1, N + 1)[:, None]
+        phimat = laplace_cond(-1j * jj * h).real
 
         # Sample the conditional integrated variance by inverse transform sampling
-        integ_var = np.ones(self.n_path)
-        uniformRN = self.rv_uniform()
-        for i in range(self.n_path):
-            conCDF = lambda _x: h[i] * _x / np.pi + 2 / np.pi * (
-                        np.sin(h[i] * _x * np.arange(1, N + 1)) * phimat[i, :] / np.arange(1, N + 1)).sum() - uniformRN[
-                                    i]
-            integ_var[i] = spop.brentq(conCDF, 0, 2 * u_error[i])
+        zz = self.rv_normal()
+        uu = spst.norm.cdf(zz)
 
-        return 1 / x_t, integ_var/texp
+        def root(xx):
+            h_xx = h * xx
+            rv = h_xx + 2*(phimat * np.sin(h_xx * jj) / jj).sum(axis=0) - uu * np.pi
+            return rv
+
+        guess = m1 * np.exp(ln_sig*(zz - ln_sig/2))
+        int_var = spop.newton(root, guess)
+        return 1 / x_t, int_var/texp
+
+
+class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
+
+    def laplace(self, bb, var_mean, eta, dt):
+        phi, _ = self._m_heston.phi_exp(dt)
+        nu = self._m_heston.chi_dim()/2 - 1
+        nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
+        nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
+        zz = phi / var_mean
+        # print('zz', zz.min(), zz.mean(), zz.max())
+        ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
+        return ret
+
+
+    def cond_states(self, var_0, texp):
+        '''
+        Sample variance at maturity and conditional integrated variance
+
+        Args:
+            texp: float, time to maturity
+        Returns:
+            tuple, variance at maturity and conditional integrated variance
+        '''
+
+        x_t, eta = self._m_heston.var_step_ncx2_eta(1 / var_0, texp)
+        # print('eta', eta.min(), eta.mean(), eta.max())
+
+        var_mean = np.sqrt(var_0 / x_t)
+
+        def laplace_cond(bb):
+            return self.laplace(bb, var_mean, eta, texp)
+
+        eps = 1e-5
+        val_up = laplace_cond(eps)
+        val_dn = laplace_cond(-eps)
+        m1 = (val_dn - val_up) / (2*eps)
+        var = (val_dn + val_up - 2.0)/eps**2 - m1**2
+        # print('m1', np.amin(m1), np.amax(m1))
+        # print('var', np.amin(var), np.amax(var), (var<0).mean())
+        std = np.sqrt(np.fmax(var, 0))
+        u_error = np.fmax(m1, 1e-6) + 5 * std
+        h = np.pi / u_error
+        # print('h', (h<0).sum())
+        N = 60
+
+        # Store the value of characteristic function for each term in the summation when approximating the CDF
+        jj = np.arange(1, N + 1)[:, None]
+        phimat = laplace_cond(-1j * jj * h).real
+
+        # Sample the conditional integrated variance by inverse transform sampling
+        zz = self.rv_normal()
+        uu = spst.norm.cdf(zz)
+
+        def root(xx):
+            h_xx = h * xx
+            rv = h_xx + 2*(phimat * np.sin(h_xx * jj) / jj).sum(axis=0) - uu * np.pi
+            return rv
+
+        int_var = spop.newton(root, m1)
+        return 1 / x_t, int_var/texp
