@@ -5,15 +5,12 @@ Created on Mon Apr 18 07:43:01 2022
 @author: Jason
 """
 import numpy as np
-from scipy.stats import norm
-import matplotlib.pyplot as plt
-from scipy.optimize import bisect
-from scipy.special import gamma,roots_jacobi ,roots_legendre
+import scipy.special as spsp
 from scipy.integrate import quad, trapz, simps
 from functools import reduce
 
 
-class RoughHeston:
+class RoughHestonMcMaWu2021:
     '''
 
     '''
@@ -41,7 +38,7 @@ class RoughHeston:
                 fV = fV + kappa * (theta-V_tk[j]) * ((tk[i]-tk[j])**(1-alpha)-(tk[i]-tk[j+1])**(1-alpha))
             for j in range(i):
                 gV = gV+ nu * np.sqrt(V_tk[j]) * np.sqrt(((tk[i]-tk[j])**(1-2*alpha)-(tk[i]-tk[j+1])**(1-2*alpha))/(1-2*alpha))*z[j+1]
-            V_tk[i] = np.max((V_tk[0] + 1/gamma(2.- alpha) * fV + 1/gamma(1.- alpha) * gV),0)      
+            V_tk[i] = np.max((V_tk[0] + 1/spsp.gamma(2.- alpha) * fV + 1/spsp.gamma(1.- alpha) * gV),0)
         return V_tk
 
         #I = simps(sigma_tk * sigma_tk, dx=texp/self.time_steps) / (self.sigma**2)  # integrate by using Simpson's rule
@@ -57,14 +54,14 @@ class RoughHeston:
         scale = 1
         n_quad = 2* n_exp
         #Gauss-Jacobi quadrature on the interval [0, 2^(−M)]
-        x, w = roots_jacobi(n_quad, alpha=1, beta=1.5)
+        x, w = spsp.roots_jacobi(n_quad, alpha=1, beta=1.5)
         x *= scale
         w /= w.sum()
         tar=np.intersect1d(np.argwhere(x>=0),np.argwhere(x<=2**(-M)))
         s0 = x[tar]
         w0 = w[tar]
         #nodes and weights for the ns-point Gauss-Legendre quadrature on the small interval [2^j,2^(j+1)], j =−M, ... , −1
-        x, w = roots_legendre(n_quad)
+        x, w = spsp.roots_legendre(n_quad)
 
         x *= scale
         w /= w.sum()
@@ -78,7 +75,7 @@ class RoughHeston:
     
         #xl,wl
         xl = reduce(np.union1d,[s0,sjns,sjnl])
-        wl = reduce(np.union1d,[w0,sjns**(alpha-1)*wjns,sjnl**(alpha-1)*wjnl])/gamma(alpha)
+        wl = reduce(np.union1d,[w0,sjns**(alpha-1)*wjns,sjnl**(alpha-1)*wjnl])/spsp.gamma(alpha)
         N_exp = xl.size
         
        # N = (np.log(np.log(1.0/xi)) + np.log(time_steps / texp))//1           *0.5
@@ -102,10 +99,10 @@ class RoughHeston:
                     J_tn[i-1,j] = np.exp(-xl[j]*tau)* nu * np.sqrt(V_tk[i-2]*tau)*z[i-1] + np.exp(-xl[j]*tau)*J_tn[i-2,j]
                     
             
-            V_tk[i] = np.max((V_tk[0] + tau**(1.-alpha)/gamma(2.- alpha) * kappa * (theta-V_tk[i-1])\
-                      + 1/gamma(1.- alpha) * wl*np.exp(-xl*tau)@H_tn[i-1,:]      \
-                      + tau**(0.5 - alpha)/gamma(1.- alpha)* nu * np.sqrt(V_tk[i-1])* z[i] \
-                      + 1/gamma(1.- alpha) * wl*np.exp(-xl*tau)@J_tn[i-1,:]      ),0) 
+            V_tk[i] = np.max((V_tk[0] + tau**(1.-alpha)/spsp.gamma(2.- alpha) * kappa * (theta-V_tk[i-1])\
+                      + 1/spsp.gamma(1.- alpha) * wl*np.exp(-xl*tau)@H_tn[i-1,:]      \
+                      + tau**(0.5 - alpha)/spsp.gamma(1.- alpha)* nu * np.sqrt(V_tk[i-1])* z[i] \
+                      + 1/spsp.gamma(1.- alpha) * wl*np.exp(-xl*tau)@J_tn[i-1,:]      ),0)
             
         return V_tk
     
@@ -115,11 +112,11 @@ class RoughHeston:
         '''
         tau = texp/time_steps
         eta = np.linspace(0,n_exp,n_exp+1)*n_exp**(-0.2)/texp*(np.sqrt(10)*alpha/(2+alpha))**0.4
-        gammaj = np.zeros(n_exp+1) 
+        gammaj = np.zeros(n_exp+1)
         c = np.zeros(n_exp+1)
         
-        f = lambda x: x**(alpha-1)/(gamma(1-alpha)*gamma(alpha))
-        g = lambda x: x**alpha/(gamma(1-alpha)*gamma(alpha))
+        f = lambda x: x**(alpha-1)/(spsp.gamma(1-alpha)*spsp.gamma(alpha))
+        g = lambda x: x**alpha/(spsp.gamma(1-alpha)*spsp.gamma(alpha))
 
         
         for j in range(1,n_exp+1):
