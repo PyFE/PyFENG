@@ -40,7 +40,7 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         phi = 4*self.mr / self.vov**2 / (1/exp - exp)
         return phi, exp
 
-    def var_mean_var(self, var_0, dt):
+    def var_mv(self, var_0, dt):
         """
         Mean and variance of the variance V(t+dt) given V(0) = var_0
 
@@ -49,7 +49,7 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             dt: time step
 
         Returns:
-            (mean, variance)
+            mean, variance
         """
 
         expo = np.exp(-self.mr * dt)
@@ -112,9 +112,9 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         chi_df = self.chi_dim()
         phi, exp = self.phi_exp(dt)
         chi_nonc = var_0 * exp * phi
-        nn = self.rng_spawn[0].poisson(chi_nonc / 2, size=self.n_path)
-        var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df / 2 + nn, size=self.n_path)
-        return var_t, nn
+        pois = self.rng_spawn[0].poisson(chi_nonc / 2, size=self.n_path)
+        var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df / 2 + pois, size=self.n_path)
+        return var_t, pois
 
     @abc.abstractmethod
     def cond_states(self, var_0, dt):
@@ -127,17 +127,17 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             dt: time step
 
         Returns:
-            (var_final, var_mean)
+            (var_final, var_avg)
         """
         return NotImplementedError
 
     def cond_spot_sigma(self, var_0, texp):
-        var_final, var_mean = self.cond_states(var_0, texp)
+        var_final, var_avg = self.cond_states(var_0, texp)
 
-        spot_cond = ((var_final - var_0) - self.mr * texp * (self.theta - var_mean)) / self.vov \
-             - 0.5 * self.rho * var_mean * texp
+        spot_cond = ((var_final - var_0) - self.mr * texp * (self.theta - var_avg)) / self.vov \
+             - 0.5 * self.rho * var_avg * texp
         np.exp(self.rho * spot_cond, out=spot_cond)
-        sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * var_mean)  # normalize by initial variance
+        sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * var_avg)  # normalize by initial variance
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
@@ -167,7 +167,7 @@ class HestonMcAndersen2008(HestonMcABC):
         array([44.31943535, 13.09371251,  0.29580431])
     """
     psi_c = 1.5  # parameter used by the Andersen QE scheme
-    scheme = 2
+    scheme = 4
 
     def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
         """
@@ -187,7 +187,7 @@ class HestonMcAndersen2008(HestonMcABC):
         self.scheme = scheme
 
     def var_step_qe(self, var_0, dt):
-        m, s2 = self.var_mean_var(var_0, dt)
+        m, s2 = self.var_mv(var_0, dt)
         psi = s2 / m**2
 
         zz = self.rv_normal(spawn=0)
@@ -258,9 +258,9 @@ class HestonMcAndersen2008(HestonMcABC):
         n_dt = len(tobs)
         var_paths = self.vol_paths(tobs)
         var_final = var_paths[-1, :]
-        var_mean = spint.simps(var_paths, dx=1, axis=0) / n_dt
+        var_avg = spint.simps(var_paths, dx=1, axis=0) / n_dt
 
-        return var_final, var_mean
+        return var_final, var_avg
 
     def cond_states(self, var_0, texp):
 
@@ -274,42 +274,43 @@ class HestonMcAndersen2008(HestonMcABC):
         weight /= weight.sum()
 
         var_t = np.full(self.n_path, var_0)
-        var_mean = weight[0] * var_t
+        var_avg = weight[0] * var_t
 
         if self.scheme < 2:
             milstein = (self.scheme == 1)
             for i in range(n_dt):
                 # Euler (or Milstein) scheme
                 var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-                var_mean += weight[i + 1] * var_t
+                var_avg += weight[i + 1] * var_t
 
         elif self.scheme == 2:
             for i in range(n_dt):
                 var_t = self.var_step_ncx2(var_t, dt[i])
-                var_mean += weight[i + 1] * var_t
+                var_avg += weight[i + 1] * var_t
 
         elif self.scheme == 3:
             for i in range(n_dt):
                 var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
-                var_mean += weight[i + 1] * var_t
+                var_avg += weight[i + 1] * var_t
 
         elif self.scheme == 4:
             for i in range(n_dt):
                 var_t = self.var_step_qe(var_t, dt[i])
-                var_mean += weight[i + 1] * var_t
+                var_avg += weight[i + 1] * var_t
 
-        return var_t, var_mean  # * texp
+        return var_t, var_avg  # * texp
 
 
 class HestonMcGlassermanKim2011(HestonMcABC):
     """
-    Exact simulation using the gamma series based on Glasserman and Kim (2011)
+    Exact simulation using the gamma series based on Glasserman & Kim (2011)
 
     References:
         - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
     """
 
     antithetic = False
+    scheme = 3
     KK = 1  # K for series truncation.
 
     def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, KK=1):
@@ -330,61 +331,64 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def gamma_lambda(self, dt, KK=None):
         """
-        gamma_n and lambda_n in Glasserman and Kim (2011)
+        gamma_n and lambda_n below Eq. (2.8) in Glasserman & Kim (2011).
+        gamma_n is the original value * dt to make x1, x2, and x3 the average variance.
 
         Args:
             dt: time step
             KK: number of terms
 
         Returns:
-            gamma, lambda
+            gamma_n, lambda_n
         """
 
         if KK is None:
             KK = self.KK
 
         mrt2 = (self.mr * dt)**2
-        vovn = self.vov**2 * dt
+        vov2dt = self.vov**2 * dt
 
         n_2pi_2 = (np.arange(1, KK + 1) * 2 * np.pi)**2
-        gamma_n = (mrt2 + n_2pi_2) / (2 * vovn * dt)
-        lambda_n = 4 * n_2pi_2 / vovn / (mrt2 + n_2pi_2)
+        gamma_n = (mrt2 + n_2pi_2) / (2 * vov2dt)  # / dt
+        lambda_n = 4 * n_2pi_2 / vov2dt / (mrt2 + n_2pi_2)
 
         return gamma_n, lambda_n
 
-    def x1star_mean_var_asymp(self, dt, KK=0):
+    def x1star_avgvar_mv_asymp(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of X1 in Lemma 3.1 in Glasserman & Kim (2011)
-        (v_0 + v_t) dt and (v_0 + v_t) vov^2 dt^3 need to be multiplied afterwards.
+        Asymptotic mean and variance of the truncated terms of X1/dt in Lemma 3.1 in Glasserman & Kim (2011)
+        (v_0 + v_t) need to be multiplied to mean and variance afterwards.
 
         Args:
-            dt:
-            KK:
+            dt: time step
+            KK: number of terms
 
         Returns:
-
+            mean, variance
         """
 
+        vov2dt = self.vov**2 * dt
         # remainder (truncated) terms
         rem_mean = 2 / (np.pi**2 * KK)
         rem_var = 2 / (3 * np.pi**4 * KK**3)
 
-        return rem_mean, rem_var
+        return rem_mean, rem_var * vov2dt
 
-    def x1star_mean_var(self, dt, KK=0):
+    def x1star_avgvar_mv(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of X1 in p 281-282 Glasserman & Kim (2011)
-        (v_0 + v_t) dt and (v_0 + v_t) vov^2 dt^3 need to be multiplied afterwards.
+        Mean and variance of the truncated terms of (X1/dt) in p 281-282 Glasserman & Kim (2011)
+        (v_0 + v_t) need to be multiplied to mean and variance afterwards.
 
         Args:
-            dt:
-            KK:
+            dt: time step
+            KK: # of exact terms
 
         Returns:
-
+            mean, variance
         """
 
         mrt_h = self.mr * dt / 2
+        vov2dt = self.vov**2 * dt
         csch = 1 / np.sinh(mrt_h)
         coth = np.cosh(mrt_h) * csch
 
@@ -397,40 +401,41 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             x1_mean -= np.sum(term)
             x1_var -= np.sum(4 * term / (4*mrt_h**2 + n_2pi_2))
 
-        return x1_mean, x1_var
+        return x1_mean, x1_var * vov2dt
 
-    def x2star_mean_var_asymp(self, dt, KK=0):
+    def x2star_avgvar_mv_asymp(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of X2 (with delta=1) in Lemma 3.1 in Glasserman & Kim (2011)
-        (vov * dt)^2 and (vov * dt)^4 need to be multiplied afterwards.
+        Asymptotic mean and variance of the truncated terms of X2/dt (with delta=1) in Lemma 3.1 in Glasserman & Kim (2011)
 
         Args:
-            dt:
-            KK:
+            dt: time step
+            KK: # of exact terms
 
         Returns:
-
+            mean, variance
         """
 
-        rem_mean = 1 / (4 * np.pi**2 * KK)
-        rem_var = 1 / (24 * np.pi**4 * KK**3)
+        vov2dt = self.vov**2 * dt
+        mean = 1 / (4 * np.pi**2 * KK)
+        var = 1 / (24 * np.pi**4 * KK**3)
 
-        return rem_mean, rem_var
+        return mean * vov2dt, var * vov2dt**2
 
-    def x2star_mean_var(self, dt, KK=0):
+    def x2star_avgvar_mv(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of X2 (with delta=1) in p 284 in Glasserman & Kim (2011)
-        (vov * dt)^2 and (vov * dt)^4 need to be multiplied afterwards
+        Mean and variance of the truncated terms of X2/dt (with delta=1) in p 284 in Glasserman & Kim (2011)
 
         Args:
-            dt:
-            KK:
+            dt: time step
+            KK: # of exact terms
 
         Returns:
-
+            mean, variance
         """
 
         mrt_h = self.mr * dt / 2
+        vov2dt = self.vov**2 * dt
+
         csch = 1 / np.sinh(mrt_h)
         coth = np.cosh(mrt_h) * csch
 
@@ -442,47 +447,40 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             mean -= np.sum(term)
             var -= 2 * np.sum(term**2)
 
-        return mean, var
+        return mean * vov2dt, var * vov2dt**2
 
-    def draw_x1(self, var_sum, dt):
+    def draw_x1(self, var_0, var_t, dt):
         """
-        Simulation of x1 using truncated Gamma expansion in Glasserman and Kim (2011)
+        Samples of x1/dt using truncated Gamma expansion in Glasserman & Kim (2011)
 
-        Parameters
-        ----------
-        var_t : an 1-d array with shape (n_paths,)
-            final variance
-        dt: float
-            time-to-expiry
+        Args:
+            var_0: initial variance
+            var_t: final variance
+            dt: time step
 
-        Returns
-        -------
-         an 1-d array with shape (n_paths,), random variables x1
+        Returns:
+            x1/dt
         """
         # For fixed k, theta, vov, texp, generate some parameters firstly
 
-        vovn = self.vov**2 * dt
         gamma_n, lambda_n = self.gamma_lambda(dt, self.KK)
 
         # the following para will change with VO and VT
-        Nn = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])  # (KK, n_path)
+        pois = self.rng_spawn[3].poisson(lam=(var_0 + var_t) * lambda_n[:, None])  # (KK, n_path)
 
-        rv_exp_sum = self.rng_spawn[1].standard_gamma(shape=Nn)
+        rv_exp_sum = self.rng_spawn[1].standard_gamma(shape=pois)
         x1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
-        rem_mean_x1, rem_var_x1 = self.x1star_mean_var(dt, self.KK)
-        rem_mean_x1 *= dt
-        rem_var_x1 *= vovn * dt**2
-
+        rem_mean_x1, rem_var_x1 = self.x1star_avgvar_mv(dt, self.KK)
         rem_scale = rem_var_x1 / rem_mean_x1
-        rem_shape = rem_mean_x1 / rem_scale * var_sum
+        rem_shape = rem_mean_x1 / rem_scale * (var_0 + var_t)
 
         x1 += rem_scale * self.rng_spawn[1].standard_gamma(rem_shape)
         return x1
 
     def draw_X2_AW(self, mu_X2_0, sigma_square_X2_0, ncx_df, texp, num_rv):
         """
-        Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman and Kim (2011)
+        Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman & Kim (2011)
 
         Parameters
         ----------
@@ -536,7 +534,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return X2
 
-    def eta_mean_var(self, var_0, var_t, texp):
+    def eta_mv(self, var_0, var_t, texp):
+        """
+        The mean and variance of eta RV.
+
+        Args:
+            var_0: initial variance
+            var_t: final variance
+            texp: time step
+
+        Returns:
+            eta (n_path, 1)
+        """
         phi, exp = self.phi_exp(texp)
         zz = np.sqrt(var_0 * var_t) * phi
 
@@ -552,10 +561,12 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def draw_eta(self, var_0, var_t, texp):
         """
-        generate Bessel random variables from inverse of CDF, formula(2.4) in George and Dimitris (2010)
+        generate Bessel RV from p 285 of Glasserman & Kim (2011)
 
         Args:
-            zz:  Bessel RV parameter (n, )
+            var_0: initial variance
+            var_t: final variance
+            texp: time step
 
         Returns:
             eta (integer >= 0) values (n, )
@@ -575,7 +586,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def draw_x2(self, ncx_df, dt, size):
         """
-        Simulation of x2 (or Z) using truncated Gamma expansion in Glasserman and Kim (2011)
+        Simulation of x2/dt (or Z/dt) using truncated Gamma expansion in Glasserman & Kim (2011)
         Z is the special case with ncx_df = 4
         
         Args:
@@ -584,37 +595,35 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             size: number of RVs to generate
 
         Returns:
-            Random samples of x2 (or Z) with shape (n_path,)
+            x2/dt (or Z/dt) with shape (n_path,)
         """
 
-        vovn = self.vov**2 * dt
         gamma_n, _ = self.gamma_lambda(dt)
 
         gamma_rv = self.rng_spawn[1].standard_gamma(ncx_df / 2, size=(self.KK, size))
         x2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
-        rem_mean, rem_var = self.x2star_mean_var(dt, self.KK)
-        rem_mean *= ncx_df * vovn * dt
-        rem_var *= ncx_df * (vovn * dt)**2
+        rem_mean, rem_var = self.x2star_avgvar_mv(dt, self.KK)
         rem_scale = rem_var / rem_mean
-        rem_shape = rem_mean / rem_scale
+        rem_shape = rem_mean / rem_scale * ncx_df
 
         x2 += rem_scale * self.rng_spawn[1].standard_gamma(rem_shape, size=size)
         return x2
 
-    def cond_intvar_mean_var(self, var_0, var_t, dt, eta=None, KK=0):
+    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None, KK=0):
         """
-        Mean and variance of the integrated variance conditional on initial var, final var, and eta
+        Mean and variance of the average variance conditional on initial var, final var, and eta
 
         Args:
             var_0: initial variance
             var_t: final variance
             eta: Poisson RV
             dt: time step
+            KK: number of exact terms
 
         Returns:
-            (integarted variance / dt)
+            mean, variance
         """
 
         # x = np.arange(1, 10) * 0.02
@@ -626,19 +635,17 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         # y2 - y1
 
         if eta is None:
-            eta_mean, eta_var = self.eta_mean_var(var_0, var_t, dt)
+            eta_mean, eta_var = self.eta_mv(var_0, var_t, dt)
         else:
             eta_mean, eta_var = eta, 0.0
 
-        vovn = self.vov**2 * dt
+        x1_mean, x1_var = self.x1star_avgvar_mv(dt, KK=KK)
+        x1_mean *= (var_0 + var_t)
+        x1_var *= (var_0 + var_t)
 
-        x1_mean, x1_var = self.x1star_mean_var(dt, KK=KK)
-        x1_mean *= (var_0 + var_t) * dt
-        x1_var *= (var_0 + var_t) * vovn * dt**2
-
-        z_mean, z_var = self.x2star_mean_var(dt, KK=KK)
-        z_mean *= 4 * vovn * dt
-        z_var *= 4 * vovn**2 * dt**2
+        z_mean, z_var = self.x2star_avgvar_mv(dt, KK=KK)
+        z_mean *= 4
+        z_var *= 4
 
         x23_mean = (eta_mean + self.chi_dim()/4) * z_mean
         x23_var = (eta_mean + self.chi_dim()/4) * z_var
@@ -651,11 +658,11 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         var_t, _ = self.var_step_ncx2_eta(var_0=var_0, dt=texp)
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
-        # int_var = X1+X2+X3 from formula(2.7) in Glasserman and Kim (2011)
+        # int_var = X1+X2+X3 from formula(2.7) in Glasserman & Kim (2011)
 
         # Simulation X1: truncated Gamma expansion
-        x123 = self.draw_x1(var_0 + var_t, texp)
-        x123 += self.draw_x2(self.chi_dim(), texp, size=self.n_path)
+        var_avg = self.draw_x1(var_0, var_t, texp)
+        var_avg += self.draw_x2(self.chi_dim(), texp, size=self.n_path)
         eta = self.draw_eta(var_0, var_t, texp)
 
         zz = self.draw_x2(4, texp, size=eta.sum())
@@ -666,13 +673,12 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             count = eta_above_i.sum()
             if count == 0:
                 continue
-            x123[eta_above_i] += zz[total:total+count]
+            var_avg[eta_above_i] += zz[total:total+count]
             total += count
 
         assert eta.sum() == total
-        var_mean = x123 / texp
 
-        return var_t, var_mean
+        return var_t, var_avg
 
 
 class HestonMcTseWan2013(HestonMcGlassermanKim2011):
@@ -711,7 +717,7 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
 
     def mgf(self, aa, var_0, var_t, dt):
         """
-            MGF of the integrated variance given the initial and final variance
+        MGF of the average variance given the initial and final variance
 
         Args:
             aa: dummy variable in the transformation
@@ -723,25 +729,23 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
             Conditional MGF at dummy variable aa
         """
 
-        vov2 = self.vov**2
-        mrt_h = self.mr * dt / 2
+        vov2dt = self.vov**2 * dt
+        mrt = self.mr * dt
         iv_index = 0.5 * self.chi_dim() - 1
 
-        gamma = np.sqrt(self.mr**2 - 2 * vov2 * aa)
-        #decay = np.exp(-self.mr * texp)
-        #decay_gamma = np.exp(-gamma * texp)
+        gamma = np.sqrt(mrt**2 - 2 * vov2dt * aa)
 
         var_mean = np.sqrt(var_0 * var_t)
         phi_mr, _ = self.phi_exp(dt)
-        cosh_mr = np.cosh(mrt_h)
+        cosh_mr = np.cosh(mrt / 2)
 
-        phi_gamma = 2 * gamma / vov2 / np.sinh(gamma * dt / 2)
-        cosh_gamma = np.cosh(gamma * dt / 2)
+        phi_gamma = 2 * gamma / vov2dt / np.sinh(gamma / 2)
+        cosh_gamma = np.cosh(gamma / 2)
 
         #part1 = gamma * np.exp(-0.5 * (gamma * texp - self.mr * texp)) * (1 - decay) / (self.mr * (1 - decay_gamma))
         part1 = phi_gamma / phi_mr
 
-        #part2 = np.exp((var_0 + var_final) / vov2
+        #part2 = np.exp((var_0 + var_final) / vov2dt
         #    * (self.mr * (1 + decay) / (1 - decay) - gamma * (1 + decay_gamma) / (1 - decay_gamma)))
         part2 = np.exp((var_0 + var_t) * (cosh_mr * phi_mr - cosh_gamma * phi_gamma) / 2)
 
@@ -750,7 +754,22 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
         ch_f = part1 * part2 * part3
         return ch_f
 
-    def cond_intvar_mean_var_numeric(self, var_0, var_t, dt):
+    def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
+        """
+        Mean and variance of the average variance conditional on initial var, final var.
+        It is computed from the numerical derivatives of the conditional Laplace transform.
+
+        Args:
+            var_0: initial variance
+            var_t: final variance
+            dt: time step
+
+        Returns:
+            mean, variance
+
+        See Also:
+            cond_avgvar_mv
+        """
         # conditional MGF function
         def mgf_cond(aa):
             return self.mgf(aa, var_0, var_t, dt)
@@ -763,26 +782,26 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
     def cond_states(self, var_0, texp):
 
         var_t, eta = self.var_step_ncx2_eta(self.sigma, texp)
-        #m1, var = self.cond_intvar_mean_var_numeric(var_0, var_t, texp)
-        m1, var = self.cond_intvar_mean_var(var_0, var_t, texp, eta=None)
+        #m1, var = self.cond_avgvar_mv_numeric(var_0, var_t, texp)
+        m1, var = self.cond_avgvar_mv(var_0, var_t, texp, eta=None)
 
         if self.dist == 0:
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
             lam = m1**3 / var
-            var_mean = self.rng_spawn[1].wald(mean=m1, scale=lam) / texp
+            var_avg = self.rng_spawn[1].wald(mean=m1, scale=lam)
         elif self.dist == 1:
             scale = var / m1
             shape = m1 / scale
-            var_mean = scale * self.rng_spawn[1].standard_gamma(shape=shape) / texp
+            var_avg = scale * self.rng_spawn[1].standard_gamma(shape=shape)
         elif self.dist == 2:
             scale = np.sqrt(np.log(1 + var/m1**2))
-            var_mean = self.rv_normal(spawn=1)
-            var_mean = m1 * np.exp(scale * (var_mean - scale/2)) / texp
+            var_avg = self.rv_normal(spawn=1)
+            var_avg = m1 * np.exp(scale * (var_avg - scale/2))
         else:
             raise ValueError(f"Incorrect distribution: {self.dist}.")
 
-        return var_t, var_mean
+        return var_t, var_avg
 
 
 class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
@@ -805,21 +824,20 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
 
     def draw_x123(self, var_sum, dt, eta_sum):
         """
-        Simulation of X1 + X2 + X3 using truncated Gamma expansion in Glasserman and Kim (2011)
+        Samples of (X1 + X2 + X3)/dt using truncated Gamma expansion improved in Choi & Kwok (2023)
 
         Args:
-            var_sum: initial + final variance. (n_paths,)
-            eta_sum: Bessel RV
+            var_sum: sum of v_t at the observation times. (n_paths,)
+            eta_sum: sum of Bessel RVs
             dt: time step
 
         Returns:
-            X1 + X2 + X3  (n_paths,)
+            (X1 + X2 + X3)/dt  (n_paths,)
         """
-        vovn = self.vov**2 * dt
         gamma_n, lambda_n = self.gamma_lambda(dt)
 
-        Nn = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
-        x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=Nn + eta_sum * 2) / gamma_n[:, None], axis=0)
+        pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
+        x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + eta_sum * 2) / gamma_n[:, None], axis=0)
 
         # The approximated mean and variance of the truncated terms
         #rem_mean_x1 = 2 * dt / (np.pi**2 * self.KK) * var_sum
@@ -827,13 +845,13 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         #rem_mean_x23 = (self.vov * dt)**2 / (4 * np.pi**2 * self.KK) * ncx_df
         #rem_var_x23 = (self.vov * dt)**4 / (24 * np.pi**4 * self.KK**3) * ncx_df
 
-        m1, var = self.x1star_mean_var(dt, self.KK)
-        m1 *= var_sum * dt
-        var *= var_sum * vovn * dt**2
+        m1, var = self.x1star_avgvar_mv(dt, self.KK)
+        m1 *= var_sum
+        var *= var_sum
 
-        m1_x23, var_x23 = self.x2star_mean_var(dt, self.KK)
-        m1 += m1_x23 * 4 * eta_sum * vovn * dt
-        var += var_x23 * 4 * eta_sum * vovn**2 * dt**2
+        m1_x23, var_x23 = self.x2star_avgvar_mv(dt, self.KK)
+        m1 += m1_x23 * 4 * eta_sum
+        var += var_x23 * 4 * eta_sum
 
         if self.dist == 0:
             lam = m1**3 / var
@@ -870,7 +888,8 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
             eta_sum += eta
 
         eta_sum += self.chi_dim() / 4 * n_dt
-        var_mean = self.draw_x123(var_sum, dt[0], eta_sum) / texp
+        # self.draw_x123 returns the average by dt. Need to convert to the average by texp
+        var_avg = self.draw_x123(var_sum, dt[0], eta_sum) / n_dt
 
-        return var_t, var_mean
+        return var_t, var_avg
 
