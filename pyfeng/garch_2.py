@@ -26,7 +26,6 @@ class GarchCondMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         return NotImplementedError
 
-    # @staticmethod
     def cond_spot_sigma(self, sigma_0, texp):
         var_0 = sigma_0**2
         vol_final, var_mean, vol_mean, inv_vol_mean = self.cond_states(var_0, texp)
@@ -40,7 +39,6 @@ class GarchCondMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         sigma_cond = np.sqrt((1.0 - self.rho**2)/var_0*var_mean)
 
         return spot_cond, sigma_cond
-
 
 
 class GarchMcTimeStep(GarchCondMcABC):
@@ -219,14 +217,28 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
 
 
 class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
-    def __init__(self, sigma_0, vov, rho, mr, theta):
+    """
+    The implementation of Capriotti et al (2018)'s approximation transition density formula
+    is used to simulate the variances following GARCH diffusion model.
+
+    References:
+        - Capriotti, L., Jiang, Y., & Shaimerdenova, G. (2019).
+            Approximation methods for inhomogeneous geometric Brownian motion.
+            International Journal of Theoretical and Applied Finance, 22(02), 1850055.
+    """
+    var_0 = 0.06
+    sigma_0 = np.sqrt(var_0)
+
+    def __init__(self, order=3, sigma_0=sigma_0, vov=0.6, rho=0.5, mr=0.1, theta=0.04,
+                 n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         super().__init__(sigma=sigma_0, vov=vov, rho=rho, mr=mr, theta=theta)
-        self.set_mc_params()
-        self.rhoc = np.sqrt(1-rho**2)
+        self.set_mc_params(n_path=n_path, dt=dt, rn_seed=rn_seed, antithetic=antithetic)
+        self.order = order
 
     def _transition_density_logvar(self, x, x0, t, n: int = 3):
         """
         Transition density of log(var_t).
+        f(0, T, x0, x) = 1/sqrt(2pi sigma^2 T) * exp(-(x-x0)^2/(2sigma^2 T) - W(x,x0,T) )      (2.5)
         Args:
             x: log(var_t)
             x0: log(var_0)
@@ -244,9 +256,9 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
 
     def transition_density_var(self, var_t, t, var_0, t0=0, n: int = 3):
         """
-        Get transition desity of var at time t.
+        Get transition density of var at time t.
         At time t, pdf(Var_t) is
-        f(y) = 1/y * ( 1/sqrt(2*pi) * exp(-(x-x0)^2/(2*sima^2*t) - W(x,x0)) )
+        f(y) = 1/y * ( 1/sqrt(2*pi) * exp(-(x-x0)^2/(2*sima^2*t) - W(x,x0)) )       (2.4)&(2.5)
         where, x = ln(y)
         Args:
             var_t: var at time t
@@ -264,18 +276,33 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
         pdf_y = pdf_x / var_t
         return pdf_y
 
-    def _get_c(self, t, var_0, t0=0, num: int = 2000):
+    def _get_c(self, t, var_0, t0=0, num: int = 2000, order=3):
+        """
+        To identify the threshold c satisfying f(x)/g(x) <= c, for all x.
+        Args:
+            t: current time
+            var_0: last variance
+            t0: last time
+            num: 1/2 number of samples to calculate the maximum c numerically.
+
+        Returns:
+            c : float
+        """
         var_0_mean = var_0.mean()
         yvals = np.r_[np.linspace(0.001, var_0_mean-0.002, num), np.linspace(var_0_mean+0.002, 1, num)]
         self.yvals = yvals
         xvals = np.log(yvals)
-        wvals = w_for_density(self.mr, self.theta, self.vov, xvals, np.log(var_0_mean), t - t0)
+        wvals = w_for_density(self.mr, self.theta, self.vov, xvals, np.log(var_0_mean), t - t0, n=order)
         c = np.exp(-np.min(wvals)) + 1
         return c
 
-    def rv(self, t, var_0, t0=0):
+    def rv(self, t, var_0, t0=0, order=3):
         """
         Sampling in terms of the other normal distribution.
+        1. identify C: f(x)/g(x) <= C
+        2. draw X, U independently from f(x) and uniform
+        3. compare U < f(X)/( C g(X) )
+            => X' = X
         Args:
             t: current time t
             var_0: last variance
@@ -293,7 +320,7 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
                 # 1. first step: draw z, u independently
                 (z, u) = (np.random.normal(x0, self.vov*np.sqrt(t-t0)), np.random.uniform(0, 1))
                 # 2. second step: accept Z' = Z, if z and u satisfy the condition
-                if u * c <= np.exp(-w_for_density(self.mr, self.theta, self.vov, z, x0, t - t0)):
+                if u * c <= np.exp(-w_for_density(self.mr, self.theta, self.vov, z, x0, t - t0, n=order)):
                     break
             y_target = np.exp(z)
             return y_target
@@ -302,15 +329,19 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
             num = 80
             z = np.random.randn(x0.size, num)*self.vov * np.sqrt(t - t0) + x0[:, None]
             u = np.random.uniform(0, 1, size=(x0.size, num))
-            fgu = np.exp(-w_for_density(self.mr, self.theta, self.vov, z, x0[:, None], t - t0)) / u
+            fg = w_for_density(self.mr, self.theta, self.vov, z, x0[:, None], t - t0, order)
+            idx_overflow = fg < -3
+            if idx_overflow.any():
+                fg[idx_overflow] = w_at_x0(self.mr, self.theta, self.vov, z[idx_overflow], t - t0, n=order)
+            fgu = np.exp(-fg) / u
             z_temp = fgu >= c
             while ~z_temp.any(axis=1).all():
                 shape_retry = z[~z_temp.any(axis=1), :].shape
                 zi = (np.random.randn(shape_retry[0], shape_retry[1])*self.vov * np.sqrt(t-t0) +
                       x0[~z_temp.any(axis=1), None])
                 ui = np.random.uniform(0, 1, size=shape_retry)
-                fgui = np.exp(-w_for_density(self.mr, self.theta, self.vov, zi, x0[~z_temp.any(axis=1), None],
-                                             t - t0)) / ui
+                fgui = np.exp(-w_for_density(self.mr, self.theta, self.vov, zi,
+                                             x0[~z_temp.any(axis=1), None], t - t0, n=order)) / ui
                 z[~z_temp.any(axis=1), :] = zi
                 z_temp[~z_temp.any(axis=1), :] = (zi-x0[~z_temp.any(axis=1), None] > 1e-3) & (fgui >= c)
             z_rows = z[np.arange(x0.size), z_temp.argmax(axis=1)]
@@ -327,7 +358,7 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
         varvals[0, :] = var_0
 
         for i in range(n_dt):
-            varvals[i+1, :] = self.rv(t=dt, var_0=varvals[i, :], t0=0)
+            varvals[i+1, :] = self.rv(t=dt, var_0=varvals[i, :], t0=0, order=self.order)
 
         volvals = np.sqrt(varvals)
         vol_final = volvals[-1, :]
@@ -338,6 +369,22 @@ class GarchCapriotti2018(GarchCondMcABC, abc.ABC):
 
 
 def w_for_density(mr, theta, vov, x, x0, t, n: int = 3):
+    """
+    W0(x, x0) = -1/sigma^2 * int_x0^x{ mu_x(z) dz }                         (2.9)
+    Wn(x, x0) = int_0^1{ xi^{n-1} Lambda_{n-1}(x0+(x-x0)xi, x0) dxi }       (2.12)
+    W = sum_{n=0}^{infty}{ Wn(x, x0)*T^n }                                  (2.8)
+    Args:
+        mr: a
+        theta: b
+        vov: sigma
+        x: = lny
+        x0: = lny0
+        t: =T
+        n: order
+
+    Returns:
+        W
+    """
     assert (n > 0) and (n < 4)
     if np.isscalar(x):
         if abs(x-x0) < 1e-3:
