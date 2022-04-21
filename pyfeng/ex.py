@@ -13,3 +13,6 @@ from .ousv import OusvSchobelZhu1998, OusvMcTimeStep, OusvMcChoi2023
 # Basket-Asian from ASP 2021
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002
 from .asian import BsmAsianLinetsky2004, BsmAsianJsu
+
+#Risk-parity from ASP 2022
+from .assetalloc_2 import RiskParity2
