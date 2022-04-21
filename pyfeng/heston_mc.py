@@ -178,7 +178,7 @@ class HestonMcAndersen2008(HestonMcABC):
             dt: time step for Euler/Milstein steps
             rn_seed: random number seed
             antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson, 4 for 2 for Andersen (2008)'s QE scheme
+            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for Poisson-mixture Gamma, 4 for Andersen (2008)'s QE scheme
 
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
@@ -310,7 +310,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     """
 
     antithetic = False
-    scheme = 3
+    scheme = 3  # Poisson mixture gamma
     kk = 1  # K for series truncation.
 
     def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
@@ -771,9 +771,9 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far
     """
-    dist = 0
+    dist = 'ig'
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, dist=0):
+    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, dist=None):
         """
         Set MC parameters
 
@@ -782,10 +782,12 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
             dt: time step
             rn_seed: random number seed
             scheme: simulation scheme for jumping from 0 to texp
-            dist: distribution to use for approximation. 0 for inverse Gaussian (default), 1 for lognormal.
+            dist: distribution to use for approximation.
+                'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
         super().set_mc_params(n_path, dt, rn_seed, scheme=scheme)
-        self.dist = dist
+        if dist is not None:
+            self.dist = dist
 
     def cond_states(self, var_0, texp):
 
@@ -803,16 +805,16 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
             m1, var = self.cond_avgvar_mv(var_0, var_t, dt[i], eta=None)
             var_0 = var_t
 
-            if self.dist == 0:
+            if self.dist.lower() == 'ig':
                 # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
                 # RNG.wald takes the same parameters
                 lam = m1**3 / var
                 var_avg += self.rng_spawn[1].wald(mean=m1, scale=lam)
-            elif self.dist == 1:
+            elif self.dist.lower() == 'ga':
                 scale = var / m1
                 shape = m1 / scale
                 var_avg += scale * self.rng_spawn[1].standard_gamma(shape=shape)
-            elif self.dist == 2:
+            elif self.dist.lower() == 'ln':
                 scale = np.sqrt(np.log(1 + var/m1**2))
                 var_avg += m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
             else:
@@ -825,9 +827,9 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
 
 class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
 
-    dist = 0
+    dist = 'ig'
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=0, dist=0):
+    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=0, dist=None):
         """
         Set MC parameters
 
@@ -836,10 +838,12 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
             dt: time step
             rn_seed: random number seed
             scheme: simulation scheme for jumping from 0 to texp
-            dist: distribution to use for approximation. 0 for inverse Gaussian (default), 1 for Gamma, 2 for LN
+            dist: distribution to use for approximation.
+                'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
         super().set_mc_params(n_path, dt, rn_seed, scheme=scheme, kk=kk)
-        self.dist = dist
+        if dist is not None:
+            self.dist = dist
 
     def draw_x123(self, var_sum, dt, shape_sum):
         """
@@ -858,24 +862,24 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
         x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
 
-        m1, var = self.x1star_avgvar_mv(dt, self.kk)
-        m1 *= var_sum
-        var *= var_sum
+        trunc_mean, trunc_var = self.x1star_avgvar_mv(dt, self.kk)
+        trunc_mean *= var_sum
+        trunc_var *= var_sum
 
-        m1_x23, var_x23 = self.x2star_avgvar_mv(dt, self.kk)
-        m1 += m1_x23 * shape_sum
-        var += var_x23 * shape_sum
+        mean_x23, var_x23 = self.x2star_avgvar_mv(dt, self.kk)
+        trunc_mean += mean_x23 * shape_sum
+        trunc_var += var_x23 * shape_sum
 
-        if self.dist == 0:
-            lam = m1**3 / var
-            x123 += self.rng_spawn[1].wald(mean=m1, scale=lam)
-        elif self.dist == 1:
-            trunc_scale = var / m1
-            trunc_shape = m1 / trunc_scale
+        if self.dist.lower() == 'ig':
+            lam = trunc_mean**3 / trunc_var
+            x123 += self.rng_spawn[1].wald(mean=trunc_mean, scale=lam)
+        elif self.dist.lower() == 'ga':
+            trunc_scale = trunc_var / trunc_mean
+            trunc_shape = trunc_mean / trunc_scale
             x123 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
-        elif self.dist == 2:
-            scale = np.sqrt(np.log(1 + var / m1**2))
-            x123 += m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
+        elif self.dist.lower() == 'ln':
+            scale = np.sqrt(np.log(1 + trunc_var / trunc_mean**2))
+            x123 += trunc_mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {self.dist}.")
 
