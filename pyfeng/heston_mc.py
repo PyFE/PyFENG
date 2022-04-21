@@ -376,7 +376,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def x1star_avgvar_mv(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of (X1/dt) in p 281-282 Glasserman & Kim (2011)
+        Mean and variance of the truncated terms of (X1^*/dt) in p 281-282 Glasserman & Kim (2011)
         (v_0 + v_t) need to be multiplied to mean and variance afterwards.
 
         Args:
@@ -393,19 +393,19 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         coth = np.cosh(mrt_h) * csch
 
         x1_mean = (coth/mrt_h - csch**2) / 2
-        x1_var = (coth / mrt_h**3 + csch**2 / mrt_h**2 - 2 * coth*csch**2 / mrt_h) / 8
+        x1_var = vov2dt * (coth / mrt_h**3 + csch**2 / mrt_h**2 - 2 * coth*csch**2 / mrt_h) / 8
 
         if KK > 0:
-            n_2pi_2 = (np.arange(1, KK + 1) * 2 * np.pi)**2
-            term = 8 * n_2pi_2 / (4*mrt_h**2 + n_2pi_2)**2
-            x1_mean -= np.sum(term)
-            x1_var -= np.sum(4 * term / (4*mrt_h**2 + n_2pi_2))
+            gamma_n, lambda_n = self.gamma_lambda(dt, KK)
+            x1_mean -= np.sum(lambda_n/gamma_n)
+            x1_var -= 2*np.sum(lambda_n/gamma_n**2)
 
-        return x1_mean, x1_var * vov2dt
+        return x1_mean, x1_var
 
     def x2star_avgvar_mv_asymp(self, dt, KK=0):
         """
-        Asymptotic mean and variance of the truncated terms of X2/dt (with delta=1) in Lemma 3.1 in Glasserman & Kim (2011)
+        Asymptotic mean and variance of the truncated terms of X2/dt (with shape=1 or delta=2)
+        in Lemma 3.1 in Glasserman & Kim (2011)
 
         Args:
             dt: time step
@@ -416,14 +416,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         """
 
         vov2dt = self.vov**2 * dt
-        mean = 1 / (4 * np.pi**2 * KK)
-        var = 1 / (24 * np.pi**4 * KK**3)
+        mean = vov2dt / (2 * np.pi**2 * KK)
+        var = vov2dt**2 / (12 * np.pi**4 * KK**3)
 
-        return mean * vov2dt, var * vov2dt**2
+        return mean, var
 
     def x2star_avgvar_mv(self, dt, KK=0):
         """
-        Mean and variance of the truncated terms of X2/dt (with delta=1) in p 284 in Glasserman & Kim (2011)
+        Mean and variance of the truncated terms of X2/dt (with shape=1 or delta=2)
+        in p 284 in Glasserman & Kim (2011)
 
         Args:
             dt: time step
@@ -439,15 +440,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         csch = 1 / np.sinh(mrt_h)
         coth = np.cosh(mrt_h) * csch
 
-        mean = (mrt_h * coth - 1) / (8 * mrt_h**2)
-        var = (mrt_h * coth + mrt_h**2 * csch**2 - 2) / (32 * mrt_h**4)
+        mean = vov2dt * (mrt_h * coth - 1) / (4 * mrt_h**2)
+        var = vov2dt**2 * (mrt_h * coth + mrt_h**2 * csch**2 - 2) / (16 * mrt_h**4)
 
         if KK > 0:
-            term = 1 / (4*mrt_h**2 + (np.arange(1, KK + 1) * 2 * np.pi)**2)
-            mean -= np.sum(term)
-            var -= 2 * np.sum(term**2)
+            gamma_n, _ = self.gamma_lambda(dt, KK)
+            mean -= np.sum(1/gamma_n)
+            var -= np.sum(1/gamma_n**2)
 
-        return mean * vov2dt, var * vov2dt**2
+        return mean, var
 
     def draw_x1(self, var_0, var_t, dt):
         """
@@ -584,13 +585,13 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return eta
 
-    def draw_x2(self, ncx_df, dt, size):
+    def draw_x2(self, shape, dt, size):
         """
         Simulation of x2/dt (or Z/dt) using truncated Gamma expansion in Glasserman & Kim (2011)
-        Z is the special case with ncx_df = 4
+        X2 is the case with shape = delta / 2 and Z is the case with shape = 2
         
         Args:
-            ncx_df: ncx2 degree of freedom
+            shape: shape parameter of gamma distribution
             dt: time-to-expiry
             size: number of RVs to generate
 
@@ -600,14 +601,13 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         gamma_n, _ = self.gamma_lambda(dt)
 
-        gamma_rv = self.rng_spawn[1].standard_gamma(ncx_df / 2, size=(self.KK, size))
+        gamma_rv = self.rng_spawn[1].standard_gamma(shape, size=(self.KK, size))
         x2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
         rem_mean, rem_var = self.x2star_avgvar_mv(dt, self.KK)
         rem_scale = rem_var / rem_mean
-        rem_shape = rem_mean / rem_scale * ncx_df
-
+        rem_shape = rem_mean / rem_scale * shape
         x2 += rem_scale * self.rng_spawn[1].standard_gamma(rem_shape, size=size)
         return x2
 
@@ -643,13 +643,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x1_mean *= (var_0 + var_t)
         x1_var *= (var_0 + var_t)
 
-        z_mean, z_var = self.x2star_avgvar_mv(dt, KK=KK)
-        z_mean *= 4
-        z_var *= 4
-
-        x23_mean = (eta_mean + self.chi_dim()/4) * z_mean
-        x23_var = (eta_mean + self.chi_dim()/4) * z_var
-        x23_var += eta_var * z_mean**2
+        x2_mean, x2_var = self.x2star_avgvar_mv(dt, KK=KK)
+        x23_mean = (2*eta_mean + self.chi_dim()/2) * x2_mean
+        x23_var = (2*eta_mean + self.chi_dim()/2) * x2_var
+        x23_var += eta_var * (2*x2_mean)**2
 
         return x1_mean + x23_mean, x1_var + x23_var
 
@@ -662,10 +659,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         # Simulation X1: truncated Gamma expansion
         var_avg = self.draw_x1(var_0, var_t, texp)
-        var_avg += self.draw_x2(self.chi_dim(), texp, size=self.n_path)
+        var_avg += self.draw_x2(self.chi_dim()/2, texp, size=self.n_path)
         eta = self.draw_eta(var_0, var_t, texp)
 
-        zz = self.draw_x2(4, texp, size=eta.sum())
+        zz = self.draw_x2(2.0, texp, size=eta.sum())
 
         total = 0
         for i in np.arange(eta.max()):
@@ -781,25 +778,36 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
 
     def cond_states(self, var_0, texp):
 
-        var_t, eta = self.var_step_ncx2_eta(self.sigma, texp)
-        #m1, var = self.cond_avgvar_mv_numeric(var_0, var_t, texp)
-        m1, var = self.cond_avgvar_mv(var_0, var_t, texp, eta=None)
+        tobs = self.tobs(texp)
+        n_dt = len(tobs)
+        dt = np.diff(tobs, prepend=0)
 
-        if self.dist == 0:
-            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
-            # RNG.wald takes the same parameters
-            lam = m1**3 / var
-            var_avg = self.rng_spawn[1].wald(mean=m1, scale=lam)
-        elif self.dist == 1:
-            scale = var / m1
-            shape = m1 / scale
-            var_avg = scale * self.rng_spawn[1].standard_gamma(shape=shape)
-        elif self.dist == 2:
-            scale = np.sqrt(np.log(1 + var/m1**2))
-            var_avg = self.rv_normal(spawn=1)
-            var_avg = m1 * np.exp(scale * (var_avg - scale/2))
-        else:
-            raise ValueError(f"Incorrect distribution: {self.dist}.")
+        var_0 = np.full(self.n_path, var_0)
+        var_avg = np.zeros_like(var_0)
+
+        for i in range(n_dt):
+
+            var_t, eta = self.var_step_ncx2_eta(var_0, dt[i])
+            # m1, var = self.cond_avgvar_mv_numeric(var_0, var_t, dt[i])
+            m1, var = self.cond_avgvar_mv(var_0, var_t, dt[i], eta=None)
+            var_0 = var_t
+
+            if self.dist == 0:
+                # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+                # RNG.wald takes the same parameters
+                lam = m1**3 / var
+                var_avg += self.rng_spawn[1].wald(mean=m1, scale=lam)
+            elif self.dist == 1:
+                scale = var / m1
+                shape = m1 / scale
+                var_avg += scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            elif self.dist == 2:
+                scale = np.sqrt(np.log(1 + var/m1**2))
+                var_avg += m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
+            else:
+                raise ValueError(f"Incorrect distribution: {self.dist}.")
+
+        var_avg /= n_dt
 
         return var_t, var_avg
 
@@ -822,13 +830,13 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         super().set_mc_params(n_path, dt, rn_seed, scheme=scheme, KK=KK)
         self.dist = dist
 
-    def draw_x123(self, var_sum, dt, eta_sum):
+    def draw_x123(self, var_sum, dt, shape_sum):
         """
         Samples of (X1 + X2 + X3)/dt using truncated Gamma expansion improved in Choi & Kwok (2023)
 
         Args:
             var_sum: sum of v_t at the observation times. (n_paths,)
-            eta_sum: sum of Bessel RVs
+            shape_sum: sum of gamma shape parameters
             dt: time step
 
         Returns:
@@ -837,7 +845,7 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         gamma_n, lambda_n = self.gamma_lambda(dt)
 
         pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
-        x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + eta_sum * 2) / gamma_n[:, None], axis=0)
+        x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
 
         # The approximated mean and variance of the truncated terms
         #rem_mean_x1 = 2 * dt / (np.pi**2 * self.KK) * var_sum
@@ -850,8 +858,8 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         var *= var_sum
 
         m1_x23, var_x23 = self.x2star_avgvar_mv(dt, self.KK)
-        m1 += m1_x23 * 4 * eta_sum
-        var += var_x23 * 4 * eta_sum
+        m1 += m1_x23 * shape_sum
+        var += var_x23 * shape_sum
 
         if self.dist == 0:
             lam = m1**3 / var
@@ -880,16 +888,16 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
 
         var_t = np.full(self.n_path, var_0)
         var_sum = weight[0] * var_t
-        eta_sum = np.zeros_like(var_t)
+        shape_sum = np.zeros_like(var_t)
 
         for i in range(n_dt):
             var_t, eta = self.var_step_ncx2_eta(var_t, dt[i])
             var_sum += weight[i+1] * var_t
-            eta_sum += eta
+            shape_sum += 2*eta
 
-        eta_sum += self.chi_dim() / 4 * n_dt
+        shape_sum += 0.5 * self.chi_dim() * n_dt
         # self.draw_x123 returns the average by dt. Need to convert to the average by texp
-        var_avg = self.draw_x123(var_sum, dt[0], eta_sum) / n_dt
+        var_avg = self.draw_x123(var_sum, dt[0], shape_sum) / n_dt
 
         return var_t, var_avg
 
