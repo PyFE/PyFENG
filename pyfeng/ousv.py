@@ -2,6 +2,7 @@ import numpy as np
 import scipy.integrate as scint
 from . import sv_abc as sv
 import math
+import abc
 
 class OusvSteinStein1991(sv.SvABC):
     """
@@ -67,7 +68,7 @@ class OusvSteinStein1991(sv.SvABC):
 
         return price
 
-class OusvBallRoma1994(sv.SvABC):
+class HestonUncorrBallRoma1994(sv.SvABC):
     """
     The implementation of Ball & Roma (1994)'s stochastic volatility pricing formula for European
     options when there is no correlation between innovations in security prices and volatility.
@@ -95,15 +96,44 @@ class OusvBallRoma1994(sv.SvABC):
         return np.exp(n + m * v)
 
     def first_derivative(self, texp):
-        M_1 = (- self.sigma + np.exp(self.mr * texp) * self.sigma - self.mr * np.exp(self.mr * texp) * self.sigma * texp + self.theta - np.exp(self.mr * texp) * self.theta) / (self.mr * np.exp(self.mr * texp) * texp)
+        var0, mr, vov, theta = self.sigma, self.mr, self.vov, self.theta
+
+        mr2 = mr * mr
+        vov2 = vov * vov
+        theta2 = theta * theta
+        decay = np.exp(-mr * texp)
+
+        #M_1 = (- self.sigma + np.exp(self.mr * texp) * self.sigma - self.mr * np.exp(self.mr * texp) * self.sigma * texp + self.theta - np.exp(self.mr * texp) * self.theta) / (self.mr * np.exp(self.mr * texp) * texp)
+        M_1 = theta + (var0 - theta) * (1 - decay) / (mr * texp)
         return M_1
 
     def second_derivative(self, texp):
-        M_21 = np.power(self.sigma, 2)
-        M_22 = (np.power(self.sigma, 2) / np.power(self.mr, 2) + np.power(self.sigma, 2) / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) - 2 * np.power(self.sigma, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 2 * self.sigma * self.theta / np.power(self.mr, 2) - 2 * self.sigma * self.theta / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) + 4 * self.sigma * self.theta / (np.power(self.mr, 2) * np.exp(self.mr * texp)) + np.power(self.theta, 2) / np.power(self.mr, 2)) / np.power(texp, 2)
-        M_23 = (np.power(self.theta, 2) / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) - 2 * np.power(self.theta, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 5 * self.sigma * np.power(self.vov, 2) / (2 * np.power(self.mr, 3)) + self.sigma * np.power(self.vov, 2) / (2 * np.power(self.mr, 3) * np.exp(2 * self.mr * texp)) + 2 * self.sigma * np.power(self.vov, 2) / (np.power(self.mr, 3) * np.exp(self.mr * texp)) + self.theta * np.power(self.vov, 2) / np.power(self.mr, 3) - self.theta * np.power(self.vov, 2) / (np.power(self.mr, 3) * np.exp(2 * self.mr * texp))) / np.power(texp, 2)
-        M_24 = (-2 * np.power(self.sigma, 2) / self.mr + 2 * np.power(self.sigma, 2) / (self.mr * np.exp(self.mr * texp)) + 2 * self.sigma * self.theta / self.mr - 2 * self.sigma * self.theta / (self.mr * np.exp(self.mr * texp)) + self.sigma * np.power(self.vov, 2) / np.power(self.mr, 2) + 2 * self.sigma * np.power(self.vov, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 2 * self.theta * np.power(self.vov, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp))) / texp
-        M_2 = M_21 + M_22 + M_23 + M_24
+        var0, mr, vov, theta = self.sigma, self.mr, self.vov, self.theta
+
+        mr2 = mr * mr
+        vov2 = vov * vov
+        theta2 = theta * theta
+        decay = np.exp(-mr * texp)
+
+        term1 = vov2 - mr
+        term2 = vov2 - 2 * mr
+
+        #M_21 = np.power(self.sigma, 2)
+        #M_22 = (np.power(self.sigma, 2) / np.power(self.mr, 2) + np.power(self.sigma, 2) / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) - 2 * np.power(self.sigma, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 2 * self.sigma * self.theta / np.power(self.mr, 2) - 2 * self.sigma * self.theta / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) + 4 * self.sigma * self.theta / (np.power(self.mr, 2) * np.exp(self.mr * texp)) + np.power(self.theta, 2) / np.power(self.mr, 2)) / np.power(texp, 2)
+        #M_23 = (np.power(self.theta, 2) / (np.power(self.mr, 2) * np.exp(2 * self.mr * texp)) - 2 * np.power(self.theta, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 5 * self.sigma * np.power(self.vov, 2) / (2 * np.power(self.mr, 3)) + self.sigma * np.power(self.vov, 2) / (2 * np.power(self.mr, 3) * np.exp(2 * self.mr * texp)) + 2 * self.sigma * np.power(self.vov, 2) / (np.power(self.mr, 3) * np.exp(self.mr * texp)) + self.theta * np.power(self.vov, 2) / np.power(self.mr, 3) - self.theta * np.power(self.vov, 2) / (np.power(self.mr, 3) * np.exp(2 * self.mr * texp))) / np.power(texp, 2)
+        #M_24 = (-2 * np.power(self.sigma, 2) / self.mr + 2 * np.power(self.sigma, 2) / (self.mr * np.exp(self.mr * texp)) + 2 * self.sigma * self.theta / self.mr - 2 * self.sigma * self.theta / (self.mr * np.exp(self.mr * texp)) + self.sigma * np.power(self.vov, 2) / np.power(self.mr, 2) + 2 * self.sigma * np.power(self.vov, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp)) - 2 * self.theta * np.power(self.vov, 2) / (np.power(self.mr, 2) * np.exp(self.mr * texp))) / texp
+        #M_2 = M_21 + M_22 + M_23 + M_24
+        M2c_1 = - (decay * (var0 - theta)) ** 2
+        M2c_2 = 2 * np.exp(term2 * texp) * (2 * mr * theta * (mr * theta + term2 * var0) + term1 * term2 * var0 ** 2)
+        M2c_3 = -vov2 * (theta2 * (4 * mr * (3 - texp * mr) + (2 * texp * mr - 5) * vov2) + term2 * var0 * (
+                    2 * theta + var0))
+
+        M2c_4 = 2 * decay * vov2
+        M2c_4 *= 2 * theta2 * (texp * mr2 - (1 + texp * mr) * vov2) \
+                 + var0 * (2 * mr * theta * (1 + texp * term1) + term1 * var0)
+
+        M_2 = M2c_1 / mr2 + M2c_2 / (term1 * term2) ** 2 + M2c_3 / mr2 / term2 ** 2 + M2c_4 / mr2 / term1 ** 2
+        M_2 /= texp ** 2
         return M_2
 
     def density_func(self, price, spot, texp, cp=1):
