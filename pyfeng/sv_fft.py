@@ -2,6 +2,7 @@ import numpy as np
 import abc
 import scipy.fft as spfft
 import scipy.interpolate as spinterp
+import scipy.integrate as spint
 from . import opt_abc as opt
 from . import sv_abc as sv
 
@@ -98,3 +99,52 @@ class HestonFft(sv.SvABC, FftABC):
             + var_0*(xi - dd)*(1 - exp)/(1 - g2*exp)
         cf /= self.vov**2
         return np.exp(cf)
+
+
+class OusvFft(sv.SvABC, FftABC):
+
+    model_type = "OUSV"
+
+    def cf(self, uu, texp):
+        """
+        Characteristic function from Schobel & Zhu (1998)
+
+        Args:
+            uu: dummy variable
+            texp: time to expiry
+
+        Returns:
+            CF value at uu
+        """
+        mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
+
+        s1 = 0.5*uu*(uu*(1 - rho**2) + 1j*(1 - 2*mr*rho/vov))
+        s2 = 1j*uu*mr*theta*rho/vov
+        s3 = 0.5j*uu*rho/vov
+
+        gamma1 = np.sqrt(2 * vov**2 * s1 + mr**2)
+        gamma2 = (mr - 2 * vov**2 * s3) / gamma1
+        gamma3 = mr**2 * theta - s2 * vov**2
+        sinh = np.sinh(gamma1 * texp)
+        cosh = np.cosh(gamma1 * texp)
+        sincos = sinh + gamma2 * cosh
+        cossin = cosh + gamma2 * sinh
+        ktg3 = mr * theta * gamma1 - gamma2 * gamma3
+        s2g3 = vov**2 * gamma1**3
+
+        D = (mr - gamma1 * sincos / cossin) / vov**2
+        B = ((ktg3 + gamma3 * sincos) / cossin - mr * theta * gamma1) / (
+            vov**2 * gamma1
+        )
+        C = (
+            -0.5 * np.log(cossin)
+            + 0.5 * mr * texp
+            + ((mr * theta * gamma1)**2 - gamma3**2)
+            / (2 * s2g3)
+            * (sinh / cossin - gamma1 * texp)
+            + ktg3 * gamma3 / s2g3 * ((cosh - 1) / cossin)
+        )
+
+        res = -0.5*1j*uu*rho*(self.sigma**2/vov + vov*texp)
+        res += (D/2 * self.sigma + B) * self.sigma + C
+        return np.exp(res)
