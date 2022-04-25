@@ -122,7 +122,7 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
     @abc.abstractmethod
     def cond_spot_sigma(self, fwd, texp):
         # return (fwd, vol, weight) each 1d array
-        pass
+        return NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
