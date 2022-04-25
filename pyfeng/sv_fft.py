@@ -63,6 +63,43 @@ class BsmFft(FftABC):
         return np.exp(val)
 
 
+class VarGammaFft(sv.SvABC, FftABC):
+
+    def cf(self, uu, texp):
+        """
+
+        Args:
+            uu:
+            texp:
+
+        Returns:
+
+        """
+        volvar = self.vov*self.sigma**2
+        mu = np.log(1 - self.theta*self.vov - 0.5*volvar)  # /self.vov
+        rv = 1j*mu*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
+        np.exp(texp/self.vov * rv, out=rv)
+        return rv
+
+class ExpNigFft(sv.SvABC, FftABC):
+
+    def cf(self, uu, texp):
+        """
+
+        Args:
+            uu:
+            texp:
+
+        Returns:
+
+        """
+        volvar = self.vov*self.sigma**2
+        mu = -1 + np.sqrt(1 - 2*self.theta*self.vov - volvar)
+        rv = 1j*mu*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
+        np.exp(texp/self.vov * rv, out=rv)
+        return rv
+
+
 class HestonFft(sv.SvABC, FftABC):
     """
     Heston model option pricing with FFT
@@ -102,6 +139,10 @@ class HestonFft(sv.SvABC, FftABC):
 
 
 class OusvFft(sv.SvABC, FftABC):
+    """
+    OUSV model option pricing with FFT
+
+    """
 
     model_type = "OUSV"
 
