@@ -3,10 +3,9 @@ import numpy as np
 import scipy.special as spsp
 from .bsm import Bsm
 from .norm import Norm
-from . import opt_abc as opt
 from . import sv_abc as sv
 
-class SubordBmABC(opt.OptABC):
+class SubordBmABC(sv.SvABC):
 
     # To do:
     # merge with SabrCondDistABC in sabr_int.py  use cond_spot_sigma()
@@ -14,16 +13,14 @@ class SubordBmABC(opt.OptABC):
     # unified initializer, seperate model vs numerical params: set_num_param()
     #
 
-    alpha, rho = 0.01, 0.0
+    mr = 0.0
     sv_param = True
 
     n_quad = 7
     nu = None
 
-    def __init__(self, sigma, alpha=0.01, rho=0.0, n_quad=7, intr=0.0, divr=0.0, is_fwd=False, sv_param=True):
-        super().__init__(sigma, intr, divr, is_fwd=is_fwd)
-        self.alpha = alpha
-        self.rho = rho
+    def __init__(self, sigma, vov=0.01, rho=0.0, n_quad=7, intr=0.0, divr=0.0, is_fwd=False, sv_param=True):
+        super().__init__(sigma, vov, rho, None, None, intr, divr, is_fwd=is_fwd)
         self.n_quad = n_quad
         self.sv_param = sv_param
 
@@ -38,12 +35,12 @@ class SubordBmABC(opt.OptABC):
         if self.sv_param:
             rho2 = self.rho**2
             rhoc = np.sqrt(1-rho2)
-            var, w = self.quad(texp, self.alpha**2)
-            fwd_ratio = np.exp(self.rho*self.sigma/self.alpha*(var - texp) - 0.5*sigma2*rho2*var)
+            var, w = self.quad(texp, self.vov**2)
+            fwd_ratio = np.exp(self.rho*self.sigma/self.vov*(var - texp) - 0.5*sigma2*rho2*var)
             vol_bsm = self.sigma * rhoc * np.sqrt(var / texp)
         else:
             theta = self.rho  # rho playing the role of theta
-            v = self.alpha  # alpha playing the role of v (variance rate)
+            v = self.vov  # alpha playing the role of v (variance rate)
             var, w = self.quad(texp, v)
             fwd_ratio = np.exp(theta*(var - texp) + 0.5*sigma2*var)
             vol_bsm = self.sigma * np.sqrt(var / texp)
