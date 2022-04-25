@@ -4,7 +4,7 @@ from .norm import (
 from .bsm import Bsm, BsmDisp
 from .cev import Cev
 from .gamma import InvGam, InvGauss
-from .sv_fft import HestonFft, BsmFft
+from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft
 from .sabr import (
     SabrHagan2002,
     SabrNorm,
