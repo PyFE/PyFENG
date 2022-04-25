@@ -279,7 +279,7 @@ class Sv32McAe2(sv32_mc2.Sv32McABC):
         vov=0.2,
         intr=0,
         divr=0,
-        path_num=100,
+        path_num=1000,
      ):
         super().__init__(sigma, vov, rho, mr, theta, intr=0.0, divr=0.0)
         self.path_num = path_num
@@ -350,8 +350,11 @@ class Sv32McAe2(sv32_mc2.Sv32McABC):
         
         X_0 = 1 / self.sigma ** 2
         arg_in_Iv = j * np.sqrt(X_T * X_0) / np.sinh(j * delta)
+        #besseli_ufun = np.frompyfunc(sv32_mc2.Sv32McABC.ivc, 2, 1)
+        #We found that it's quicker and more stable to use mp.besseli. The value is small and it will get nan.
+        #So we choose mp.besseli finally.
         besseli_ufun = np.frompyfunc(besseli, 2, 1)
-
+        
         def char_func(a):
             order_1 = np.sqrt(vega ** 2 + 8 * a * (-1j) / self.vov ** 2)
             return besseli_ufun(order_1, arg_in_Iv) / besseli_ufun(vega, arg_in_Iv)
@@ -373,8 +376,10 @@ class Sv32McAe2(sv32_mc2.Sv32McABC):
         M1 = np.array(np.abs(M1).tolist(), dtype=float)
         M2 = np.array(np.abs(M2).tolist(), dtype=float)
         M2[np.isnan(M2)] = np.mean(M2)
+
         
         return spst.lognorm.rvs(M1, np.sqrt(np.log(M2 / M1 ** 2)))
+    
     def cond_states(self, var_0, dt):
         '''
         Sample variance at maturity and conditional integrated variance
