@@ -13,8 +13,31 @@ class FftABC(opt.OptABC, abc.ABC):
     x_lim = 200  # integratin limit
 
     @abc.abstractmethod
-    def cf(self, x, texp):
+    def mgf_logprice(self, xx, texp):
+        """
+        Moment generating function (MGF) of log price. (forward = 1)
+
+        Args:
+            xx: dummy variable
+            texp: time to expiry
+
+        Returns:
+            MGF value at xx
+        """
         return NotImplementedError
+
+    def charfunc_logprice(self, x, texp):
+        """
+        Characteristic function of log price
+
+        Args:
+            x:
+            texp:
+
+        Returns:
+
+        """
+        return self.mgf_logprice(1j*x, texp)
 
     def price(self, strike, spot, texp, cp=1):
         """ FFT method based on the Lewis expression
@@ -39,7 +62,8 @@ class FftABC(opt.OptABC, abc.ABC):
         b = self.n_x*dk / 2
         ks = -b + dk*np.arange(self.n_x)
 
-        integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
+        integrand = np.exp(-1j*b*xx)*self.mgf_logprice(xx*1j + 0.5, texp)*1/(xx**2 + 0.25)*weight
+        # CF: integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
         integral_value = (self.n_x / np.pi) * spfft.ifft(integrand).real
 
         spline_cub = spinterp.interp1d(ks, integral_value, kind='cubic')
@@ -58,32 +82,28 @@ class BsmFft(FftABC):
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
         array([15.71362027,  9.69251556,  5.52948647,  2.94558375,  1.4813909 ])
     """
-    def cf(self, uu, texp):
-        val = -0.5 * self.sigma**2 * texp * uu * (1j + uu)
+
+    def mgf_logprice(self, uu, texp):
+        val = -0.5 * self.sigma**2 * texp * uu * (1 - uu)
+        # CF: val = -0.5 * self.sigma**2 * texp * uu * (1j + uu)
         return np.exp(val)
 
 
 class VarGammaFft(sv.SvABC, FftABC):
 
-    def cf(self, uu, texp):
-        """
+    def mgf_logprice(self, uu, texp):
 
-        Args:
-            uu:
-            texp:
-
-        Returns:
-
-        """
         volvar = self.vov*self.sigma**2
         mu = np.log(1 - self.theta*self.vov - 0.5*volvar)  # /self.vov
-        rv = 1j*mu*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
+        # CF: rv = 1j*mu*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
+        rv = mu*uu - np.log(1 + (-self.theta*self.vov - 0.5*volvar*uu)*uu)
         np.exp(texp/self.vov * rv, out=rv)
         return rv
 
+
 class ExpNigFft(sv.SvABC, FftABC):
 
-    def cf(self, uu, texp):
+    def mgf_logprice(self, uu, texp):
         """
 
         Args:
@@ -95,7 +115,8 @@ class ExpNigFft(sv.SvABC, FftABC):
         """
         volvar = self.vov*self.sigma**2
         mu = -1 + np.sqrt(1 - 2*self.theta*self.vov - volvar)
-        rv = 1j*mu*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
+        rv = mu*uu + 1 - np.sqrt(1 + (-2*self.theta*self.vov - volvar*uu)*uu)
+        # CF: rv = 1j*mu*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
         np.exp(texp/self.vov * rv, out=rv)
         return rv
 
@@ -120,7 +141,7 @@ class HestonFft(sv.SvABC, FftABC):
 
     model_type = "Heston"
 
-    def cf(self, uu, texp):
+    def mgf_logprice(self, uu, texp):
         """
         Heston characteristic function as proposed by Schoutens (2004)
 
@@ -128,8 +149,10 @@ class HestonFft(sv.SvABC, FftABC):
             - https://github.com/cantaro86/Financial-Models-Numerical-Methods/blob/master/1.4%20SDE%20-%20Heston%20model.ipynb
         """
         var_0 = self.sigma
-        xi = self.mr - self.vov*self.rho*uu*1j
-        dd = np.sqrt(xi**2 + self.vov**2 * uu * (1j + uu))
+        # CF: xi = self.mr - self.vov*self.rho*uu*1j
+        # CF: dd = np.sqrt(xi**2 + self.vov**2 * uu * (1j + uu))
+        xi = self.mr - self.vov*self.rho*uu
+        dd = np.sqrt(xi**2 + self.vov**2 * uu * (1 - uu))
         g2 = (xi - dd) / (xi + dd)
         exp = np.exp(-dd*texp)
         cf = self.mr*self.theta*((xi - dd)*texp - 2*np.log((1 - g2*exp)/(1 - g2))) \
@@ -146,9 +169,9 @@ class OusvFft(sv.SvABC, FftABC):
 
     model_type = "OUSV"
 
-    def cf(self, uu, texp):
+    def mgf_logprice(self, uu, texp):
         """
-        Characteristic function from Schobel & Zhu (1998)
+        MGF modified from Schobel & Zhu (1998)
 
         Args:
             uu: dummy variable
@@ -159,9 +182,12 @@ class OusvFft(sv.SvABC, FftABC):
         """
         mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
 
-        s1 = 0.5*uu*(uu*(1 - rho**2) + 1j*(1 - 2*mr*rho/vov))
-        s2 = 1j*uu*mr*theta*rho/vov
-        s3 = 0.5j*uu*rho/vov
+        # CF: s1 = 0.5*uu*(uu*(1 - rho**2) + 1j*(1 - 2*mr*rho/vov))
+        # CF: s2 = 1j*uu*mr*theta*rho/vov
+        # CF: s3 = 0.5j*uu*rho/vov
+        s1 = 0.5*uu*((1 - 2*mr*rho/vov) - (1 - rho**2) * uu)
+        s2 = uu*mr*theta*rho/vov
+        s3 = 0.5*uu*rho/vov
 
         gamma1 = np.sqrt(2 * vov**2 * s1 + mr**2)
         gamma2 = (mr - 2 * vov**2 * s3) / gamma1
@@ -186,6 +212,7 @@ class OusvFft(sv.SvABC, FftABC):
             + ktg3 * gamma3 / s2g3 * ((cosh - 1) / cossin)
         )
 
-        res = -0.5*1j*uu*rho*(self.sigma**2/vov + vov*texp)
+        # CF: res = -0.5*1j*uu*rho*(self.sigma**2/vov + vov*texp)
+        res = -0.5*uu*rho*(self.sigma**2/vov + vov*texp)
         res += (D/2 * self.sigma + B) * self.sigma + C
         return np.exp(res)
