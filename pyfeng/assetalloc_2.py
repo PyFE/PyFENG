@@ -1,5 +1,4 @@
 
-
 import abc
 import numpy as np
 import scipy.stats as spst
@@ -10,7 +9,8 @@ import sys
 
 #import pyfeng as pf
 import pyfeng.ex as pfex
-from .assetalloc import AssetAllocABC
+from pyfeng.assetalloc import AssetAllocABC
+
 
 class RiskParity2(AssetAllocABC):
     """
@@ -22,6 +22,11 @@ class RiskParity2(AssetAllocABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
+        >>> cov = np.array([
+        >>> [1,-0.9,0.6],
+        >>> [-0.9,1.0,-0.2],
+        >>> [0.6,-0.2,4.0]
+        >>> ])
         >>> m = pfex.RiskParity2(cov=cov)
         >>> weight = m.general_risk_parity_with_fixed_theta(a=-1,b=2)
         >>> print(weight)
@@ -32,6 +37,16 @@ class RiskParity2(AssetAllocABC):
         >>> weight = m.minimum_variance_risk_parity_extended_least_square(rho=1000, beta=0.01, tol=1e-6, itreation_max=100, a=-1,b=2)
         >>> print(weight)
         # [ 0.53233682  0.51447136 -0.04680817]
+
+        >>> weight = m.general_risk_parity_with_fixed_theta(a=-0.05, b=0.35)
+        >>> print(weight)
+        # [0.35 0.35 0.3 ]
+        >>> weight = m.general_risk_parity_with_variable_theta(a=-0.05, b=0.35)
+        >>> print(weight)
+        # [0.33692795 0.31616628 0.34690577]
+        >>> weight = m.minimum_variance_risk_parity_extended_least_square(rho=1000, beta=0.01, tol=1e-6, itreation_max=100, a=-0.05, b=0.35)
+        >>> print(weight)
+        # [0.35, 0.35, 0.3 ]
 
     """
 
@@ -67,12 +82,11 @@ class RiskParity2(AssetAllocABC):
             Returns:
                 risk parity weight
         """
-
         # --formula (16) --
-
         # fix theta:
         n_assets = len(x0)
         rp = np.full(n_assets, 1 / n_assets)
+
         list_bnds = []
         for i in range(len(x0)):
             list_bnds.append(bnds)
@@ -98,7 +112,6 @@ class RiskParity2(AssetAllocABC):
             References:
                 -Bai X, Scheinberg K, Tutuncu R (2016) Least-squares approach to risk parity in portfolio selection. Quantitative Finance 16:357–376.
         """
-
         # implementation of general risk parity formula with fixed theta in 2.3
         bonds = (a, b)
         cor = self.cor_m
@@ -106,10 +119,10 @@ class RiskParity2(AssetAllocABC):
         x0 = np.full(self.n_asset, 1 / np.sqrt(np.sum(cor)))
         return self.weight_general(x0,cov_m,bonds)
 
-
     def weight_general_2(self,x0,cov_m,bnds):
         """
-            Solve the optimization problem for the general risk parity problem with variable theta.
+            Solve the optimization problem for the general
+            risk parity problem with variable theta.
 
             Args:
                 x0: weights for asset allocation problem.
@@ -119,9 +132,7 @@ class RiskParity2(AssetAllocABC):
             Returns:
                 risk parity weight
         """
-
         # --formula (17) --
-
         #variable theta:
         n_assets = len(x0)
         list_bnds = []
@@ -178,9 +189,7 @@ class RiskParity2(AssetAllocABC):
         Returns:
             risk parity weight
         """
-
         # --formula (28) --
-
         n_assets = len(x0)
         list_bnds = []
         for i in range(n_assets):
@@ -194,7 +203,8 @@ class RiskParity2(AssetAllocABC):
         rp = (x0.T @ cov_m @ x0) * rp
 
         func = lambda x: np.sum(
-            (x[:int(len(x)/2)] * (cov_m @ x[:int(len(x)/2)]) - x[int(len(x)/2):]) ** 2 + rho * (x[:int(len(x)/2)].T @ cov_m @ x[:int(len(x)/2)]))
+            (x[:int(len(x)/2)] * (cov_m @ x[:int(len(x)/2)])
+             - x[int(len(x)/2):]) ** 2 + rho * (x[:int(len(x)/2)].T @ cov_m @ x[:int(len(x)/2)]))
 
         res = minimize(func,[x0,rp], method='SLSQP', constraints=cons, bounds=bnds, tol=1e-10)
         weight = res.x[:int(len(res.x)/2)]
@@ -219,7 +229,6 @@ class RiskParity2(AssetAllocABC):
         References:
             -Bai X, Scheinberg K, Tutuncu R (2016) Least-squares approach to risk parity in portfolio selection. Quantitative Finance 16:357–376.
         """
-
         # Algorithm 1 in 4.1
         bonds = (a,b)
         cor = self.cor_m
@@ -233,48 +242,3 @@ class RiskParity2(AssetAllocABC):
                 x = self.weight_minimum_variance(x, 0, cov_m,bonds)
                 break
         return x
-
-if __name__ == '__main__':
-
-    cov = np.array([
-        [94.868, 33.750, 12.325, -1.178, 8.778],
-        [33.750, 445.642, 98.955, -7.901, 84.954],
-        [12.325, 98.955, 117.265, 0.503, 45.184],
-        [-1.178, -7.901, 0.503, 5.460, 1.057],
-        [8.778, 84.954, 45.184, 1.057, 34.126]
-    ]) / 10000
-
-    m = RiskParity2(cov=cov)
-
-    weight = m.general_risk_parity_with_fixed_theta()
-    print(weight)
-    # [0.12450587 0.04666161 0.08328325 0.61329749 0.13225179]
-
-    weight = m.general_risk_parity_with_variable_theta()
-    print(weight)
-    # [0.20003216 0.19990448 0.20002062 0.20001948 0.20002326]
-
-    weight = m.minimum_variance_risk_parity_extended_least_square(rho=1000, beta=0.01, tol=1e-6, itreation_max=100,a=-1,b=2)
-    print(weight)
-    # [ 0.05027209  0.00553736 -0.01230498  0.85650904  0.09998649]
-
-    cov = np.array([
-        [1,-0.9,0.6],
-        [-0.9,1.0,-0.2],
-        [0.6,-0.2,4.0]
-    ])
-
-    m = RiskParity2(cov=cov)
-
-    weight = m.general_risk_parity_with_fixed_theta(a=-1,b=2)
-    print(weight)
-    # [0.45520246 0.4805526  0.06424494]
-
-    weight = m.general_risk_parity_with_variable_theta(a=-1,b=2)
-    print(weight)
-    # [0.26339982 0.19102125 0.54557893]
-
-    weight = m.minimum_variance_weight_extended_least_square(rho=1000, beta=0.01, tol=1e-6, itreation_max=100, a=-1,b=2)
-    print(weight)
-    # [ 0.53233682  0.51447136 -0.04680817]
-
