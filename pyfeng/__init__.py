@@ -31,5 +31,8 @@ from .multiasset_mc import BsmNdMc, NormNdMc
 # Asset Allocation
 from .assetalloc import RiskParity
 
+# GARCH
+from . import garch_2
+
 # Other utilities
 from .mgf2mom import Mgf2Mom
