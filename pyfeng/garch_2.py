@@ -320,6 +320,7 @@ class GarchMcTubikanec2020(GarchCondMcABC):
     def cond_sequence(self, var_0, texp):
         """
         Generate whole sequence for IGBM, repear n_path times
+        This function is intentionally separate apart to generate intermediate results
         Args:
             var_0: initial variance
             texp: time to expiry
