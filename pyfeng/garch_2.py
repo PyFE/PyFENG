@@ -26,8 +26,7 @@ class GarchCondMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         return NotImplementedError
 
-    def cond_spot_sigma(self, sigma_0, texp):
-        var_0 = sigma_0**2
+    def cond_spot_sigma(self, var_0, texp):
         vol_final, var_mean, vol_mean, inv_vol_mean = self.cond_states(var_0, texp)
 
         spot_cond = 2 * (vol_final - np.sqrt(var_0)) / self.vov \
