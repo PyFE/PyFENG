@@ -85,7 +85,7 @@ class RiskParity2(AssetAllocABC):
         # --formula (16) --
         # fix theta:
         n_assets = len(x0)
-        rp = np.full(n_assets, 1 / n_assets)
+        rp = 1 / n_assets
 
         list_bnds = []
         for i in range(len(x0)):
@@ -93,7 +93,7 @@ class RiskParity2(AssetAllocABC):
         bnds = tuple(list_bnds)
         cons = [{'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0}]
         func = lambda x: np.sum((x * (cov_m @ x) / (x.T @ cov_m @ x) - rp) ** 2 )
-        res = minimize(func, x0, method='SLSQP', constraints=cons,bounds=bnds, tol=1e-10)
+        res = minimize(func, x0, method='SLSQP', constraints=cons,bounds=bnds, tol=1e-20)
         weight = res.x
         return weight
 
@@ -132,25 +132,28 @@ class RiskParity2(AssetAllocABC):
             Returns:
                 risk parity weight
         """
+
         # --formula (17) --
         #variable theta:
+
         n_assets = len(x0)
         list_bnds = []
         for i in range(n_assets):
             list_bnds.append(bnds)
-        for i in range(n_assets):
-            list_bnds.append((None, None))
+
+        list_bnds.append((None, None))
         bnds = tuple(list_bnds)
 
-        cons = [{'type': 'eq', 'fun': lambda x: np.sum(x[:int(len(x) / 2)]) - 1.0}]
-        rp = np.full(n_assets, 1 / n_assets)
-        rp = (x0.T @ cov_m @ x0) * rp
-
+        cons = [{'type': 'eq', 'fun': lambda x: np.sum(x[:int(len(x))-1]) - 1.0}]
+        rp = (x0.T @ cov_m @ x0) /n_assets
+        x0_theta = list(x0.copy())
+        x0_theta.append(rp)
+        x0_theta = np.array(x0_theta)
         func = lambda x: np.sum(
-            (x[:int(len(x) / 2)] * (cov_m @ x[:int(len(x) / 2)]) - x[int(len(x) / 2):]) ** 2)
+            (x[:int(len(x))-1] * (cov_m @ x[:int(len(x))-1]) - x[int(len(x))-1]) ** 2)
 
-        res = minimize(func, [x0, rp], method='SLSQP', constraints=cons, bounds=bnds, tol=1e-10)
-        weight = res.x[:int(len(res.x) / 2)]
+        res = minimize(func, x0_theta, method='SLSQP', constraints=cons, bounds=bnds, tol=1e-20)
+        weight = res.x[:int(len(res.x))-1]
 
         return weight
 
@@ -194,20 +197,20 @@ class RiskParity2(AssetAllocABC):
         list_bnds = []
         for i in range(n_assets):
             list_bnds.append(bnds)
-        for i in range(n_assets):
-            list_bnds.append((None,None))
+
+        list_bnds.append((None, None))
         bnds = tuple(list_bnds)
 
-        cons = [{'type': 'eq', 'fun': lambda x: np.sum(x[:int(len(x)/2)]) - 1.0}]
-        rp = np.full(n_assets, 1 / n_assets)
-        rp = (x0.T @ cov_m @ x0) * rp
-
+        cons = [{'type': 'eq', 'fun': lambda x: np.sum(x[:int(len(x)) - 1]) - 1.0}]
+        rp = (x0.T @ cov_m @ x0) / n_assets
+        x0_theta = list(x0.copy())
+        x0_theta.append(rp)
+        x0_theta = np.array(x0_theta)
         func = lambda x: np.sum(
-            (x[:int(len(x)/2)] * (cov_m @ x[:int(len(x)/2)])
-             - x[int(len(x)/2):]) ** 2 + rho * (x[:int(len(x)/2)].T @ cov_m @ x[:int(len(x)/2)]))
+            (x[:int(len(x)) - 1] * (cov_m @ x[:int(len(x)) - 1]) - x[int(len(x)) - 1]) ** 2) + rho * (x[:int(len(x)) - 1].T @ cov_m @ x[:int(len(x)) - 1])
 
-        res = minimize(func,[x0,rp], method='SLSQP', constraints=cons, bounds=bnds, tol=1e-10)
-        weight = res.x[:int(len(res.x)/2)]
+        res = minimize(func, x0_theta, method='SLSQP', constraints=cons, bounds=bnds, tol=1e-10)
+        weight = res.x[:int(len(res.x)) - 1]
 
         return weight
 
