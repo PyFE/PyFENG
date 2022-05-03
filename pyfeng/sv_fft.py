@@ -40,6 +40,21 @@ class FftABC(opt.OptABC, abc.ABC):
         return self.mgf_logprice(1j*x, texp)
 
     def price(self, strike, spot, texp, cp=1):
+        fwd, df, divf = self._fwd_factor(spot, texp)
+
+        kk = strike / fwd
+        log_kk = np.log(kk)
+
+        dx = self.x_lim / self.n_x
+        xx = np.arange(self.n_x+1)[:, None] * dx  # the final value x_lim is excluded
+        yy = (np.exp(-log_kk*xx*1j) * self.mgf_logprice(xx*1j + 0.5, texp)).real/(xx**2 + 0.25)
+        int_val = spint.simpson(yy, dx=dx, axis=0)
+        if np.isscalar(kk):
+            int_val = int_val[0]
+        price = np.where(cp > 0, 1, kk) - np.sqrt(kk) / np.pi * int_val
+        return df * fwd * price
+
+    def price_fft(self, strike, spot, texp, cp=1):
         """ FFT method based on the Lewis expression
 
         References:
@@ -62,7 +77,7 @@ class FftABC(opt.OptABC, abc.ABC):
         b = self.n_x*dk / 2
         ks = -b + dk*np.arange(self.n_x)
 
-        integrand = np.exp(-1j*b*xx)*self.mgf_logprice(xx*1j + 0.5, texp)*1/(xx**2 + 0.25)*weight
+        integrand = np.exp(-1j*b*xx)*self.mgf_logprice(xx*1j + 0.5, texp)/(xx**2 + 0.25)*weight
         # CF: integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
         integral_value = (self.n_x / np.pi) * spfft.ifft(integrand).real
 
@@ -143,9 +158,14 @@ class HestonFft(sv.SvABC, FftABC):
 
     def mgf_logprice(self, uu, texp):
         """
-        Heston characteristic function as proposed by Schoutens (2004)
+        Log price MGF under the Heston model.
+        We use the characteristic function in p 283 of Schoutens (2004) or Eq (2.8) of Lord & Kahl (2010) that is
+        continuous in branch cut when complex log is evaluated.
 
         References:
+            - Heston SL (1993) A Closed-Form Solution for Options with Stochastic Volatility with Applications to Bond and Currency Options. The Review of Financial Studies 6:327–343. https://doi.org/10.1093/rfs/6.2.327
+            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models. Mathematical Finance 20:671–694. https://doi.org/10.1111/j.1467-9965.2010.00416.x
+            - Schoutens W, Simons E, Tistaert J (2003) A perfect calibration! Now what? In: The best of Wilmott. p 281
             - https://github.com/cantaro86/Financial-Models-Numerical-Methods/blob/master/1.4%20SDE%20-%20Heston%20model.ipynb
         """
         var_0 = self.sigma
@@ -157,8 +177,8 @@ class HestonFft(sv.SvABC, FftABC):
         exp = np.exp(-dd*texp)
         cf = self.mr*self.theta*((xi - dd)*texp - 2*np.log((1 - g2*exp)/(1 - g2))) \
             + var_0*(xi - dd)*(1 - exp)/(1 - g2*exp)
-        cf /= self.vov**2
-        return np.exp(cf)
+        np.exp(cf / self.vov**2, out=cf)
+        return cf
 
 
 class OusvFft(sv.SvABC, FftABC):
