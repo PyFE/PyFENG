@@ -76,13 +76,14 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         else:
             df_val = pd.read_excel(file, sheet_name=str(set_no))
             param = df_param.loc[set_no]
-            args_model = {k: param[k] for k in ("sigma", "theta", "vov", "rho", "mr", "intr")}
+            args_model = {k: param[k] for k in ("sigma", "theta", "vov", "rho", "mr", "intr", "divr")}
             args_pricing = {k: param[k] for k in ("texp", "spot")}
 
             assert df_val.columns[0] == "Strike"
             args_pricing["strike"] = df_val.values[:, 0]
-            if df_val.columns[0] == "k":
-                args_pricing["strike"] *= param["spot"]
+
+            if "CP" in df_val.columns:
+                args_pricing["cp"] = df_val["CP"].values
 
             val = df_val[param["col_name"]].values
             is_iv = param["col_name"].startswith("IV")
@@ -133,6 +134,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         self.rng = np.random.default_rng(rn_seed)
         seed_seq = np.random.SeedSequence(rn_seed)
         self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(5)]
+        self.result = {}
 
     def base_model(self, vol):
         return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
