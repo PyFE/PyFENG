@@ -550,6 +550,8 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         trunc_scale = trunc_var_x1 / trunc_mean_x1
         trunc_shape = trunc_mean_x1 / trunc_scale * (var_0 + var_t)
 
+        self.result['x1_trunc'] = {'shape': trunc_shape.mean(), 'scale':trunc_scale.mean()}
+
         x1 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
         return x1
 
@@ -683,6 +685,12 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         trunc_mean, trunc_var = self.x2star_avgvar_mv(dt, self.kk)
         trunc_scale = trunc_var / trunc_mean
         trunc_shape = trunc_mean / trunc_scale * shape
+
+        if shape == 2:
+            self.result['z_trunc'] = {'shape': trunc_shape, 'scale': trunc_scale}
+        else:
+            self.result['x2_trunc'] = {'shape': trunc_shape, 'scale': trunc_scale}
+
         x2 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape, size=size)
         return x2
 
@@ -857,10 +865,13 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         Returns:
             (X1 + X2 + X3)/dt  (n_paths,)
         """
-        gamma_n, lambda_n = self.gamma_lambda(dt)
+        gamma_n, lambda_n = self.gamma_lambda(dt, self.kk)
 
-        pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
-        x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
+        if self.kk > 0:
+            pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
+            x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
+        else:
+            x123 = np.zeros_like(var_sum)
 
         trunc_mean, trunc_var = self.x1star_avgvar_mv(dt, self.kk)
         trunc_mean *= var_sum
@@ -876,6 +887,8 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         elif self.dist.lower() == 'ga':
             trunc_scale = trunc_var / trunc_mean
             trunc_shape = trunc_mean / trunc_scale
+            self.result['x123_trunc'] = {'shape': trunc_shape.mean(), 'scale': trunc_scale.mean()}
+
             x123 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
         elif self.dist.lower() == 'ln':
             scale = np.sqrt(np.log(1 + trunc_var / trunc_mean**2))
