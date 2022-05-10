@@ -462,7 +462,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         var = vov2dt * (coth / mrt_h**3 + csch**2 / mrt_h**2 - 2 * coth*csch**2 / mrt_h) / 8
 
         if kk > 0:
-            gamma_n, lambda_n = self.gamma_lambda(dt, kk)
+            gamma_n, lambda_n = self.gamma_lambda(dt, kk=kk)
             mean -= np.sum(lambda_n/gamma_n)
             var -= 2*np.sum(lambda_n/gamma_n**2)
 
@@ -539,18 +539,17 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         # For fixed k, theta, vov, texp, generate some parameters firstly
 
         gamma_n, lambda_n = self.gamma_lambda(dt, self.kk)
-
         # the following para will change with VO and VT
         pois = self.rng_spawn[3].poisson(lam=(var_0 + var_t) * lambda_n[:, None])  # (kk, n_path)
 
         rv_exp_sum = self.rng_spawn[1].standard_gamma(shape=pois)
         x1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
-        trunc_mean_x1, trunc_var_x1 = self.x1star_avgvar_mv(dt, self.kk)
+        trunc_mean_x1, trunc_var_x1 = self.x1star_avgvar_mv(dt, kk=self.kk)
         trunc_scale = trunc_var_x1 / trunc_mean_x1
         trunc_shape = trunc_mean_x1 / trunc_scale * (var_0 + var_t)
 
-        self.result['x1_trunc'] = {'shape': trunc_shape.mean(), 'scale':trunc_scale.mean()}
+        self.result['x1_trunc'] = {'shape': trunc_shape.mean(), 'scale': trunc_scale.mean()}
 
         x1 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
         return x1
@@ -676,7 +675,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             x2/dt (or Z/dt) with shape (n_path,)
         """
 
-        gamma_n, _ = self.gamma_lambda(dt)
+        gamma_n, _ = self.gamma_lambda(dt, kk=self.kk)
 
         gamma_rv = self.rng_spawn[1].standard_gamma(shape, size=(self.kk, size))
         x2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
@@ -810,7 +809,7 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
 
             var_t, eta = self.var_step_ncx2_eta(var_0, dt[i])
             # m1, var = self.cond_avgvar_mv_numeric(var_0, var_t, dt[i])
-            m1, var = self.cond_avgvar_mv(var_0, var_t, dt[i], eta=None)
+            m1, var = self.cond_avgvar_mv(var_0, var_t, dt[i], eta=None, kk=0)
             var_0 = var_t
 
             if self.dist.lower() == 'ig':
@@ -865,7 +864,7 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         Returns:
             (X1 + X2 + X3)/dt  (n_paths,)
         """
-        gamma_n, lambda_n = self.gamma_lambda(dt, self.kk)
+        gamma_n, lambda_n = self.gamma_lambda(dt, kk=self.kk)
 
         if self.kk > 0:
             pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
