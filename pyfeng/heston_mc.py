@@ -4,8 +4,9 @@ import scipy.stats as spst
 import scipy.special as spsp
 import scipy.integrate as spint
 import scipy.optimize as spop
-from scipy import interpolate
+import scipy.interpolate as spinterp
 from scipy.misc import derivative
+import functools
 from . import sv_abc as sv
 
 
@@ -312,6 +313,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     antithetic = False
     scheme = 3  # Poisson mixture gamma
     kk = 1  # K for series truncation.
+    tabulate = False
 
     def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
         """
@@ -329,9 +331,9 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         self.scheme = scheme
         self.kk = kk
 
-    def laplace(self, aa, var_0, var_t, dt):
+    def cond_avgvar_mgf(self, aa, var_0, var_t, dt):
         """
-        MGF of the average variance given the initial and final variance
+        MGF of the average variance conditional on the initial and final variance.
 
         Args:
             aa: dummy variable in the transformation
@@ -347,21 +349,30 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         mrt = self.mr * dt
         iv_index = 0.5 * self.chi_dim() - 1
 
-        gamma = np.sqrt(mrt**2 + 2 * vov2dt * aa)
+        # Note that dt term is additionally multiplied to aa
+        # to make it Laplace transform of average variance, not integrated variance
+        gamma = np.sqrt(mrt**2 - 2 * vov2dt * aa)
 
         var_mean = np.sqrt(var_0 * var_t)
         phi_mr, _ = self.phi_exp(dt)
-        cosh_mr = np.cosh(mrt / 2)
+        cosh_mr = np.cosh(mrt/2)
 
-        phi_gamma = 2 * gamma / vov2dt / np.sinh(gamma / 2)
-        cosh_gamma = np.cosh(gamma / 2)
+        exph_gamma = np.exp(-gamma/2)
+        phi_gamma = 4 * gamma / vov2dt * exph_gamma / (1 - exph_gamma**2)
+        cosh_gamma = (exph_gamma + 1/exph_gamma)/2
 
         part1 = phi_gamma / phi_mr
         part2 = np.exp((var_0 + var_t) * (cosh_mr * phi_mr - cosh_gamma * phi_gamma) / 2)
         part3 = spsp.iv(iv_index, var_mean * phi_gamma) / spsp.iv(iv_index, var_mean * phi_mr)
 
-        ch_f = part1 * part2 * part3
-        return ch_f
+        mgf = part1 * part2 * part3
+
+        if np.iscomplexobj(aa):
+            # handle branch cut
+            tmp = gamma / (1 - exph_gamma**2)
+            mgf *= np.exp(iv_index * (np.log(tmp) - gamma/2)) / np.power(tmp * exph_gamma, iv_index)
+
+        return mgf
 
     def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
         """
@@ -381,7 +392,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(aa):
-            return np.log(self.laplace(-aa, var_0, var_t, dt))
+            return np.log(self.cond_avgvar_mgf(aa, var_0, var_t, dt))
 
         m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-5)
         var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-5)
@@ -524,6 +535,59 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return mean, var
 
+    def x2_avgvar_mgf(self, aa, shape, dt):
+        """
+        MGF of X2/dt (or Z/dt)
+
+        Args:
+            aa: dummy variable in the transformation
+            shape: gamma shape parameter. delta/2 for X2. 2 for Z.
+            dt: time step
+
+        Returns:
+            Conditional MGF at dummy variable aa
+
+        References:
+            Lemma 2.4 in Glasserman & Kim (2011)
+        """
+
+        vov2dt = self.vov**2 * dt
+        mrt = self.mr * dt
+
+        # Note that dt term is additionally multiplied to aa
+        # to make it Laplace transform of average variance, not integrated variance
+        gamma = np.sqrt(mrt**2 - 2 * vov2dt * aa)
+        phi_mr, _ = self.phi_exp(dt)
+
+        ### mgf without considering branchcut
+        # exph_gamma = np.exp(-gamma/2)
+        # phi_gamma = 4 * gamma / vov2dt * exph_gamma / (1 - exph_gamma**2)
+        # mgf = np.power(phi_gamma / phi_mr, shape)
+
+        tmp = (4 * gamma / vov2dt) / (1 - np.exp(-gamma))
+        mgf = np.exp(shape*(np.log(tmp/phi_mr) - gamma/2))
+
+        return mgf
+
+    def x2star_avgvar_mv_numeric(self, dt):
+        """
+        Mean and variance of X2/dt (with shape=1 or delta=2) numerically computed from
+        the MGF (Laplace transform) of X2/dt.
+
+        Args:
+            dt: time step
+
+        Returns:
+            mean, variance
+        """
+        # conditional Cumulant Generating Fuction
+        def cumgenfunc_cond(aa):
+            return np.log(self.x2_avgvar_mgf(aa, 1, dt))
+
+        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-4)
+        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
+        return m1, var
+
     def draw_x1(self, var_0, var_t, dt):
         """
         Samples of x1/dt using truncated Gamma expansion in Glasserman & Kim (2011)
@@ -554,62 +618,52 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x1 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
         return x1
 
-    def draw_x2_aw(self, mu_X2_0, sigma_square_X2_0, ncx_df, texp, num_rv):
+    def x2_cdf_aw(self, shape, dt):
         """
         Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman & Kim (2011)
         Currently NOT used for pricing.
 
         Parameters
         ----------
-        mu_X2_0:  float
-            mean of X2 from formula(4.2)
-        sigma_square_X2_0: float
-            variance of X2 from formula(4.3)
-        ncx_df: float
+        shape: float
             a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
-        texp: float
+        dt: float
             time-to-expiry
-        num_rv: int
+        n_path: int
             number of random variables you want to generate
 
         Returns
         -------
-         an 1-d array with shape (num_rv,), random variables X2 or Z
+        an 1-d array with shape (num_rv,), random variables X2 or Z
         """
+        ww, M = 0.01, 200
 
-        mu_X2 = ncx_df * mu_X2_0
-        sigma_square_X2 = ncx_df * sigma_square_X2_0
+        mean_x2, var_x2 = self.x2star_avgvar_mv(dt, kk=0)
+        mean_x2 *= shape
+        var_x2 *= shape
 
-        mu_e = mu_X2 + 14 * np.sqrt(sigma_square_X2)
-        w = 0.01
-        M = 200
-        xi = w * mu_X2 + np.arange(M + 1) / M * (mu_e - w * mu_X2)  # x1,...,x M+1
-        L = lambda x: np.sqrt(2 * self.vov**2 * x + self.mr**2)
-        fha_2 = lambda x: (L(x) / self.mr * (np.sinh(0.5 * self.mr * texp) / np.sinh(0.5 * L(x) * texp)))**(
-                    0.5 * ncx_df)
-        fha_2_vec = np.vectorize(fha_2)
+        mu_e = mean_x2 + 12 * np.sqrt(var_x2)
+        x_i = ww * mean_x2 + np.arange(M + 1) / M * (mu_e - ww * mean_x2)  # x1,...,x M+1
+
+        # determine nn
         err_limit = np.pi * 1e-5 * 0.5  # the up limit error of distribution Fx1(x)
+        #for nn in np.arange(100, 2000, 10):
+        #    np.abs(self.x2_avgvar_mgf(1j*h[pos]*nn, shape))/nn - err_limit
+        #N = int(spop.brentq(Nfunc, 0, 5000)) + 1
+        N = 1000
+        k_grid = np.arange(1, N + 1)[:, None]
 
-        h = 2 * np.pi / (xi + mu_e)
-        # increase N to make truncation error less than up limit error, N is sensitive to xi and the model parameter
-        F_X2_part = np.zeros(len(xi))
-        for pos in range(len(xi)):
-            Nfunc = lambda N: abs(fha_2(-1j * h[pos] * N)) - err_limit * N
-            N = int(spop.brentq(Nfunc, 0, 5000)) + 1
-            N_all = np.arange(1, N + 1)
-            F_X2_part[pos] = np.sum(np.sin(h[pos] * xi[pos] * N_all) * fha_2_vec(-1j * h[pos] * N_all).real / N_all)
+        h = 2 * np.pi / (x_i + mu_e)
+        cdf_i = np.sum(np.sin(h * x_i * k_grid) / k_grid * self.x2_avgvar_mgf(1j * h * k_grid, shape, dt).real, axis=0)
+        cdf_i = (h * x_i + 2 * cdf_i) / np.pi
 
-        F_X2 = (h * xi + 2 * F_X2_part) / np.pi
+        return x_i, cdf_i
 
-        # Next we can sample from this tabulated distribution using linear interpolation
-        rv_uni = self.rng.uniform(size=num_rv)
-
-        xi = np.insert(xi, 0, 0.)
-        F_X2 = np.insert(F_X2, 0, 0.)
-        F_X2_inv = interpolate.interp1d(F_X2, xi, kind="slinear")
-        X2 = F_X2_inv(rv_uni)
-
-        return X2
+    def x2_icdf_interp_aw(self, shape, dt):
+        xx, cdf = self.x2_cdf_aw(shape, dt)
+        rv = spinterp.interp1d(cdf, xx, kind='linear')
+        print(f'tabulated for {shape}')
+        return rv
 
     def eta_mv(self, var_0, var_t, dt):
         """
@@ -622,6 +676,9 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         Returns:
             eta (n_path, 1)
+
+        References:
+            Proposition 3.1 in Tse & Wan (2013)
         """
         phi, exp = self.phi_exp(dt)
         zz = np.sqrt(var_0 * var_t) * phi
@@ -693,6 +750,11 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x2 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape, size=size)
         return x2
 
+    def draw_x2_cache(self, shape, dt, size):
+        u_rv = self.rng_spawn[1].uniform(size=size)
+        ft = self.x2_icdf_interp_aw(shape, dt)
+        return ft(u_rv)
+
     def cond_avgvar_mv(self, var_0, var_t, dt, eta=None, kk=0):
         """
         Mean and variance of the average variance conditional on initial var, final var, and eta
@@ -706,6 +768,9 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         Returns:
             mean, variance
+
+        References:
+            Proposition 3.1 in Tse & Wan (2013)
         """
 
         # x = np.arange(1, 10) * 0.02
@@ -741,10 +806,16 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         # Simulation X1: truncated Gamma expansion
         var_avg = self.draw_x1(var_0, var_t, texp)
-        var_avg += self.draw_x2(self.chi_dim()/2, texp, size=self.n_path)
+        if self.tabulate:
+            var_avg += self.draw_x2_cache(self.chi_dim()/2, texp, size=self.n_path)
+        else:
+            var_avg += self.draw_x2(self.chi_dim()/2, texp, size=self.n_path)
         eta = self.draw_eta(var_0, var_t, texp)
 
-        zz = self.draw_x2(2.0, texp, size=eta.sum())
+        if self.tabulate:
+            zz = self.draw_x2_cache(2.0, texp, size=eta.sum())
+        else:
+            zz = self.draw_x2(2.0, texp, size=eta.sum())
 
         total = 0
         for i in np.arange(eta.max()):
