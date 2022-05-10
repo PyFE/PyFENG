@@ -313,7 +313,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     antithetic = False
     scheme = 3  # Poisson mixture gamma
     kk = 1  # K for series truncation.
-    tabulate = False
+    _x2_z_interp = None
 
     def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
         """
@@ -650,7 +650,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         #for nn in np.arange(100, 2000, 10):
         #    np.abs(self.x2_avgvar_mgf(1j*h[pos]*nn, shape))/nn - err_limit
         #N = int(spop.brentq(Nfunc, 0, 5000)) + 1
-        N = 1000
+        N = 2500
         k_grid = np.arange(1, N + 1)[:, None]
 
         h = 2 * np.pi / (x_i + mu_e)
@@ -661,8 +661,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def x2_icdf_interp_aw(self, shape, dt):
         xx, cdf = self.x2_cdf_aw(shape, dt)
+        xx = np.insert(xx, 0, 0)
+        cdf = np.insert(cdf, 0, 0)
         rv = spinterp.interp1d(cdf, xx, kind='linear')
-        print(f'tabulated for {shape}')
+        print(f'tabulated for gamma shape={shape}')
         return rv
 
     def eta_mv(self, var_0, var_t, dt):
@@ -750,10 +752,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x2 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape, size=size)
         return x2
 
-    def draw_x2_cache(self, shape, dt, size):
-        u_rv = self.rng_spawn[1].uniform(size=size)
-        ft = self.x2_icdf_interp_aw(shape, dt)
-        return ft(u_rv)
+    @property
+    def x2_z_interp(self):
+        return self._x2_z_interp
+
+    @x2_z_interp.setter
+    def x2_z_interp(self, dt):
+        if dt is None:
+            self._x2_z_interp = None
+        else:
+            x2 = self.x2_icdf_interp_aw(self.chi_dim()/2, dt)
+            z = self.x2_icdf_interp_aw(2, dt)
+            self._x2_z_interp = {'x2': x2, 'z': z}
 
     def cond_avgvar_mv(self, var_0, var_t, dt, eta=None, kk=0):
         """
@@ -801,21 +811,22 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         var_t, _ = self.var_step_ncx2_eta(var_0=var_0, dt=texp)
 
+        eta = self.draw_eta(var_0, var_t, texp)
+
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman & Kim (2011)
 
         # Simulation X1: truncated Gamma expansion
         var_avg = self.draw_x1(var_0, var_t, texp)
-        if self.tabulate:
-            var_avg += self.draw_x2_cache(self.chi_dim()/2, texp, size=self.n_path)
-        else:
+        if self.x2_z_interp is None:
             var_avg += self.draw_x2(self.chi_dim()/2, texp, size=self.n_path)
-        eta = self.draw_eta(var_0, var_t, texp)
-
-        if self.tabulate:
-            zz = self.draw_x2_cache(2.0, texp, size=eta.sum())
-        else:
             zz = self.draw_x2(2.0, texp, size=eta.sum())
+        else:
+            u_rv = self.rng_spawn[1].uniform(size=self.n_path)
+            var_avg += self.x2_z_interp['x2'](u_rv)
+
+            u_rv = self.rng_spawn[1].uniform(size=eta.sum())
+            zz = self.x2_z_interp['z'](u_rv)
 
         total = 0
         for i in np.arange(eta.max()):
