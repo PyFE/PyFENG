@@ -3,6 +3,7 @@ import abc
 import scipy.fft as spfft
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
+import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
 
@@ -54,17 +55,13 @@ class FftABC(opt.OptABC, abc.ABC):
         price = np.where(cp > 0, 1, kk) - np.sqrt(kk) / np.pi * int_val
         return df * fwd * price
 
-    def price_fft(self, strike, spot, texp, cp=1):
+    @functools.lru_cache()
+    def fft_interp(self, texp, *args, **kwargs):
         """ FFT method based on the Lewis expression
 
         References:
             https://github.com/cantaro86/Financial-Models-Numerical-Methods/blob/master/1.3%20Fourier%20transform%20methods.ipynb
         """
-        fwd, df, divf = self._fwd_factor(spot, texp)
-
-        kk = strike / fwd
-        log_kk = np.log(kk)
-
         dx = self.x_lim / self.n_x
         xx = np.arange(self.n_x) * dx  # the final value x_lim is excluded
 
@@ -81,7 +78,16 @@ class FftABC(opt.OptABC, abc.ABC):
         # CF: integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
         integral_value = (self.n_x / np.pi) * spfft.ifft(integrand).real
 
-        spline_cub = spinterp.interp1d(ks, integral_value, kind='cubic')
+        obj = spinterp.interp1d(ks, integral_value, kind='cubic')
+        return obj
+
+    def price_fft(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        kk = strike / fwd
+        log_kk = np.log(kk)
+
+        # self.params_hash(), self.n_x, self.x_lim are only used for cache key
+        spline_cub = self.fft_interp(texp, k1=self.params_hash(), k2=self.n_x, k3=self.x_lim)
         price = np.where(cp > 0, 1, kk) - np.sqrt(kk)*spline_cub(-log_kk)
         return df * fwd * price
 
