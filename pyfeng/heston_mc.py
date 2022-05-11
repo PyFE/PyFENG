@@ -313,7 +313,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     antithetic = False
     scheme = 3  # Poisson mixture gamma
     kk = 1  # K for series truncation.
-    _x2_z_interp = None
+    tabulate_x2_z = False
 
     def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
         """
@@ -535,7 +535,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return mean, var
 
-    def x2_avgvar_mgf(self, aa, shape, dt):
+    def x2_avgvar_mgf(self, aa, dt, shape):
         """
         MGF of X2/dt (or Z/dt)
 
@@ -582,7 +582,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(aa):
-            return np.log(self.x2_avgvar_mgf(aa, 1, dt))
+            return np.log(self.x2_avgvar_mgf(aa, dt, 1))
 
         m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-4)
         var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
@@ -618,24 +618,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x1 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
         return x1
 
-    def x2_cdf_aw(self, shape, dt):
+    def x2_cdf_points_aw(self, shape, dt):
         """
         Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman & Kim (2011)
-        Currently NOT used for pricing.
+        Used if self.tabulate_x2_z is True.
 
-        Parameters
-        ----------
-        shape: float
-            a parameter, which equals to 4*theta*k / (vov**2) when generating X2 and equals to 4 when generating Z
-        dt: float
-            time-to-expiry
-        n_path: int
-            number of random variables you want to generate
+        Args:
+            shape: gamma shape parameter. delta/2 for X2. 2 for Z.
+            dt: time step
 
-        Returns
-        -------
-        an 1-d array with shape (num_rv,), random variables X2 or Z
+        Returns: (x points, cdf values)
         """
+
         ww, M = 0.01, 200
 
         mean_x2, var_x2 = self.x2star_avgvar_mv(dt, kk=0)
@@ -643,28 +637,31 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         var_x2 *= shape
 
         mu_e = mean_x2 + 12 * np.sqrt(var_x2)
+
+        # ln_sig = np.sqrt(np.log(1 + var_x2/mean_x2**2))
+        # zz = np.arange(-5, 5, 0.25)
+        # x_i = mean_x2 * np.exp(ln_sig*(zz - 0.5*ln_sig))
         x_i = ww * mean_x2 + np.arange(M + 1) / M * (mu_e - ww * mean_x2)  # x1,...,x M+1
+        hh = 2 * np.pi / (x_i + mu_e)
 
         # determine nn
-        err_limit = np.pi * 1e-5 * 0.5  # the up limit error of distribution Fx1(x)
-        #for nn in np.arange(100, 2000, 10):
-        #    np.abs(self.x2_avgvar_mgf(1j*h[pos]*nn, shape))/nn - err_limit
-        #N = int(spop.brentq(Nfunc, 0, 5000)) + 1
-        N = 2500
-        k_grid = np.arange(1, N + 1)[:, None]
-
-        h = 2 * np.pi / (x_i + mu_e)
-        cdf_i = np.sum(np.sin(h * x_i * k_grid) / k_grid * self.x2_avgvar_mgf(1j * h * k_grid, shape, dt).real, axis=0)
-        cdf_i = (h * x_i + 2 * cdf_i) / np.pi
+        err_limit = np.pi/2 * 1e-6  # the up limit error of distribution Fx1(x)
+        for nn in np.arange(1000, 5001, 100):
+            if np.all(np.abs(self.x2_avgvar_mgf(1j*hh*nn, dt, shape))/nn < err_limit):
+                break
+        k_grid = np.arange(1, nn + 1)[:, None]
+        cdf_i = np.sum(np.sin(hh * x_i * k_grid) / k_grid * self.x2_avgvar_mgf(1j * hh * k_grid, dt, shape).real, axis=0)
+        cdf_i = (hh * x_i + 2 * cdf_i) / np.pi
 
         return x_i, cdf_i
 
-    def x2_icdf_interp_aw(self, shape, dt):
-        xx, cdf = self.x2_cdf_aw(shape, dt)
+    @functools.lru_cache()
+    def x2_icdf_interp(self, shape, dt, *args, **kwargs):
+        xx, cdf = self.x2_cdf_points_aw(shape, dt)
         xx = np.insert(xx, 0, 0)
         cdf = np.insert(cdf, 0, 0)
         rv = spinterp.interp1d(cdf, xx, kind='linear')
-        print(f'tabulated for gamma shape={shape}')
+        print(f'Tabulated icdf for gamma shape={shape}')
         return rv
 
     def eta_mv(self, var_0, var_t, dt):
@@ -752,19 +749,6 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x2 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape, size=size)
         return x2
 
-    @property
-    def x2_z_interp(self):
-        return self._x2_z_interp
-
-    @x2_z_interp.setter
-    def x2_z_interp(self, dt):
-        if dt is None:
-            self._x2_z_interp = None
-        else:
-            x2 = self.x2_icdf_interp_aw(self.chi_dim()/2, dt)
-            z = self.x2_icdf_interp_aw(2, dt)
-            self._x2_z_interp = {'x2': x2, 'z': z}
-
     def cond_avgvar_mv(self, var_0, var_t, dt, eta=None, kk=0):
         """
         Mean and variance of the average variance conditional on initial var, final var, and eta
@@ -816,17 +800,16 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman & Kim (2011)
 
-        # Simulation X1: truncated Gamma expansion
         var_avg = self.draw_x1(var_0, var_t, texp)
-        if self.x2_z_interp is None:
+        if self.tabulate_x2_z:
+            interp_obj = self.x2_icdf_interp(self.chi_dim()/2, texp, k1=self.params_hash())
+            var_avg += interp_obj(self.rng_spawn[1].uniform(size=self.n_path))
+
+            interp_obj = self.x2_icdf_interp(2, texp, k1=self.params_hash())
+            zz = interp_obj(self.rng_spawn[1].uniform(size=eta.sum()))
+        else:
             var_avg += self.draw_x2(self.chi_dim()/2, texp, size=self.n_path)
             zz = self.draw_x2(2.0, texp, size=eta.sum())
-        else:
-            u_rv = self.rng_spawn[1].uniform(size=self.n_path)
-            var_avg += self.x2_z_interp['x2'](u_rv)
-
-            u_rv = self.rng_spawn[1].uniform(size=eta.sum())
-            zz = self.x2_z_interp['z'](u_rv)
 
         total = 0
         for i in np.arange(eta.max()):
