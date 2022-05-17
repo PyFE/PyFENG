@@ -126,25 +126,23 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         return NotImplementedError
 
-    def vol_step(self, vol_0, dt):
+    def vol_step(self, vol_0, dt, zn=None):
         """
         Stepping volatility according to OU process dynamics
 
         Args:
             vol_0: initial volatility
             dt: time step
+            zn: specified normal rv to use (n_path, )
 
         Returns:
             volatility after dt
         """
-        mr_t = self.mr * dt
-        e_mr = np.exp(-mr_t)
-        sinh = np.sinh(mr_t)
+        e_mr = np.exp(-self.mr * dt)
+        if zn is None:
+            zn = self.rv_normal(spawn=0)
 
-        zz = self.rv_normal()
-        vol_t = self.vov * np.sqrt(e_mr * sinh / self.mr) * zz
-        vol_t += self.theta + (vol_0 - self.theta) * e_mr
-
+        vol_t = self.theta + (vol_0 - self.theta)*e_mr + self.vov*np.sqrt((1 - e_mr**2)/(2*self.mr))*zn
         return vol_t
 
     def cond_spot_sigma(self, vol_0, texp):
@@ -211,7 +209,9 @@ class OusvMcTimeStep(OusvMcABC):
 
 class OusvMcChoi2023(OusvMcABC):
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2, n_sin_max=None):
+    n_sin = 2
+
+    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2):
         """
         Set MC parameters
 
@@ -222,15 +222,23 @@ class OusvMcChoi2023(OusvMcABC):
             antithetic: antithetic
         """
         assert n_sin % 2 == 0
-        if n_sin_max is not None:
-            assert n_sin_max % 2 == 0
         self.n_sin = n_sin
-        self.n_sin_max = n_sin_max or n_sin
 
         super().set_mc_params(n_path, dt, rn_seed, antithetic)
 
     @classmethod
     def _a2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
         if odd == 2:  # even
             rv = cls._a2sum(mr_t / 2) / 2**2
         elif odd == 1:  # odd
@@ -254,6 +262,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a2overn2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^2 / (n pi)^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a2overn2sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -277,6 +297,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a4sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^4  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a4sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -300,6 +332,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a6sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a6sum(mr_t / 2) / 2**6
         elif odd == 1:  # odd
@@ -325,6 +369,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a6n2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty (n pi)^2 a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a6n2sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -359,29 +415,28 @@ class OusvMcChoi2023(OusvMcABC):
             var_mean = np.zeros(self.n_path)
 
             for i in range(n_dt):
-                vol_t, d_v, d_u = self.cond_states_step(vol_t, dt[i], no_sin=True)
-                vol_mean += d_u*dt[i]
-                var_mean += d_v*dt[i]
+                vol_t, d_v, d_u = self.cond_states_step(vol_t, dt[i])
+                vol_mean += d_u * dt[i]
+                var_mean += d_v * dt[i]
 
             vol_mean /= texp
             var_mean /= texp
         return vol_t, var_mean, vol_mean
 
-    def cond_states_step(self, vol_0, dt, no_sin=False):
-        if no_sin:
-            n_sin_max = n_sin = 0
-        else:
-            n_sin_max = self.n_sin_max
-            n_sin = self.n_sin
+    def cond_states_step(self, vol_0, dt, zn=None):
+        """
+        Incremental conditional states
 
-        n_path = self.n_path
-        n_path_half = int(n_path//2)
+        Args:
+            vol_0: initial volatility
+            dt: time step
+            zn: specified normal rvs to use. (n_sin + 1, n_path)
 
-        mr, vov, theta = self.mr, self.vov, self.theta
+        Returns:
+            final volatility, average volatility, average variance. (n_path, ) each.
+        """
 
-        # random number for (time, path,
-        zn = self.rng.standard_normal(size=(n_path_half, n_sin_max + 5))
-        zn = np.stack([zn, -zn], axis=1).reshape((n_path, n_sin_max + 5))
+        mr, vov = self.mr, self.vov
 
         mr_t = mr * dt
         e_mr = np.exp(-mr_t)
@@ -389,50 +444,107 @@ class OusvMcChoi2023(OusvMcABC):
         cosh = np.cosh(mr_t)
         vovn = self.vov * np.sqrt(dt)  # normalized vov
 
-        z_0 = zn[:, 0]
-        z_g = zn[:, 1]
-        z_p = zn[:, 2]
-        z_q = zn[:, 3]
-        z_r = zn[:, 4]
+        x_0 = self.sigma - self.theta
+        if zn is None:
+            x_t = self.vol_step(vol_0, dt) - self.theta
+        else:
+            x_t = self.vol_step(vol_0, dt, zn=zn[0, :]) - self.theta
+        sighat = x_t - x_0 * e_mr
 
-        sighat = vov * np.sqrt(e_mr * sinh / mr) * z_0
+        if zn is None:
+            n_sin = self.n_sin
+            n_path = self.n_path
 
-        g_std = np.sqrt(self._a2overn2sum(mr_t, ns=n_sin, odd=1))
-        p_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=1))
-        q_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=2))  # even
-        corr = self._a4sum(mr_t, ns=n_sin, odd=1) / (g_std * p_std)
+            if self.antithetic:
+                n_path_half = int(n_path//2)
+                z_sin = self.rng_spawn[2].standard_normal(size=(n_sin, n_path_half))
+                z_sin = np.stack([z_sin, -z_sin], axis=2).reshape((n_sin, n_path))
 
-        z_g = corr * z_p + np.sqrt(1 - corr**2) * z_g
-        z_g *= g_std
-        z_p *= p_std
-        z_q *= q_std
+                z_gpqr = self.rng_spawn[1].standard_normal(size=(4, n_path_half))
+                z_gpqr = np.stack([z_gpqr, -z_gpqr], axis=2).reshape((4, n_path))
+            else:
+                z_sin = self.rng_spawn[2].standard_normal(size=(n_sin, n_path))
+                z_gpqr = self.rng_spawn[1].standard_normal(size=(4, n_path))
+
+            z_g = z_gpqr[0, :]
+            z_p = z_gpqr[1, :]
+            z_q = z_gpqr[2, :]
+            z_r = z_gpqr[3, :]
+
+            g_std = np.sqrt(self._a2overn2sum(mr_t, ns=n_sin, odd=1))
+            p_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=1))
+            q_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=2))  # even
+            corr = self._a4sum(mr_t, ns=n_sin, odd=1)/(g_std*p_std)
+
+            z_g = corr*z_p + np.sqrt(1 - corr**2)*z_g
+            z_g *= g_std
+            z_p *= p_std
+            z_q *= q_std
+
+            r_m = self._a2sum(mr_t, ns=n_sin)
+            r_var = self._a4sum(mr_t, ns=n_sin)
+            z_r = np.sqrt(r_var)*(z_r**2 - 1) + r_m
+        else:
+            n_sin = zn.shape[0] - 1
+            z_sin = zn[1:, :]
+            z_g, z_p, z_q, z_r = 0.0, 0.0, 0.0, 0.0
 
         n_pi = np.pi * np.arange(1, n_sin + 1)
-        an2 = 2 / (mr_t**2 + n_pi**2)  ## Careful: an contains texp in sqrt
+        an2 = 2 / (mr_t**2 + n_pi**2)
         an = np.sqrt(an2)
         an3_n_pi = an2 * an * n_pi
 
-        z_sin = zn[:, 5:n_sin + 5]
-        z_g += z_sin[:, ::2] @ (an[::2] / n_pi[::2])
-        z_p += z_sin[:, ::2] @ an3_n_pi[::2]
-        z_q += z_sin[:, 1::2] @ an3_n_pi[1::2]
+        z_g += (an[::2] / n_pi[::2]) @ z_sin[::2, :]  # odd terms
+        z_p += an3_n_pi[::2] @ z_sin[::2, :]  # odd terms
+        z_q += an3_n_pi[1::2] @ z_sin[1::2, :]  # even terms
+        z_r += an2 @ z_sin**2
 
-        UT = theta + (vol_0 - theta) * (1 - e_mr) / mr_t  # * dt
-        UT += (cosh - 1) / (mr_t * sinh) * sighat + 2 * vovn * z_g  # * dt
+        uu_t = x_0 * (1 - e_mr) / mr_t + (cosh - 1) / (mr_t * sinh) * sighat + 2 * vovn * z_g  # * dt
 
-        VT = theta * (2 * UT - theta) + (vol_0 - theta)**2 * (1 - e_mr**2) / (2 * mr_t)
-        VT += sighat * (vol_0 - theta) * (1 / sinh - e_mr / mr_t) + (vol_0 - theta) * vovn * (
-                    (1 + e_mr) * z_p + (1 - e_mr) * z_q)
+        vv_t = (1 - e_mr**2) / (2 * mr_t) * x_0**2 + (sinh * cosh - mr_t) / (2 * mr_t * sinh**2) * sighat**2
+        vv_t += sighat * x_0 * (1/sinh - e_mr / mr_t) + vovn * (x_0 * (z_p + z_q) + x_t * (z_p - z_q))
+        vv_t += 0.5 * vovn**2 * z_r
 
-        ## VT: even terms
-        VT += (sinh * cosh - mr_t) / (2 * mr_t * sinh**2) * sighat**2 + sighat * vovn * (z_p - z_q)
+        ### sigma_t = x_t + theta
+        vv_t += (2*uu_t + self.theta) * self.theta
+        uu_t += self.theta
+        x_t += self.theta
 
-        # LN variate (even term)
-        m1 = self._a2sum(mr_t, ns=n_sin)
-        var = 2 * self._a4sum(mr_t, ns=n_sin)
-        ln_sig = np.sqrt(np.log(1 + var / m1**2))
-        VT += 0.5 * vovn**2 * (z_sin**2 @ an**2 + m1 * np.exp(ln_sig * (z_r - 0.5 * ln_sig)))
+        return x_t, vv_t, uu_t
 
-        sighat += theta + (vol_0 - theta) * e_mr
+    def vol_path_sin(self, tobs, zn=None):
+        """
+        vol path composed of sin terms
+        Args:
+            vol_t: terminal volatility (n_path, )
+            tobs: observation time (n_time, )
+            zn: specified normal rvs to use (n_sin + 1, n_path). None by default
 
-        return sighat, VT, UT
+        Returns:
+            vol path (n_time, n_path)
+        """
+        dt = tobs[-1]
+        mr_t = self.mr * dt
+        e_mr = np.exp(-mr_t)
+        e_mr_tobs = np.exp(-self.mr*tobs[:, None])
+
+        x_0 = self.sigma - self.theta
+
+        if zn is None:
+            vol_t = self.vol_step(self.sigma, dt)
+            zn = self.rng_spawn[1].standard_normal(size=(self.n_sin, self.n_path))
+            n_sin, n_path = self.n_sin, self.n_path
+        else:
+            vol_t = self.vol_step(self.sigma, dt, zn[0, :])
+            n_sin = zn.shape[0] - 1
+
+        sighat = vol_t - self.theta - x_0 * e_mr
+
+        n_pi = np.pi*np.arange(1, n_sin + 1)
+        an = np.sqrt(2/(mr_t**2 + n_pi**2))
+        sin = np.sin(n_pi*tobs[:, None]/dt)
+        sigma_path = self.theta + x_0 * e_mr_tobs \
+                     + 0.5*(1/e_mr_tobs - e_mr_tobs)/np.sinh(mr_t) * sighat \
+                     + self.vov * np.sqrt(dt) * (an*sin) @ zn[1:,:]
+
+        return sigma_path
