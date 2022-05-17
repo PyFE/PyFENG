@@ -75,9 +75,9 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             return df_param
         else:
             df_val = pd.read_excel(file, sheet_name=str(set_no))
-            param = df_param.loc[set_no]
-            args_model = {k: param[k] for k in ("sigma", "theta", "vov", "rho", "mr", "intr", "divr")}
-            args_pricing = {k: param[k] for k in ("texp", "spot")}
+            param = df_param.loc[set_no].to_dict()
+            args_model = {k: param[k] for k in param.keys() & {"sigma", "theta", "vov", "rho", "mr", "intr", "divr"}}
+            args_pricing = {k: param[k] for k in param.keys() & {"texp", "spot"}}
 
             assert df_val.columns[0] == "Strike"
             args_pricing["strike"] = df_val.values[:, 0]
