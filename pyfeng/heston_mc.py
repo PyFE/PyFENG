@@ -253,16 +253,6 @@ class HestonMcAndersen2008(HestonMcABC):
 
         return var_path
 
-    def cond_states_old(self, var_0, texp):
-
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        var_paths = self.vol_paths(tobs)
-        var_final = var_paths[-1, :]
-        var_avg = spint.simps(var_paths, dx=1, axis=0) / n_dt
-
-        return var_final, var_avg
-
     def cond_states(self, var_0, texp):
 
         tobs = self.tobs(texp)
