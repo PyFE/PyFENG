@@ -36,6 +36,10 @@ class OptABC(abc.ABC):
         }
         return params
 
+    def params_hash(self):
+        dct = self.params_kw()
+        return hash((frozenset(dct.keys()), frozenset(dct.values())))
+
     def forward(self, spot, texp):
         """
         Forward price

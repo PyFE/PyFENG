@@ -5,6 +5,7 @@ from . import heston_mc
 import scipy.optimize as spop
 import scipy.special as spsp
 import scipy.stats as spst
+from scipy.misc import derivative
 
 
 class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
@@ -239,17 +240,23 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
 
 class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
 
-    def laplace(self, bb, var_0, var_t, dt, eta):
+    dist = 'ig'
+
+    def laplace(self, bb, var_0, var_t, dt, eta=None):
         phi, _ = self._m_heston.phi_exp(dt)
         nu = self._m_heston.chi_dim()/2 - 1
         nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
-        nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
         zz = phi / np.sqrt(var_0 * var_t)
-        # print('zz', (zz/2>1).mean())
-        ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
+
+        if eta is None:
+            ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+        else:
+            nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
+            ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
+
         return ret
 
-    def cond_avgvar_mv(self, var_0, var_t, dt, eta):
+    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None):
         """
         Mean and variance of the integrated variance conditional on initial var, final var, and eta
 
@@ -274,7 +281,31 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         d1 *= -d1_nu_bb
         return d1, var
 
-    def cond_states(self, var_0, texp):
+    def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
+        """
+        Mean and variance of the average variance conditional on initial var, final var.
+        It is computed from the numerical derivatives of the conditional Laplace transform.
+
+        Args:
+            var_0: initial variance
+            var_t: final variance
+            dt: time step
+
+        Returns:
+            mean, variance
+
+        See Also:
+            cond_avgvar_mv
+        """
+        # conditional Cumulant Generating Fuction
+        def cumgenfunc_cond(bb):
+            return np.log(self.laplace(-bb, var_0, var_t, dt))
+
+        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-4)
+        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
+        return m1/dt, var/dt**2
+
+    def cond_states_invlap(self, var_0, texp):
         """
         Sample variance at maturity and conditional integrated variance
 
@@ -318,3 +349,37 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
 
         int_var = spop.newton(root, m1)
         return 1 / x_t, int_var/texp
+
+    def cond_states(self, inv_var_0, texp):
+
+        tobs = self.tobs(texp)
+        n_dt = len(tobs)
+        dt = np.diff(tobs, prepend=0)
+
+        inv_var_0 = np.full(self.n_path, inv_var_0)
+        var_avg = np.zeros_like(inv_var_0)
+
+        for i in range(n_dt):
+
+            inv_var_t, _ = self._m_heston.var_step_ncx2_eta(inv_var_0, dt[i])
+            m1, var = self.cond_avgvar_mv_numeric(1/inv_var_0, 1/inv_var_t, dt[i])
+            inv_var_0 = inv_var_t
+
+            if self.dist.lower() == 'ig':
+                # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+                # RNG.wald takes the same parameters
+                lam = m1**3 / var
+                var_avg += self.rng_spawn[1].wald(mean=m1, scale=lam)
+            elif self.dist.lower() == 'ga':
+                scale = var / m1
+                shape = m1 / scale
+                var_avg += scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            elif self.dist.lower() == 'ln':
+                scale = np.sqrt(np.log(1 + var/m1**2))
+                var_avg += m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
+            else:
+                raise ValueError(f"Incorrect distribution: {self.dist}.")
+
+        var_avg /= n_dt
+
+        return 1/inv_var_t, var_avg
