@@ -228,6 +228,17 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
         if odd == 2:  # even
             rv = cls._a2sum(mr_t / 2) / 2**2
         elif odd == 1:  # odd
@@ -251,6 +262,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a2overn2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^2 / (n pi)^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a2overn2sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -274,6 +297,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a4sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^4  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a4sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -297,6 +332,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a6sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a6sum(mr_t / 2) / 2**6
         elif odd == 1:  # odd
@@ -322,6 +369,18 @@ class OusvMcChoi2023(OusvMcABC):
 
     @classmethod
     def _a6n2sum(cls, mr_t, ns=0, odd=None):
+        """
+        sum_{n=ns+1}^\infty (n pi)^2 a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+
+        Args:
+            mr_t: mean reversion * time step
+            ns: number of truncated terms. Must be an even number
+            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+
+        Returns:
+            sum
+        """
+
         if odd == 2:  # even
             rv = cls._a6n2sum(mr_t / 2) / 2**4
         elif odd == 1:  # odd
@@ -357,8 +416,8 @@ class OusvMcChoi2023(OusvMcABC):
 
             for i in range(n_dt):
                 vol_t, d_v, d_u = self.cond_states_step(vol_t, dt[i])
-                vol_mean += d_u*dt[i]
-                var_mean += d_v*dt[i]
+                vol_mean += d_u * dt[i]
+                var_mean += d_v * dt[i]
 
             vol_mean /= texp
             var_mean /= texp
@@ -366,14 +425,15 @@ class OusvMcChoi2023(OusvMcABC):
 
     def cond_states_step(self, vol_0, dt, zn=None):
         """
+        Incremental conditional states
 
         Args:
-            vol_0:
-            dt:
-            zn: (n_sin + 1, n_path)
+            vol_0: initial volatility
+            dt: time step
+            zn: specified normal rvs to use. (n_sin + 1, n_path)
 
         Returns:
-            (n_path, )
+            final volatility, average volatility, average variance. (n_path, ) each.
         """
 
         mr, vov = self.mr, self.vov
