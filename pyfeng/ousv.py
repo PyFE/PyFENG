@@ -457,14 +457,14 @@ class OusvMcChoi2023(OusvMcABC):
 
             if self.antithetic:
                 n_path_half = int(n_path//2)
-                z_sin = self.rng_spawn[2].standard_normal(size=(n_sin, n_path_half))
+                z_sin = self.rng_spawn[2].standard_normal(size=(n_path_half, n_sin)).T
                 z_sin = np.stack([z_sin, -z_sin], axis=2).reshape((n_sin, n_path))
 
-                z_gpqr = self.rng_spawn[1].standard_normal(size=(4, n_path_half))
-                z_gpqr = np.stack([z_gpqr, -z_gpqr], axis=2).reshape((4, n_path))
+                z_gpqr = self.rng_spawn[1].standard_normal(size=(n_path_half, 4)).T
+                z_gpqr = np.stack([z_gpqr, -z_gpqr], axis=-1).reshape((4, n_path))
             else:
-                z_sin = self.rng_spawn[2].standard_normal(size=(n_sin, n_path))
-                z_gpqr = self.rng_spawn[1].standard_normal(size=(4, n_path))
+                z_sin = self.rng_spawn[2].standard_normal(size=(n_path, n_sin)).T
+                z_gpqr = self.rng_spawn[1].standard_normal(size=(n_path, 4)).T
 
             z_g = z_gpqr[0, :]
             z_p = z_gpqr[1, :]
