@@ -450,7 +450,7 @@ class OusvMcChoi2023(OusvMcABC):
         uu_t += self.theta
         x_t += self.theta
 
-        return x_t, uu_t, vv_t
+        return x_t, vv_t, uu_t
 
     def vol_path_sin(self, tobs, zn=None):
         """
