@@ -27,6 +27,9 @@ from .multiasset import (
     BsmBasketLowerBound,
     BsmBasketJsu,
 )
+
+from .multiasset_sumbsm import BsmBasketChoi2018
+
 from .multiasset_mc import BsmNdMc, NormNdMc
 
 # Asset Allocation
