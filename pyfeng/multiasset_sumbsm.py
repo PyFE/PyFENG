@@ -52,22 +52,23 @@ class BsmBasketChoi2018(ma.NormBasket):
             V matrix
         """
 
-        fwd_wts = fwd * self.weight
+        fwd_wts_unit = fwd * self.weight
+        fwd_wts_unit /= np.linalg.norm(fwd_wts_unit)
 
-        v1 = self.cov_m @ fwd_wts
-        v1 /= np.sqrt(np.sum(v1 * fwd_wts))
+        v1 = self.cov_m @ fwd_wts_unit
+        v1 /= np.sqrt(np.sum(v1 * fwd_wts_unit))
 
         thres = 0.01 * self.sigma
-        idx = (np.sign(fwd_wts) * v1 < thres)
+        idx = (np.sign(fwd_wts_unit) * v1 < thres)
 
         if np.any(idx):
-            v1[idx] = (np.sign(fwd_wts) * thres)[idx]
+            v1[idx] = (np.sign(fwd_wts_unit) * thres)[idx]
             q1 = np.linalg.solve(self.chol_m, v1)
             q1norm = np.linalg.norm(q1)
             q1 /= q1norm
             v1 /= q1norm
         else:
-            q1 = self.chol_m.T @ fwd_wts
+            q1 = self.chol_m.T @ fwd_wts_unit
             q1 /= np.linalg.norm(q1)
 
         r_mat = self.householder(q1)
@@ -76,7 +77,14 @@ class BsmBasketChoi2018(ma.NormBasket):
         svd_u, svd_d, _ = np.linalg.svd(chol_r_mat, full_matrices=False)
 
         v_mat = np.hstack((v1[:, None], svd_u @ np.diag(svd_d)))
-        return v_mat
+        len_scale = svd_d / np.sum(fwd_wts_unit * v1)
+
+        if self.n_quad is None:
+            n_quad = np.rint(self.lam * len_scale + 1).astype(int)
+        else:
+            n_quad = self.n_quad
+
+        return v_mat, n_quad
 
     def v1_fwd_weight(self, fwd, texp):
         """
@@ -89,14 +97,16 @@ class BsmBasketChoi2018(ma.NormBasket):
         Returns:
             (v1, f_k, ww)
         """
-        v_mat = self.v_mat(fwd) * np.sqrt(texp)
-        print(np.round(v_mat, 2))
-        v1 = v_mat[:, 0]
-        v_mat = v_mat[:, 1:len(self.n_quad)+1].T
 
-        quad = NdGHQ(self.n_quad)
+        v_mat, n_quad = self.v_mat(fwd)
+        v_mat *= np.sqrt(texp)
+
+        v1 = v_mat[:, 0]
+        v_mat = v_mat[:, 1:len(n_quad)+1]
+
+        quad = NdGHQ(n_quad)
         zz, ww = quad.z_vec_weight()
-        f_k = np.exp(zz @ v_mat - 0.5*np.sum(v_mat**2, axis=0))
+        f_k = np.exp(zz @ v_mat.T - 0.5*np.sum(v_mat**2, axis=1))
 
         return v1, f_k, ww
 
