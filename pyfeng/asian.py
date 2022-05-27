@@ -10,11 +10,12 @@ import numpy as np
 import mpmath as m
 import sympy
 from scipy.misc import derivative
+import pyfeng.multiasset as ma
 from . import opt_abc as opt
 from . import nsvh
 
 
-class BsmAsianJsu(opt.OptMaABC):
+class BsmAsianJsu(ma.OptMaABC):
     """
 
     Johnson's SU distribution approximation for Asian option pricing under the BSM model.
