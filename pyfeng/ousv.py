@@ -156,6 +156,26 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / vol_0
         return spot_cond, sigma_cond
 
+    def avgvar_mv(self, var_0, texp):
+        """
+        Mean and variance of the variance V(t+dt) given V(0) = var_0
+        (variance is not implemented yet)
+
+        Args:
+            var_0: initial variance
+            texp: time step
+
+        Returns:
+            mean, variance
+        """
+
+        mr_t = self.mr * texp
+        e_mr = np.exp(-mr_t)
+        x0 = var_0 - self.theta
+        vv = self.vov**2/2/self.mr + self.theta**2 + \
+             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
+        return vv
+
 
 class OusvMcTimeStep(OusvMcABC):
     """
@@ -211,7 +231,7 @@ class OusvMcChoi2023(OusvMcABC):
 
     n_sin = 2
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2):
         """
         Set MC parameters
 
@@ -224,7 +244,7 @@ class OusvMcChoi2023(OusvMcABC):
         assert n_sin % 2 == 0
         self.n_sin = n_sin
 
-        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
 
     @classmethod
     def _a2sum(cls, mr_t, ns=0, odd=None):
@@ -444,7 +464,7 @@ class OusvMcChoi2023(OusvMcABC):
         cosh = np.cosh(mr_t)
         vovn = self.vov * np.sqrt(dt)  # normalized vov
 
-        x_0 = self.sigma - self.theta
+        x_0 = vol_0 - self.theta
         if zn is None:
             x_t = self.vol_step(vol_0, dt) - self.theta
         else:
@@ -512,6 +532,11 @@ class OusvMcChoi2023(OusvMcABC):
 
         return x_t, vv_t, uu_t
 
+    def unexplained_var_ratio(self, mr_t, ns):
+        ns = ns or self.n_sin
+        rv = self._a4sum(mr_t, ns=ns) / self._a4sum(mr_t)
+        return rv
+
     def vol_path_sin(self, tobs, zn=None):
         """
         vol path composed of sin terms
@@ -548,3 +573,21 @@ class OusvMcChoi2023(OusvMcABC):
                      + self.vov * np.sqrt(dt) * (an*sin) @ zn[1:,:]
 
         return sigma_path
+
+    def price_var_option(self, strike, texp, cp=1):
+        """
+        Price of variance option
+
+        Args:
+            strike:
+            texp:
+            cp:
+
+        Returns:
+
+        """
+        df = np.exp(-self.intr * texp)
+        vol_t, vv_t, uu_t = self.cond_states(self.sigma, texp)
+        # vv_t is the average variance
+        price = df * np.fmax(np.sign(cp)*(vv_t[:, None] - strike), 0).mean(axis=0)
+        return price

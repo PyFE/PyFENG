@@ -12,6 +12,7 @@ from .sabr import (
     SabrChoiWu2021H,
     SabrChoiWu2021P,
 )
+from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrMcCond
 from .nsvh import Nsvh1, NsvhMc

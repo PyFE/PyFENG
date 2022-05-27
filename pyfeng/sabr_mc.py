@@ -117,7 +117,7 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
     comb_coef = None
     nn = None
 
-    def set_mc_params(self, n_path=10000, m_inv=20, m_euler=20, n_euler=35, rn_seed=None, antithetic=True):
+    def set_num_params(self, n_path=10000, m_inv=20, m_euler=20, n_euler=35, rn_seed=None, antithetic=True):
         """
         Set MC parameters
 

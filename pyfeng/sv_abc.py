@@ -116,7 +116,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     correct_fwd = True
     result = {}
 
-    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
+    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
         """
         Set MC parameters
 
@@ -152,7 +152,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.dt is None:
             return np.array([texp])
         else:
-            n_dt = np.ceil(texp / (2 * self.dt)) * 2
+            n_dt = np.ceil(texp / self.dt)
             tobs = np.arange(1, n_dt + 1) / n_dt * texp
         return tobs
 

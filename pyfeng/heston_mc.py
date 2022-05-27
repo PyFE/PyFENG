@@ -162,7 +162,7 @@ class HestonMcAndersen2008(HestonMcABC):
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
         >>> m = pfex.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_mc_params(n_path=1e5, dt=1/8, rn_seed=123456)
+        >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
         array([44.31943535, 13.09371251,  0.29580431])
@@ -170,7 +170,7 @@ class HestonMcAndersen2008(HestonMcABC):
     psi_c = 1.5  # parameter used by the Andersen QE scheme
     scheme = 4
 
-    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
+    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
         """
         Set MC parameters
 
@@ -184,7 +184,7 @@ class HestonMcAndersen2008(HestonMcABC):
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
-        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
         self.scheme = scheme
 
     def var_step_qe(self, var_0, dt):
@@ -305,7 +305,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     kk = 1  # K for series truncation.
     tabulate_x2_z = False
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=1):
         """
         Set MC parameters
 
@@ -317,7 +317,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             kk: truncation index
 
         """
-        super().set_mc_params(n_path, dt, rn_seed, antithetic=False)
+        super().set_num_params(n_path, dt, rn_seed, antithetic=False)
         self.scheme = scheme
         self.kk = kk
 
@@ -828,14 +828,14 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
         >>> m = pfex.HestonMcTseWan2013(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_mc_params(n_path=1e4, rn_seed=123456)
+        >>> m.set_num_params(n_path=1e4, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far
     """
     dist = 'ig'
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, dist=None):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, dist=None):
         """
         Set MC parameters
 
@@ -847,7 +847,7 @@ class HestonMcTseWan2013(HestonMcGlassermanKim2011):
             dist: distribution to use for approximation.
                 'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
-        super().set_mc_params(n_path, dt, rn_seed, scheme=scheme)
+        super().set_num_params(n_path, dt, rn_seed, scheme=scheme)
         if dist is not None:
             self.dist = dist
 
@@ -891,7 +891,7 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
 
     dist = 'ig'
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=0, dist=None):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, kk=0, dist=None):
         """
         Set MC parameters
 
@@ -903,7 +903,7 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
             dist: distribution to use for approximation.
                 'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
-        super().set_mc_params(n_path, dt, rn_seed, scheme=scheme, kk=kk)
+        super().set_num_params(n_path, dt, rn_seed, scheme=scheme, kk=kk)
         if dist is not None:
             self.dist = dist
 

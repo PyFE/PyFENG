@@ -57,7 +57,7 @@ class Sv32McTimeStep(Sv32McABC):
     """
     scheme = 1  # Milstein
 
-    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
+    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
         """
         Set MC parameters
 
@@ -71,13 +71,13 @@ class Sv32McTimeStep(Sv32McABC):
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
-        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
 
         self.scheme = scheme
         mr = self.mr * self.theta
         theta = (self.mr + self.vov**2)/mr
         self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
-        self._m_heston.set_mc_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
+        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
 
     def var_step_euler(self, var_0, dt, milstein=True):
         """
@@ -155,7 +155,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         is_fwd: Bool, true if asset price is forward
     """
 
-    def set_mc_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=1):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=1):
         """
         Set MC parameters
     
@@ -169,13 +169,13 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
-        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
 
         self.scheme = scheme
         mr = self.mr * self.theta
         theta = (self.mr + self.vov**2)/mr
         self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
-        self._m_heston.set_mc_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
+        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
 
     def laplace(self, bb, var_0, var_t, dt):
         phi, _ = self._m_heston.phi_exp(dt)
