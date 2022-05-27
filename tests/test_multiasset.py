@@ -21,7 +21,7 @@ class TestMultiAsset(unittest.TestCase):
         np.testing.assert_almost_equal(result, result2)
 
     def test_NormSpread(self):
-        m = pf.NormSpread((20, 30), cor=-0.5, intr=0.05)
+        m = pf.NormBasket.init_spread((20, 30), cor=-0.5, intr=0.05)
         result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         result2 = np.array([17.9567619, 13.7464682, 10.2666994, 7.4709872, 5.2905716])
         np.testing.assert_almost_equal(result, result2)

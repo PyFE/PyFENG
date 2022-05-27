@@ -1,3 +1,5 @@
+import abc
+
 import scipy.stats as spst
 import warnings
 import numpy as np
@@ -6,16 +8,76 @@ from . import bsm
 from . import norm
 from . import gamma
 from . import nsvh
-from . import opt_abc as opt
+import pyfeng.opt_abc as opt
+from pyfeng.quad import NdGHQ  # Not sure
 
 
-class BsmSpreadKirk(opt.OptMaABC):
+class OptMaABC(opt.OptABC, abc.ABC):
+
+    n_asset = 1
+    rho = None
+    cor_m = np.diag([1.0])
+    cov_m = np.diag([1.0])
+    chol_m = np.diag([1.0])
+
+    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+
+        Args:
+            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
+            cor: correlation. If matrix with shape (n_asset, n_asset), used as it is.
+                If scalar, correlation matrix is constructed with all same off-diagonal values.
+            intr: interest rate (domestic interest rate)
+            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        sigma = np.atleast_1d(sigma)
+        self.n_asset = len(sigma)
+
+        super().__init__(sigma, intr, divr, is_fwd)
+
+        if self.n_asset == 1:
+            if cor is not None:
+                print(f"Ignoring cor={cor} for a single asset")
+            self.rho = None
+            self.cor_m = np.array([[1.0]])
+        elif np.isscalar(cor):
+            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (
+                1.0 - cor
+            ) * np.eye(self.n_asset)
+            self.rho = cor
+        else:
+            assert cor.shape == (self.n_asset, self.n_asset)
+            self.cor_m = cor
+            if self.n_asset == 2:
+                self.rho = cor[0, 1]
+
+        self.cov_m = sigma * self.cor_m * sigma[:, None]
+        self.chol_m = np.linalg.cholesky(self.cov_m)
+
+    def price(self, strike, spot, texp, cp=1):
+        """
+        Call/put option price.
+
+        Args:
+            strike: strike price.
+            spot: spot (or forward) prices for assets.
+                Asset dimension should be the last, e.g. (n_asset, ) or (N, n_asset)
+            texp: time to expiry.
+            cp: 1/-1 for call/put option.
+
+        Returns:
+            option price
+        """
+        return NotImplementedError
+
+
+class BsmSpreadKirk(OptMaABC):
     """
     Kirk's approximation for spread option.
 
     References:
-        Kirk, E. (1995). Correlation in the energy markets. In Managing Energy Price Risk
-        (First, pp. 71–78). Risk Publications.
+        - Kirk E (1995) Correlation in the energy markets. In: Managing Energy Price Risk, First. Risk Publications, London, pp 71–78
 
     Examples:
         >>> import numpy as np
@@ -28,10 +90,7 @@ class BsmSpreadKirk(opt.OptMaABC):
     weight = np.array([1, -1])
 
     def price(self, strike, spot, texp, cp=1):
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd1 = fwd[..., 0] - np.minimum(strike, 0)
@@ -44,13 +103,12 @@ class BsmSpreadKirk(opt.OptMaABC):
         return df * price
 
 
-class BsmSpreadBjerksund2014(opt.OptMaABC):
+class BsmSpreadBjerksund2014(OptMaABC):
     """
     Bjerksund & Stensland (2014)'s approximation for spread option.
 
     References:
-        Bjerksund, P., & Stensland, G. (2014). Closed form spread option valuation.
-        Quantitative Finance, 14(10), 1785–1794. https://doi.org/10.1080/14697688.2011.617775
+        - Bjerksund P, Stensland G (2014) Closed form spread option valuation. Quantitative Finance 14:1785–1794. https://doi.org/10.1080/14697688.2011.617775
 
     Examples:
         >>> import numpy as np
@@ -63,10 +121,7 @@ class BsmSpreadBjerksund2014(opt.OptMaABC):
     weight = np.array([1, -1])
 
     def price(self, strike, spot, texp, cp=1):
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd1 = fwd[..., 0]
@@ -94,7 +149,7 @@ class BsmSpreadBjerksund2014(opt.OptMaABC):
         return df * price
 
 
-class NormBasket(opt.OptMaABC):
+class NormBasket(OptMaABC):
     """
     Basket option pricing under the multiasset Bachelier model
     """
@@ -103,6 +158,8 @@ class NormBasket(opt.OptMaABC):
 
     def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
         """
+        Initialize an instance for basket option.
+
         Args:
             sigma: model volatilities of `n_asset` assets. (n_asset, ) array
             cor: correlation. If matrix, used as it is. (n_asset, n_asset)
@@ -113,6 +170,9 @@ class NormBasket(opt.OptMaABC):
             intr: interest rate (domestic interest rate)
             divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
             is_fwd: if True, treat `spot` as forward price. False by default.
+
+        See Also:
+            init_spread()
         """
 
         super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
@@ -124,11 +184,24 @@ class NormBasket(opt.OptMaABC):
             assert len(weight) == self.n_asset
             self.weight = np.array(weight)
 
+    @classmethod
+    def init_spread(cls, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Initalize an instance for spread option pricing.
+        This is a special case of the initalization with weight = (1, -1)
+
+        Examples:
+            >>> import numpy as np
+            >>> import pyfeng as pf
+            >>> m = pf.NormSpread.init_spread((20, 30), cor=-0.5, intr=0.05)
+            >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+            array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
+        """
+
+        return cls(sigma, cor=cor, weight=np.array([1, -1]), intr=intr, divr=divr, is_fwd=is_fwd)
+
     def price(self, strike, spot, texp, cp=1):
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd @ self.weight
@@ -140,32 +213,13 @@ class NormBasket(opt.OptMaABC):
         return df * price
 
 
-class NormSpread(opt.OptMaABC):
-    """
-    Spread option pricing under the Bachelier model.
-    This is a special case of NormBasket with weight = (1, -1)
-
-    Examples:
-        >>> import numpy as np
-        >>> import pyfeng as pf
-        >>> m = pf.NormSpread((20, 30), cor=-0.5, intr=0.05)
-        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
-        array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
-    """
-
-    weight = np.array([1, -1])
-
-    price = NormBasket.price
-
-
 class BsmBasketLevy1992(NormBasket):
     """
     Basket option pricing with the log-normal approximation of Levy & Turnbull (1992)
 
     References:
-        - Levy, E., & Turnbull, S. (1992). Average intelligence. Risk, 1992(2), 53–57.
-        - Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
-        Wilmott Magazine, 2004(7), 82–89.
+        - Levy E, Turnbull S (1992) Average intelligence. Risk 1992:53–57
+        - Krekel M, de Kock J, Korn R, Man T-K (2004) An analysis of pricing methods for basket options. Wilmott Magazine 2004:82–89
 
     Examples:
         >>> import numpy as np
@@ -179,10 +233,7 @@ class BsmBasketLevy1992(NormBasket):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd * self.weight
@@ -199,11 +250,8 @@ class BsmBasketMilevsky1998(NormBasket):
     Basket option pricing with the inverse gamma distribution of Milevsky & Posner (1998)
 
     References:
-        Milevsky, M. A., & Posner, S. E. (1998). A Closed-Form Approximation for Valuing Basket Options.
-        The Journal of Derivatives, 5(4), 54–61. https://doi.org/10.3905/jod.1998.408005
-
-        Krekel, M., de Kock, J., Korn, R., & Man, T.-K. (2004). An analysis of pricing methods for basket options.
-        Wilmott Magazine, 2004(7), 82–89.
+        - Milevsky MA, Posner SE (1998) A Closed-Form Approximation for Valuing Basket Options. The Journal of Derivatives 5:54–61. https://doi.org/10.3905/jod.1998.408005
+        - Krekel M, de Kock J, Korn R, Man T-K (2004) An analysis of pricing methods for basket options. Wilmott Magazine 2004:82–89
 
     Examples:
         >>> import numpy as np
@@ -217,10 +265,7 @@ class BsmBasketMilevsky1998(NormBasket):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         fwd_basket = fwd * self.weight
@@ -236,13 +281,13 @@ class BsmBasketMilevsky1998(NormBasket):
         return df * price
 
 
-class BsmMax2(opt.OptMaABC):
+class BsmMax2(OptMaABC):
     """
     Option on the max of two assets.
     Payout = max( max(F_1, F_2) - K, 0 ) for all or  max( K - max(F_1, F_2), 0 ) for put option
 
     References:
-        Rubinstein, M. (1991). Somewhere Over the Rainbow. Risk, 1991(11), 63–66.
+        - Rubinstein M (1991) Somewhere Over the Rainbow. Risk 1991:63–66
 
     Examples:
         >>> import numpy as np
@@ -260,10 +305,7 @@ class BsmMax2(opt.OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
-        df = np.exp(-texp * self.intr)
-        fwd = np.array(spot) * (
-            1.0 if self.is_fwd else np.exp(-texp * np.array(self.divr)) / df
-        )
+        fwd, df, _ = self._fwd_factor(spot, texp)
         assert fwd.shape[-1] == self.n_asset
 
         sig_std = sig * np.sqrt(texp)
@@ -435,47 +477,6 @@ class BsmBasket1Bm(opt.OptABC):
         return price
 
 
-class BsmBasketLowerBound(NormBasket):
-    def V_func(self, fwd):
-        """
-        Generate factor matrix V
-        Args:
-            fwd: forward rates of basket
-        Returns:
-            V matrix
-        """
-        gg = self.weight * fwd
-        gg /= np.linalg.norm(gg)
-
-        # equation 22，generate Q_1 and V_1
-        Q1 = (
-            self.chol_m.T @ gg / np.sqrt(gg @ self.cov_m @ gg)
-        )  # in py, this is a row vector
-        V1 = self.chol_m @ Q1
-        V1 = V1[:, None]
-
-        # obtain full V
-        e1 = np.zeros_like(self.sigma)
-        e1[0] = 1
-        v = (Q1 - e1) / np.linalg.norm(Q1 - e1)
-        v = v[:, None]
-        R = np.eye(self.n_asset) - 2 * v @ v.T
-
-        # singular value decomposition
-        U, D, Q = np.linalg.svd(self.chol_m @ R[:, 1:], full_matrices=False)
-        V = np.hstack((V1, U @ np.diag(D)))
-
-        return V
-
-    def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
-        V = self.V_func(fwd)
-        sigma1 = V[:, 0]
-        m = BsmBasket1Bm(sigma1, is_fwd=True)
-        price = m.price(strike, fwd, texp)
-        return price
-
-
 class BsmBasketJsu(NormBasket):
     """
 
@@ -484,10 +485,10 @@ class BsmBasketJsu(NormBasket):
     Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
 
     References:
-        [1] Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
+        - Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
         with higher moments. The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
 
-        [2] Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
+        - Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
         Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
 
     """
@@ -584,5 +585,136 @@ class BsmBasketJsu(NormBasket):
         m = nsvh.Nsvh1(sigma=self.sigma)
         m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
         price = m.price(strike, fwd_basket, texp, cp)
+
+        return df * price
+
+
+class BsmBasketChoi2018(NormBasket):
+    """
+    Choi (2018)'s pricing method for Basket/Spread/Asian options
+
+    References
+        - Choi J (2018) Sum of all Black-Scholes-Merton models: An efficient pricing method for spread, basket, and Asian options. Journal of Futures Markets 38:627–644. https://doi.org/10.1002/fut.21909
+    """
+
+    n_quad = None
+    lam = 4.0
+
+    @classmethod
+    def init_lowerbound(cls, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        m = cls(sigma, cor=cor, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
+        m.n_quad = 0
+        return m
+
+    def set_num_params(self, n_quad=None, lam=3.0):
+        self.n_quad = n_quad
+        self.lam = lam
+
+    @staticmethod
+    def householder(vv0):
+        """
+        Returns a Householder reflection (orthonormal matrix) that maps (1,0,...0) to vv0
+
+        Args:
+            vv0: vector
+
+        Returns:
+            Reflection matrix
+
+        References
+            - https://en.wikipedia.org/wiki/Householder_transformation
+        """
+        vv1 = vv0 / np.linalg.norm(vv0)
+        vv1[0] -= 1.0
+
+        if abs(vv1[0]) < np.finfo(float).eps*100:
+            return np.eye(len(vv1))
+        else:
+            return np.eye(len(vv1)) + vv1[:, None] * vv1 / vv1[0]
+
+    def v_mat(self, fwd):
+        """
+        Construct the V matrix
+
+        Args:
+            fwd: forward vector of assets
+
+        Returns:
+            V matrix
+        """
+
+        fwd_wts_unit = fwd * self.weight
+        fwd_wts_unit /= np.linalg.norm(fwd_wts_unit)
+
+        v1 = self.cov_m @ fwd_wts_unit
+        v1 /= np.sqrt(np.sum(v1 * fwd_wts_unit))
+
+        thres = 0.01 * self.sigma
+        idx = (np.sign(fwd_wts_unit) * v1 < thres)
+
+        if np.any(idx):
+            v1[idx] = (np.sign(fwd_wts_unit) * thres)[idx]
+            q1 = np.linalg.solve(self.chol_m, v1)
+            q1norm = np.linalg.norm(q1)
+            q1 /= q1norm
+            v1 /= q1norm
+        else:
+            q1 = self.chol_m.T @ fwd_wts_unit
+            q1 /= np.linalg.norm(q1)
+
+        r_mat = self.householder(q1)
+
+        chol_r_mat = self.chol_m @ r_mat[:, 1:]
+        svd_u, svd_d, _ = np.linalg.svd(chol_r_mat, full_matrices=False)
+
+        v_mat = np.hstack((v1[:, None], svd_u @ np.diag(svd_d)))
+        len_scale = svd_d / np.sum(fwd_wts_unit * v1)
+
+        if self.n_quad is None:
+            n_quad = np.rint(self.lam * len_scale + 1).astype(int)
+        else:
+            n_quad = self.n_quad
+
+        return v_mat, n_quad
+
+    def v1_fwd_weight(self, fwd, texp):
+        """
+        Construct v1, forward array, and weights
+
+        Args:
+            fwd: forward vector of assets
+            texp: time to expiry
+
+        Returns:
+            (v1, f_k, ww)
+        """
+
+        v_mat, n_quad = self.v_mat(fwd)
+        v_mat *= np.sqrt(texp)
+
+        v1 = v_mat[:, 0]
+
+        if n_quad == 0:
+            # 1 factor BM model for lower bound
+            f_k = np.ones((1, self.n_asset))
+            ww = np.array([1.0])
+        else:
+            v_mat = v_mat[:, 1:len(n_quad)+1]
+            quad = NdGHQ(n_quad)
+            zz, ww = quad.z_vec_weight()
+            f_k = np.exp(zz @ v_mat.T - 0.5*np.sum(v_mat**2, axis=1))
+
+        return v1, f_k, ww
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        v1, f_k, ww = self.v1_fwd_weight(fwd, texp)
+        m_1bm = BsmBasket1Bm(sigma=v1, weight=self.weight)
+
+        price = np.zeros_like(strike, dtype=float)
+        for k, f_k_row in enumerate(f_k):
+            price1 = m_1bm.price(strike, f_k_row * fwd, texp=1.0, cp=cp)
+            price += price1 * ww[k]
 
         return df * price

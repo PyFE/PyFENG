@@ -1,8 +1,8 @@
 import numpy as np
-from . import opt_abc as opt
+import pyfeng.multiasset as ma
 
 
-class BsmNdMc(opt.OptMaABC):
+class BsmNdMc(ma.OptMaABC):
     """
     Monte-Carlo simulation of multiasset (N-d) BSM (geometric Brownian Motion)
 
