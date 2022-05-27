@@ -4,7 +4,6 @@
 from .heston_mc import HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013, HestonMcChoiKwok2023
 from .sv32_mc import Sv32McCondQE, Sv32McAe2
 from .sv32_mc2 import Sv32McTimeStep, Sv32McExactBaldeaux2012, Sv32McExactChoiKwok2023
-from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 from .subord_bm import VarGammaQuad, ExpNigQuad
 
 # SABR / OUSV models for research
