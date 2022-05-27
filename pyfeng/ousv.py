@@ -2,9 +2,34 @@ import abc
 import numpy as np
 import scipy.integrate as scint
 from . import sv_abc as sv
+from . import bsm
 
 
-class OusvSchobelZhu1998(sv.SvABC):
+class OusvABC(sv.SvABC, abc.ABC):
+    model_type = "OUSV"
+
+    def avgvar_mv(self, var_0, texp):
+        """
+        Mean and variance of the variance V(t+dt) given V(0) = var_0
+        (variance is not implemented yet)
+
+        Args:
+            var_0: initial variance
+            texp: time step
+
+        Returns:
+            mean, variance(=NULL)
+        """
+
+        mr_t = self.mr * texp
+        e_mr = np.exp(-mr_t)
+        x0 = var_0 - self.theta
+        vv = self.vov**2/2/self.mr + self.theta**2 + \
+             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
+        return vv, None
+
+
+class OusvSchobelZhu1998(OusvABC):
     """
     The implementation of Schobel & Zhu (1998)'s inverse FT pricing formula for European
     options the Ornstein-Uhlenbeck driven stochastic volatility process.
@@ -13,17 +38,14 @@ class OusvSchobelZhu1998(sv.SvABC):
         - Schöbel, R., & Zhu, J. (1999). Stochastic Volatility With an Ornstein–Uhlenbeck Process: an Extension. Review of Finance, 3(1), 23–46. https://doi.org/10.1023/A:1009803506170
 
     Examples:
-        >>> import pyfeng as pfex
-        >>> model = pfex.OusvSchobelZhu1998(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
+        >>> import pyfeng as pf
+        >>> model = pf.OusvSchobelZhu1998(0.2, mr=4, vov=0.1, rho=-0.7, intr=0.09531)
         >>> model.price(100, 100, texp=np.array([1, 5, 10]))
         array([13.21493, 40.79773, 62.76312])
-        >>> model = pfex.OusvSchobelZhu1998(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
+        >>> model = pf.OusvSchobelZhu1998(0.25, mr=8, vov=0.3, rho=-0.6, intr=0.09531)
         >>> model.price(np.array([90, 100, 110]), 100, texp=1)
         array([21.41873, 15.16798, 10.17448])
     """
-
-    model_type = "OUSV"
-    var_process = False
 
     def D_B_C(self, s1, s2, s3, texp):
         # implement the formula for D(t,T), B(t,T), C(t,T) in paper appendix
@@ -106,9 +128,22 @@ class OusvSchobelZhu1998(sv.SvABC):
         return df * fwd * price
 
 
-class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
+class OusvUncorrBallRoma1994(OusvABC):
 
-    model_type = "OUSV"
+    def price(self, strike, spot, texp, cp=1):
+
+        if not np.isclose(self.rho, 0.0):
+            print(f"Pricing ignores rho = {self.rho}.")
+
+        avgvar, _ = self.avgvar_mv(self.sigma, texp)
+        m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
+        price = m_bs.price(strike, spot, texp, cp)
+
+        return price
+
+
+class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
+
     var_process = False
 
     @abc.abstractmethod
@@ -155,26 +190,6 @@ class OusvMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
         sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / vol_0
         return spot_cond, sigma_cond
-
-    def avgvar_mv(self, var_0, texp):
-        """
-        Mean and variance of the variance V(t+dt) given V(0) = var_0
-        (variance is not implemented yet)
-
-        Args:
-            var_0: initial variance
-            texp: time step
-
-        Returns:
-            mean, variance
-        """
-
-        mr_t = self.mr * texp
-        e_mr = np.exp(-mr_t)
-        x0 = var_0 - self.theta
-        vv = self.vov**2/2/self.mr + self.theta**2 + \
-             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
-        return vv
 
 
 class OusvMcTimeStep(OusvMcABC):
