@@ -81,7 +81,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
     var_process = True
     scheme = 1  #
 
-    def set_mc_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
+    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
         """
         Set MC parameters
 
@@ -95,7 +95,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
-        super().set_mc_params(n_path, dt, rn_seed, antithetic)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
         self.scheme = scheme
 
     def var_step_euler(self, var_0, dt, milstein=True):
