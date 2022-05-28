@@ -6,24 +6,25 @@ from . import bsm
 
 
 class OusvABC(sv.SvABC, abc.ABC):
+
     model_type = "OUSV"
 
-    def avgvar_mv(self, var_0, texp):
+    def avgvar_mv(self, var0, texp):
         """
         Mean and variance of the variance V(t+dt) given V(0) = var_0
         (variance is not implemented yet)
 
         Args:
-            var_0: initial variance
+            var0: initial variance
             texp: time step
 
         Returns:
-            mean, variance(=NULL)
+            mean, variance(=None)
         """
 
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        x0 = var_0 - self.theta
+        x0 = var0 - self.theta
         vv = self.vov**2/2/self.mr + self.theta**2 + \
              ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
         return vv, None
@@ -129,6 +130,14 @@ class OusvSchobelZhu1998(OusvABC):
 
 
 class OusvUncorrBallRoma1994(OusvABC):
+    """
+    Ball & Roma (1994)'s approximation pricing formula for European options under uncorrelated (rho=0) OUSV model.
+    Just 0th order (average variance) is implemented because higher order terms depends on numerical derivative of MGF
+
+    See Also: HestonUncorrBallRoma1994, GarchUncorrBaroneAdesi2004
+    """
+
+    order = 0
 
     def price(self, strike, spot, texp, cp=1):
 
@@ -136,8 +145,12 @@ class OusvUncorrBallRoma1994(OusvABC):
             print(f"Pricing ignores rho = {self.rho}.")
 
         avgvar, _ = self.avgvar_mv(self.sigma, texp)
+
         m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
         price = m_bs.price(strike, spot, texp, cp)
+
+        if self.order > 0:
+            raise ValueError(f"Not implemented for approx order: {self.order}")
 
         return price
 
@@ -458,12 +471,12 @@ class OusvMcChoi2023(OusvMcABC):
             var_mean /= texp
         return vol_t, var_mean, vol_mean
 
-    def cond_states_step(self, vol_0, dt, zn=None):
+    def cond_states_step(self, vol0, dt, zn=None):
         """
         Incremental conditional states
 
         Args:
-            vol_0: initial volatility
+            vol0: initial volatility
             dt: time step
             zn: specified normal rvs to use. (n_sin + 1, n_path)
 
@@ -479,11 +492,11 @@ class OusvMcChoi2023(OusvMcABC):
         cosh = np.cosh(mr_t)
         vovn = self.vov * np.sqrt(dt)  # normalized vov
 
-        x_0 = vol_0 - self.theta
+        x_0 = vol0 - self.theta
         if zn is None:
-            x_t = self.vol_step(vol_0, dt) - self.theta
+            x_t = self.vol_step(vol0, dt) - self.theta
         else:
-            x_t = self.vol_step(vol_0, dt, zn=zn[0, :]) - self.theta
+            x_t = self.vol_step(vol0, dt, zn=zn[0, :]) - self.theta
         sighat = x_t - x_0 * e_mr
 
         if zn is None:

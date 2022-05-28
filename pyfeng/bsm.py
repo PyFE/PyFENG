@@ -70,10 +70,37 @@ class Bsm(opt.OptAnalyticABC):
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
 
-        vega = (
-            df * fwd * spst.norm.pdf(d1) * np.sqrt(texp)
-        )  # formula according to wikipedia
+        # formula according to wikipedia
+        vega = df * fwd * spst.norm.pdf(d1) * np.sqrt(texp)
         return vega
+
+    def d2_var(self, strike, spot, texp, cp=1):
+        """
+        2nd derivative w.r.t. variance (=sigma^2)
+        Eq. (9) in Hull & White (1987)
+
+        Args:
+            strike: strike price
+            spot: spot (or forward)
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+
+        Returns: d^2 price / d var^2
+
+        References:
+            - Hull J, White A (1987) The Pricing of Options on Assets with Stochastic Volatilities. The Journal of Finance 42:281–300. https://doi.org/10.1111/j.1540-6261.1987.tb02568.x
+        """
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd / strike) / sigma_std
+        d2 = d1 - 0.5 * sigma_std
+        d1 += 0.5 * sigma_std
+
+        d_sig2 = df * spot * np.sqrt(texp) * spst.norm.pdf(d1) * (d1*d2-1) / (4*self.sigma**3)
+
+        return d_sig2
+
 
     def delta(self, strike, spot, texp, cp=1):
 
