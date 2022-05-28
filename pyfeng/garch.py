@@ -6,69 +6,75 @@ from . import bsm
 
 class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
-    The implementation of Barone-Adesi et al (2004)'s approximation pricing formula for European
-    options under uncorrelated (rho=0) GARCH diffusion model.
+    Barone-Adesi et al (2004)'s approximation pricing formula for European options under uncorrelated (rho=0) GARCH diffusion model.
+    Up to 2nd order is implemented.
 
     References:
         - Barone-Adesi G, Rasmussen H, Ravanelli C (2005) An option pricing formula for the GARCH diffusion model. Computational Statistics & Data Analysis 49:287–310. https://doi.org/10.1016/j.csda.2004.05.014
 
-    This method is only used to compare with the method GarchCondMC.
+    See Also: OusvUncorrBallRoma1994, HestonUncorrBallRoma1994
     """
+
     model_type = "GarchDiff"
+    order = 2
+
+    def avgvar_mv(self, var0, texp):
+        """
+        Mean and variance of the average variance given V(0) = var0.
+        Eqs. (12)-(13) in Barone-Adesi et al. (2005)
+
+        Args:
+            var0: initial variance
+            texp: time step
+
+        Returns:
+            mean, variance
+        """
+
+        mr, vov, theta = self.mr, self.vov, self.theta
+
+        mr2 = mr * mr
+        vov2 = vov * vov
+        theta2 = theta*theta
+        mr_t = self.mr * texp
+        e_mr = np.exp(-mr_t)
+
+        # Eq (12) of Barone-Adesi et al. (2005)
+        M1 = theta + (var0 - theta) * (1 - e_mr) / mr_t
+
+        term1 = vov2 - mr
+        term2 = vov2 - 2*mr
+
+        # Eq (13)
+        M2c_1 = -(e_mr * (var0 - theta))**2
+        M2c_2 = 2*np.exp(term2 * texp) * (2*mr * theta * (mr * theta + term2 * var0) + term1 * term2 * var0**2)
+        M2c_3 = -vov2 * (theta2 * (4*mr * (3 - mr_t) + (2*mr_t - 5) * vov2) + term2 * var0 * (2*theta + var0))
+
+        M2c_4 = 2*e_mr * vov2
+        M2c_4 *= 2*theta2 * (mr_t * mr - (1 + mr_t) * vov2) \
+                 + var0 * (2*mr * theta * (1 + texp * term1) + term1 * var0)
+
+        M2c = M2c_1 / mr2 + M2c_2 / (term1 * term2)**2 + M2c_3 / mr2 / term2**2 + M2c_4 / mr2 / term1**2
+        M2c /= texp**2
+
+        return M1, M2c
 
     def price(self, strike, spot, texp, cp=1):
 
         if not np.isclose(self.rho, 0.0):
             print(f"Pricing ignores rho = {self.rho}.")
 
-        var0, mr, vov, theta = self.sigma, self.mr, self.vov, self.theta
+        avgvar, var = self.avgvar_mv(self.sigma, texp)
 
-        mr2 = mr * mr
-        vov2 = vov * vov
-        theta2 = theta*theta
-        decay = np.exp(-mr * texp)
+        m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
+        price = m_bs.price(strike, spot, texp, cp)
 
-        # Eq (12) of Barone-Adesi et al. (2005)
-        M1 = theta + (var0 - theta) * (1 - decay) / (mr * texp)
+        if self.order == 2:
+            price += 0.5 * var * m_bs.d2_var(strike, spot, texp, cp)
+        elif self.order > 2:
+            raise ValueError(f"Not implemented for approx order: {self.order}")
 
-        term1 = vov2 - mr
-        term2 = vov2 - 2*mr
-
-        # Eq (13)
-        M2c_1 = - (decay * (var0 - theta))**2
-        M2c_2 = 2*np.exp(term2 * texp) * (2*mr * theta * (mr * theta + term2 * var0) + term1 * term2 * var0**2)
-        M2c_3 = -vov2 * (theta2 * (4*mr * (3 - texp * mr) + (2*texp * mr - 5) * vov2) + term2 * var0 * (2*theta + var0))
-
-        M2c_4 = 2*decay * vov2
-        M2c_4 *= 2*theta2 * (texp * mr2 - (1 + texp * mr) * vov2) \
-                 + var0 * (2*mr * theta * (1 + texp * term1) + term1 * var0)
-
-        M2c = M2c_1 / mr2 + M2c_2 / (term1 * term2)**2 + M2c_3 / mr2 / term2**2 + M2c_4 / mr2 / term1**2
-        M2c /= texp**2
-        # M3c=None
-        # M4c=None
-
-        # Eq. (11)
-        logk = np.log(spot / strike)
-        sigma_std = np.sqrt(self.sigma * texp)
-
-        m = logk + (self.intr - self.divr) * texp
-        d1 = logk / sigma_std + sigma_std / 2
-
-        m_bs = bsm.Bsm(np.sqrt(M1), intr=self.intr, divr=self.divr)
-        c_bs = m_bs.price(strike, spot, texp, cp)
-
-        c_bs_p1 = np.exp(-self.divr * texp) * strike * np.sqrt(texp / 4 / M1) * spst.norm.pdf(d1)
-        c_bs_p2 = c_bs_p1 * texp / 2 * ((m / M1 / texp)**2 - 1 / M1 / texp - 1 / 4)
-
-        # C_bs_p3=C_bs_p1*(m**4/(4*(M1*texp)**4)-m**2*(12+M1*texp)/(8*(M1*texp)**3)+(48+8*M1*texp+(M1*texp)**2)/(64*(M1*texp)**2))*texp**2
-        # C_bs_p4=C_bs_p1*(m**6/(8*(M1*texp)**6)-3*m**4*(20+M1*texp)/(32*(M1*texp)**5)+3*m**2*(240+24*M1*texp+(M1*texp)**2)/(128*(M1*texp)**4)-(960+144*M1*texp+12*(M1*texp)**2+(M1*texp)**3)/(512*(M1*texp)**3))*texp**3
-
-        c_ga_2 = c_bs + (M2c / 2) * c_bs_p2
-        # C_ga_3=C_ga_2+(M3c/6)*C_bs_p3
-        # C_ga_4=C_ga_3+(M4c/24)*C_bs_p4
-
-        return c_ga_2
+        return price
 
 
 class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):

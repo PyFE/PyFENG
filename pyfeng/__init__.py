@@ -13,6 +13,7 @@ from .sabr import (
     SabrChoiWu2021P,
 )
 from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
+from .heston import HestonUncorrBallRoma1994
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrMcCond

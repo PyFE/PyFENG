@@ -8,11 +8,11 @@ import scipy.interpolate as spinterp
 from scipy.misc import derivative
 import functools
 from . import sv_abc as sv
+from . import heston
 
 
-class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
+class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
-    model_type = "Heston"
     scheme = None
 
     def chi_dim(self):
@@ -40,24 +40,6 @@ class HestonMcABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         exp = np.exp(-self.mr*texp/2)
         phi = 4*self.mr / self.vov**2 / (1/exp - exp)
         return phi, exp
-
-    def var_mv(self, var_0, dt):
-        """
-        Mean and variance of the variance V(t+dt) given V(0) = var_0
-
-        Args:
-            var_0: initial variance
-            dt: time step
-
-        Returns:
-            mean, variance
-        """
-
-        expo = np.exp(-self.mr * dt)
-        m = self.theta + (var_0 - self.theta) * expo
-        s2 = var_0 * expo + self.theta * (1 - expo) / 2
-        s2 *= self.vov**2 * (1 - expo) / self.mr
-        return m, s2
 
     def var_step_euler(self, var_0, dt, milstein=False):
         """
