@@ -28,9 +28,7 @@ class Bsm(opt.OptAnalyticABC):
     """
 
     @staticmethod
-    def price_formula(
-        strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False
-    ):
+    def price_formula(strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False):
         """
         Black-Scholes-Merton model call/put option pricing formula (static method)
 
@@ -48,30 +46,30 @@ class Bsm(opt.OptAnalyticABC):
         Returns:
             Vanilla option price
         """
-        disc_fac = np.exp(-texp * intr)
-        fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / disc_fac)
+        disc_fac = np.exp(-texp*intr)
+        fwd = np.array(spot)*(1.0 if is_fwd else np.exp(-texp*divr)/disc_fac)
 
-        sigma_std = np.maximum(np.array(sigma) * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(np.array(sigma)*np.sqrt(texp), np.finfo(float).eps)
 
         # don't directly compute d1 just in case sigma_std is infty
-        d1 = np.log(fwd / strike) / sigma_std
-        d2 = d1 - 0.5 * sigma_std
-        d1 += 0.5 * sigma_std
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
 
         cp = np.array(cp)
-        price = fwd * spst.norm.cdf(cp * d1) - strike * spst.norm.cdf(cp * d2)
-        price *= cp * disc_fac
+        price = fwd*spst.norm.cdf(cp*d1) - strike*spst.norm.cdf(cp*d2)
+        price *= cp*disc_fac
         return price
 
     def vega(self, strike, spot, texp, cp=1):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
 
         # formula according to wikipedia
-        vega = df * fwd * spst.norm.pdf(d1) * np.sqrt(texp)
+        vega = df*fwd*spst.norm.pdf(d1)*np.sqrt(texp)
         return vega
 
     def d2_var(self, strike, spot, texp, cp=1):
@@ -92,24 +90,51 @@ class Bsm(opt.OptAnalyticABC):
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd / strike) / sigma_std
-        d2 = d1 - 0.5 * sigma_std
-        d1 += 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
 
-        d_sig2 = df * spot * np.sqrt(texp) * spst.norm.pdf(d1) * (d1*d2-1) / (4*self.sigma**3)
+        risk = df*spot*np.sqrt(texp)*spst.norm.pdf(d1)*(d1*d2 - 1)/(4*self.sigma**3)
 
-        return d_sig2
+        return risk
 
+    def d3_var(self, strike, spot, texp, cp=1):
+        """
+        3rd derivative w.r.t. variance (=sigma^2)
+        Eq. (9) in Hull & White (1987)
+
+        Args:
+            strike: strike price
+            spot: spot (or forward)
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+
+        Returns: d^3 price / d var^3
+
+        References:
+            - Hull J, White A (1987) The Pricing of Options on Assets with Stochastic Volatilities. The Journal of Finance 42:281–300. https://doi.org/10.1111/j.1540-6261.1987.tb02568.x
+        """
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
+
+        risk = df*spot*np.sqrt(texp)*spst.norm.pdf(d1)\
+               *((d1*d2 - 1)*(d1*d2 - 3) - (d1**2 + d2**2))/(8*self.sigma**5)
+
+        return risk
 
     def delta(self, strike, spot, texp, cp=1):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
 
-        delta = cp * spst.norm.cdf(cp * d1)  # formula according to wikipedia
+        delta = cp*spst.norm.cdf(cp*d1)  # formula according to wikipedia
         delta *= df if self.is_fwd else divf
         return delta
 
@@ -117,38 +142,38 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d2 = np.log(fwd / strike) / sigma_std - 0.5 * sigma_std
-        cdf = spst.norm.cdf(cp * d2)  # formula according to wikipedia
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d2 = np.log(fwd/strike)/sigma_std - 0.5*sigma_std
+        cdf = spst.norm.cdf(cp*d2)  # formula according to wikipedia
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), 100 * np.finfo(float).eps)
-        d1 = np.log(fwd / strike) / sigma_std + 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
 
         gamma = (
-            df * spst.norm.pdf(d1) / fwd / sigma_std
+                df*spst.norm.pdf(d1)/fwd/sigma_std
         )  # formula according to wikipedia
         if not self.is_fwd:
-            gamma *= (divf / df) ** 2
+            gamma *= (divf/df)**2
         return gamma
 
     def theta(self, strike, spot, texp, cp=1):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), 100 * np.finfo(float).eps)
-        d1 = np.log(fwd / strike) / sigma_std
-        d2 = d1 - 0.5 * sigma_std
-        d1 += 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
-        theta = -0.5 * spst.norm.pdf(d1) * fwd * self.sigma / np.sqrt(
+        theta = -0.5*spst.norm.pdf(d1)*fwd*self.sigma/np.sqrt(
             texp
-        ) - cp * self.intr * strike * spst.norm.cdf(cp * d2)
+        ) - cp*self.intr*strike*spst.norm.cdf(cp*d2)
         theta *= df
         return theta
 
@@ -169,8 +194,8 @@ class Bsm(opt.OptAnalyticABC):
         """
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        strike_std = strike / fwd  # strike / fwd
-        price_std = price / df / fwd  # forward price / fwd
+        strike_std = strike/fwd  # strike / fwd
+        price_std = price/df/fwd  # forward price / fwd
 
         bsm_model = Bsm(0, is_fwd=True)
         p_min = bsm_model.price(strike_std, 1.0, texp, cp)
@@ -181,12 +206,12 @@ class Bsm(opt.OptAnalyticABC):
         # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
         ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (
-            p_max - price_std > Bsm.IMPVOL_TOL
+                p_max - price_std > Bsm.IMPVOL_TOL
         )
 
         # initial guess = inflection point in sigma (volga=0)
-        _sigma = np.ones_like(ind_solve) * np.sqrt(
-            2 * np.abs(np.log(strike_std)) / texp
+        _sigma = np.ones_like(ind_solve)*np.sqrt(
+            2*np.abs(np.log(strike_std))/texp
         )
 
         bsm_model.sigma = _sigma
@@ -196,7 +221,7 @@ class Bsm(opt.OptAnalyticABC):
         if np.any(ind_solve):
             for k in range(32):  # usually iteration ends less than 10
                 vega = bsm_model.vega(strike_std, 1.0, texp, cp)
-                _sigma -= p_err / vega
+                _sigma -= p_err/vega
                 bsm_model.sigma = _sigma
                 p_err = bsm_model.price(strike_std, 1.0, texp, cp) - price_std
                 p_err_max = np.amax(np.abs(p_err[ind_solve]))
@@ -254,31 +279,31 @@ class Bsm(opt.OptAnalyticABC):
             volatility smile under the specified model
         """
         if model.lower() == "bsm":
-            return self.sigma * np.ones_like(strike + spot + texp + cp)
+            return self.sigma*np.ones_like(strike + spot + texp + cp)
         if model.lower() == "norm":
             price = self.price(strike, spot, texp, cp=cp)
             return norm.Norm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == "norm-approx" or model.lower() == "norm-grunspan":
             fwd, _, _ = self._fwd_factor(spot, texp)
-            kk = strike / fwd
+            kk = strike/fwd
             lnk = np.log(kk)
             if model.lower() == "norm-approx":
                 return (
-                    self.sigma
-                    * fwd
-                    * np.sqrt(kk)
-                    * (1 + lnk ** 2 / 24)
-                    / (1 + self.sigma ** 2 * texp / 24)
+                        self.sigma
+                        *fwd
+                        *np.sqrt(kk)
+                        *(1 + lnk**2/24)
+                        /(1 + self.sigma**2*texp/24)
                 )
             else:
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    term1 = np.where(np.fabs(lnk) > 1e-8, (kk - 1) / lnk, 2 / (3 - kk))
+                    term1 = np.where(np.fabs(lnk) > 1e-8, (kk - 1)/lnk, 2/(3 - kk))
                     term2 = np.where(
                         np.fabs(lnk) > 1e-8,
-                        (np.log(term1) - lnk / 2) / lnk ** 2,
-                        1 / 24,
+                        (np.log(term1) - lnk/2)/lnk**2,
+                        1/24,
                     )
-                return self.sigma * fwd * term1 * (1 - term2 * self.sigma ** 2 * texp)
+                return self.sigma*fwd*term1*(1 - term2*self.sigma**2*texp)
         else:
             raise ValueError(f"Unknown model: {model}")
 
@@ -286,13 +311,13 @@ class Bsm(opt.OptAnalyticABC):
         strike2 = strike if strike2 is None else strike2
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd / strike2) / sigma_std
-        d2 = d1 - 0.5 * sigma_std
-        d1 += 0.5 * sigma_std
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike2)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
 
-        price = fwd * spst.norm.cdf(cp * d1) - strike * spst.norm.cdf(cp * d2)
-        price *= cp * df
+        price = fwd*spst.norm.cdf(cp*d1) - strike*spst.norm.cdf(cp*d2)
+        price *= cp*df
         return price
 
     def _barrier_params(self, barrier, spot):
@@ -307,9 +332,9 @@ class Bsm(opt.OptAnalyticABC):
             barrier option pricing parameters (psi, spot_mirror)
         """
         psi = np.power(
-            barrier / spot, 2 * (self.intr - self.divr) / self.sigma ** 2 - 1
+            barrier/spot, 2*(self.intr - self.divr)/self.sigma**2 - 1
         )
-        spot_reflected = barrier ** 2 / spot
+        spot_reflected = barrier**2/spot
         return psi, spot_reflected
 
     def price_barrier(self, strike, barrier, spot, texp, cp=1, io=-1):
@@ -334,7 +359,7 @@ class Bsm(opt.OptAnalyticABC):
         `mirror_sign` is +1/-1 if call/put remains same/flipped in the reflection principle
         +1 if (barrier < spot AND call) or (barrier > spot AND put), -1 otherwise
         """
-        mirror_sign = np.where(barrier < spot, 1, -1) * cp
+        mirror_sign = np.where(barrier < spot, 1, -1)*cp
         """
         This is a trick to handle a trivial case:
         Knock-out call with spot < strike < barrier is worth zero.
@@ -343,7 +368,7 @@ class Bsm(opt.OptAnalyticABC):
         In both scenario (mirror_sign = -1), we set strike = barrier, which will do the adjustment.
         """
         barrier = np.where(
-            mirror_sign > 0, barrier, cp * np.maximum(cp * strike, cp * barrier)
+            mirror_sign > 0, barrier, cp*np.maximum(cp*strike, cp*barrier)
         )
 
         p_euro1 = np.where(
@@ -353,17 +378,17 @@ class Bsm(opt.OptAnalyticABC):
         )
 
         p_euro2 = self._price_suboptimal(
-            strike, spot_reflected, texp, cp=mirror_sign * cp
+            strike, spot_reflected, texp, cp=mirror_sign*cp
         )
         p_euro2 -= np.where(
             mirror_sign > 0,
             0,
             self._price_suboptimal(
-                strike, spot_reflected, texp, cp=mirror_sign * cp, strike2=barrier
+                strike, spot_reflected, texp, cp=mirror_sign*cp, strike2=barrier
             ),
         )
 
-        p = p_euro1 + psi * p_euro2  # knock-in price
+        p = p_euro1 + psi*p_euro2  # knock-in price
         p = np.where(
             io > 0,
             p,  # knock-in type
@@ -385,10 +410,10 @@ class Bsm(opt.OptAnalyticABC):
         References:
             https://en.wikipedia.org/wiki/Log-normal_distribution
         """
-        ww = np.exp(texp * self.sigma ** 2)
+        ww = np.exp(texp*self.sigma**2)
         var = ww - 1
-        skew = (ww + 2) * np.sqrt(ww - 1)
-        exkurt = ww ** 2 * (ww * (ww + 2) + 3) - 6  # ww**4 + 2*ww**3 + 3*ww - 6
+        skew = (ww + 2)*np.sqrt(ww - 1)
+        exkurt = ww**2*(ww*(ww + 2) + 3) - 6  # ww**4 + 2*ww**3 + 3*ww - 6
         return var, skew, exkurt
 
 
@@ -417,6 +442,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
     beta = 1  # equivalent to Black-Scholes
     pivot = 0
     sigma_disp = None
+
     # _m_bsm = None
 
     def __init__(self, sigma, beta=1, pivot=0, *args, **kwargs):
@@ -436,7 +462,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
 
     @property
     def sigma(self):
-        return self.sigma_disp * self.beta
+        return self.sigma_disp*self.beta
 
     @sigma.setter
     def sigma(self, sigma):
@@ -452,7 +478,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         Returns:
             Displaces spot
         """
-        return self.beta * spot + (1 - self.beta) * self.pivot
+        return self.beta*spot + (1 - self.beta)*self.pivot
 
     def disp_strike(self, strike, texp):
         """
@@ -465,12 +491,12 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         Returns:
             Displace strike
         """
-        return self.beta * strike + (1 - self.beta) * self.forward(self.pivot, texp)
+        return self.beta*strike + (1 - self.beta)*self.forward(self.pivot, texp)
 
     def price(self, strike, spot, texp, cp=1):
         spot = self.disp_spot(spot)
         strike = self.disp_strike(strike, texp)
-        return (1 / self.beta) * super().price(strike, spot, texp, cp=cp)
+        return (1/self.beta)*super().price(strike, spot, texp, cp=cp)
 
     def delta(self, strike, spot, texp, cp=1):
         spot = self.disp_spot(spot)
@@ -491,18 +517,18 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         # need to mutiply beta because of (beta*sigma) appearing in the denominator of the bsm gamma
         spot = self.disp_spot(spot)
         strike = self.disp_strike(strike, texp)
-        return self.beta * super().gamma(strike, spot, texp, cp=cp)
+        return self.beta*super().gamma(strike, spot, texp, cp=cp)
 
     def theta(self, strike, spot, texp, cp=1):
         spot = self.disp_spot(spot)
         strike = self.disp_strike(strike, texp)
-        return (1 / self.beta) * super().theta(strike, spot, texp, cp=cp)
+        return (1/self.beta)*super().theta(strike, spot, texp, cp=cp)
 
     def impvol(self, price_in, strike, spot, texp, cp=1, setval=False):
         spot = self.disp_spot(spot)
         strike = self.disp_strike(strike, texp)
-        sigma = (1 / self.beta) * super().impvol(
-            self.beta * price_in, strike, spot, texp, cp=cp, setval=False
+        sigma = (1/self.beta)*super().impvol(
+            self.beta*price_in, strike, spot, texp, cp=cp, setval=False
         )
         if setval:
             self.sigma = sigma
@@ -524,32 +550,32 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         """
         if model.lower() == "norm-approx":
             fwdd = self.forward(self.disp_spot(spot), texp)
-            kkd = self.disp_strike(strike, texp) / fwdd
+            kkd = self.disp_strike(strike, texp)/fwdd
             lnkd = np.log(kkd)
             # self.sigma actually means self.beta * self._sigma
             vol = (
-                self.sigma_disp
-                * fwdd
-                * np.sqrt(kkd)
-                * (1 + lnkd ** 2 / 24)
-                / (1 + self.sigma ** 2 * texp / 24)
+                    self.sigma_disp
+                    *fwdd
+                    *np.sqrt(kkd)
+                    *(1 + lnkd**2/24)
+                    /(1 + self.sigma**2*texp/24)
             )
         elif model.lower() == "bsm-approx":
             fwd = self.forward(spot, texp)
-            kk = strike / fwd
+            kk = strike/fwd
             lnk = np.log(kk)
 
             fwdd = self.forward(self.disp_spot(spot), texp)
-            kkd = self.disp_strike(strike, texp) / fwdd
+            kkd = self.disp_strike(strike, texp)/fwdd
             lnkd = np.log(kkd)
 
             # self.sigma actually means self.beta * self.sigma_disp
-            vol = self.sigma_disp * (fwdd / fwd) * np.sqrt(kkd / kk)
+            vol = self.sigma_disp*(fwdd/fwd)*np.sqrt(kkd/kk)
             vol *= (
-                (1 + lnkd ** 2 / 24)
-                / (1 + lnk ** 2 / 24)
-                * (1 + vol ** 2 * texp / 24)
-                / (1 + self.sigma ** 2 * texp / 24)
+                    (1 + lnkd**2/24)
+                    /(1 + lnk**2/24)
+                    *(1 + vol**2*texp/24)
+                    /(1 + self.sigma**2*texp/24)
             )
         else:
             vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
@@ -557,12 +583,12 @@ class BsmDisp(smile.OptSmileABC, Bsm):
         return vol
 
     def price_barrier(self, strike, barrier, spot, *args, **kwargs):
-        return (1 / self.beta) * self.bsm_model.price_barrier(
+        return (1/self.beta)*self.bsm_model.price_barrier(
             self.disp(strike), self.disp(barrier), self.disp(spot), *args, **kwargs
         )
 
     def moments_vsk(self, texp=1):
         rv = super().moments_vsk(self, texp)
         rv[0] /= self.beta
-        rv[1] /= self.beta ** 3
-        rv[2] /= self.beta ** 4
+        rv[1] /= self.beta**3
+        rv[2] /= self.beta**4
