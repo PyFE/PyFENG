@@ -20,10 +20,10 @@ class HestonABC(sv.SvABC, abc.ABC):
             mean, variance
         """
 
-        expo = np.exp(-self.mr * dt)
+        expo = np.exp(-self.mr*dt)
         m = self.theta + (var0 - self.theta)*expo
         s2 = var0*expo + self.theta*(1 - expo)/2
-        s2 *= self.vov**2 * (1 - expo) / self.mr
+        s2 *= self.vov**2*(1 - expo)/self.mr
         return m, s2
 
     def avgvar_mv(self, var0, texp):
@@ -39,12 +39,12 @@ class HestonABC(sv.SvABC, abc.ABC):
             mean, variance
         """
 
-        mr_t = self.mr * texp
+        mr_t = self.mr*texp
         e_mr = np.exp(-mr_t)
         x0 = var0 - self.theta
-        vovn = self.vov * np.sqrt(texp)  # normalized vov
+        vovn = self.vov*np.sqrt(texp)  # normalized vov
 
-        m = self.theta + x0 * (1 - e_mr)/mr_t
+        m = self.theta + x0*(1 - e_mr)/mr_t
 
         var = (self.theta - 2*x0*e_mr) + \
               (var0 - 2.5*self.theta + (2*self.theta + (0.5*self.theta - var0)*e_mr)*e_mr)/mr_t
@@ -74,7 +74,7 @@ class HestonUncorrBallRoma1994(HestonABC):
         price = m_bs.price(strike, spot, texp, cp)
 
         if self.order == 2:
-            price += 0.5 * var * m_bs.d2_var(strike, spot, texp, cp)
+            price += 0.5*var*m_bs.d2_var(strike, spot, texp, cp)
         elif self.order > 2:
             raise ValueError(f"Not implemented for approx order: {self.order}")
 
