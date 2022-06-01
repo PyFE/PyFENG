@@ -19,4 +19,5 @@ setup(
     packages=["pyfeng"],
     test_suite="tests",
     install_requires=["numpy", "scipy"],
+    package_data={'pyfeng': ['data/*.xlsx']}
 )

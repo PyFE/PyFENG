@@ -1,3 +1,0 @@
-include pyfeng/data/ousv_benchmark.xlsx
-include pyfeng/data/heston_benchmark.xlsx
-include pyfeng/data/sabr_benchmark.xlsx
