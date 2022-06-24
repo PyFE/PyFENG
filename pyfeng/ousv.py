@@ -514,6 +514,7 @@ class OusvMcChoi2023(OusvMcABC):
                 z_sin = self.rng_spawn[2].standard_normal(size=(n_path, n_sin)).T
                 z_gpqr = self.rng_spawn[1].standard_normal(size=(n_path, 4)).T
 
+            # Create views to array rows
             z_g = z_gpqr[0, :]
             z_p = z_gpqr[1, :]
             z_q = z_gpqr[2, :]
@@ -524,14 +525,13 @@ class OusvMcChoi2023(OusvMcABC):
             q_std = np.sqrt(self._a6n2sum(mr_t, ns=n_sin, odd=2))  # even
             corr = self._a4sum(mr_t, ns=n_sin, odd=1)/(g_std*p_std)
 
-            z_g = corr*z_p + np.sqrt(1 - corr**2)*z_g
-            z_g *= g_std
+            z_g[:] = (corr*z_p + np.sqrt(1 - corr**2)*z_g) * g_std
             z_p *= p_std
             z_q *= q_std
 
             r_m = self._a2sum(mr_t, ns=n_sin)
             r_var = self._a4sum(mr_t, ns=n_sin)
-            z_r = np.sqrt(r_var)*(z_r**2 - 1) + r_m
+            z_r[:] = np.sqrt(r_var)*(z_r**2 - 1) + r_m
         else:
             n_sin = zn.shape[0] - 1
             z_sin = zn[1:, :]
