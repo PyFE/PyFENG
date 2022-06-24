@@ -38,7 +38,6 @@ class Bsm(opt.OptAnalyticABC):
             sigma: model volatility
             texp: time to expiry
             cp: 1/-1 for call/put option
-            sigma: model volatility
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
             is_fwd: if True, treat `spot` as forward price. False by default.
