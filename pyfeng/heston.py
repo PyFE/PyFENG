@@ -42,15 +42,10 @@ class HestonABC(sv.SvABC, abc.ABC):
         mr_t = self.mr*texp
         e_mr = np.exp(-mr_t)
         x0 = var0 - self.theta
-        vovn = self.vov*np.sqrt(texp)  # normalized vov
-
-        m = self.theta + x0*(1 - e_mr)/mr_t
-
-        var = (self.theta - 2*x0*e_mr) + \
-              (var0 - 2.5*self.theta + (2*self.theta + (0.5*self.theta - var0)*e_mr)*e_mr)/mr_t
-        var *= (vovn/mr_t)**2
-
-        return m, var
+        mean = self.theta + x0*(1 - e_mr)/mr_t
+        var = (self.theta - 2*x0*e_mr) + (1 - e_mr)*(var0 - 2.5*self.theta + (var0 - self.theta/2)*e_mr)/mr_t
+        var *= (self.vov/mr_t)**2 * texp
+        return mean, var
 
 
 class HestonUncorrBallRoma1994(HestonABC):
