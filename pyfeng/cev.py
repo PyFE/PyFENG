@@ -22,7 +22,6 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
 
     sigma = None
     beta = 0.5
-    is_bsm_sigma = False
 
     def __init__(self, sigma, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
         """
@@ -45,20 +44,15 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         fwd = self.forward(spot, texp)
 
         betac = 1.0 - self.beta
-        a = 0.5 / betac
+        a = 0.5/betac
         sigma_std = np.maximum(
-            self.sigma / np.power(fwd, betac) * np.sqrt(texp), np.finfo(float).eps
+            self.sigma/np.power(fwd, betac)*np.sqrt(texp), np.finfo(float).eps
         )
-        x = 0.5 / np.square(betac * sigma_std)
+        x = 0.5/np.square(betac*sigma_std)
 
         if log:
-            log_mass = (a - 1) * np.log(x) - x - np.log(spsp.gamma(a))
-            log_mass += np.log(
-                1
-                + (a - 1)
-                / x
-                * (1 + (a - 2) / x * (1 + (a - 3) / x * (1 + (a - 4) / x)))
-            )
+            log_mass = (a - 1)*np.log(x) - x - np.log(spsp.gamma(a))
+            log_mass += np.log(1 + (a - 1)/x*(1 + (a - 2)/x*(1 + (a - 3)/x*(1 + (a - 4)/x))))
             with np.errstate(divide="ignore"):
                 log_mass = np.where(x > 100, log_mass, np.log(spst.gamma.sf(x=x, a=a)))
             return log_mass
@@ -77,41 +71,40 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         """
         fwd = self.forward(spot, texp)
         betac = 1.0 - self.beta
-        alpha = self.sigma / np.power(fwd, betac)
-        t0 = 0.5 / (betac * alpha) ** 2
+        alpha = self.sigma/np.power(fwd, betac)
+        t0 = 0.5/(betac*alpha)**2
         return t0
 
     @staticmethod
-    def price_formula(
-        strike, spot, texp, sigma=None, cp=1, beta=0.5, intr=0.0, divr=0.0, is_fwd=False
-    ):
+    def price_formula(strike, spot, texp, sigma=None, cp=1, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
         """
+        CEV model call/put option pricing formula (static method)
 
         Args:
-            strike:
-            spot:
-            texp:
-            cp:
-            sigma:
-            beta:
-            intr:
-            divr:
-            is_fwd:
+            strike: strike price
+            spot: spot (or forward)
+            sigma: model volatility
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            beta: elasticity parameter
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns:
-
+            Vanilla option price
         """
 
-        disc_fac = np.exp(-texp * intr)
-        fwd = spot * (1.0 if is_fwd else np.exp(-texp * divr) / disc_fac)
+        disc_fac = np.exp(-texp*intr)
+        fwd = spot*(1.0 if is_fwd else np.exp(-texp*divr)/disc_fac)
 
         betac = 1.0 - beta
-        betac_inv = 1.0 / betac
-        alpha = sigma / np.power(fwd, betac)
-        sigma_std = np.maximum(alpha * np.sqrt(texp), np.finfo(float).eps)
-        kk = strike / fwd
-        x = 1.0 / np.square(betac * sigma_std)
-        y = np.power(kk, 2 * betac) * x
+        betac_inv = 1.0/betac
+        alpha = sigma/np.power(fwd, betac)
+        sigma_std = np.maximum(alpha*np.sqrt(texp), np.finfo(float).eps)
+        kk = strike/fwd
+        x = 1.0/np.square(betac*sigma_std)
+        y = np.power(kk, 2*betac)*x
 
         # Need to clean up the case beta > 0
         if beta > 1.0:
@@ -123,43 +116,25 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         # Computing call and put is a bit of computtion waste, but do this for vectorization.
         price = np.where(
             cp > 0,
-            fwd * ncx2_sf(y, 2 + betac_inv, x) - strike * ncx2_cdf(x, betac_inv, y),
-            strike * ncx2_sf(x, betac_inv, y) - fwd * ncx2_cdf(y, 2 + betac_inv, x),
+            fwd*ncx2_sf(y, 2 + betac_inv, x) - strike*ncx2_cdf(x, betac_inv, y),
+            strike*ncx2_sf(x, betac_inv, y) - fwd*ncx2_cdf(y, 2 + betac_inv, x),
         )
-        return disc_fac * price
+        return disc_fac*price
 
     def delta(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
-        betac_inv = 1 / (1 - self.beta)
+        betac_inv = 1/(1 - self.beta)
 
-        k_star = 1.0 / np.square(self.sigma / betac_inv) / texp
-        x = k_star * np.power(fwd, 2 / betac_inv)
-        y = k_star * np.power(strike, 2 / betac_inv)
+        k_star = 1.0/np.square(self.sigma/betac_inv)/texp
+        x = k_star*np.power(fwd, 2/betac_inv)
+        y = k_star*np.power(strike, 2/betac_inv)
 
         if self.beta < 1.0:
-            delta = (
-                0.5 * (cp - 1)
-                + spst.ncx2.sf(y, 2 + betac_inv, x)
-                + 2
-                * x
-                / betac_inv
-                * (
-                    spst.ncx2.pdf(y, 4 + betac_inv, x)
-                    - strike / fwd * spst.ncx2.pdf(x, betac_inv, y)
-                )
-            )
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(y, 2 + betac_inv, x)\
+                    + 2*x/betac_inv*(spst.ncx2.pdf(y, 4 + betac_inv, x) - strike/fwd*spst.ncx2.pdf(x, betac_inv, y))
         else:
-            delta = (
-                0.5 * (cp - 1)
-                + spst.ncx2.sf(x, -betac_inv, y)
-                - 2
-                * x
-                / betac_inv
-                * (
-                    spst.ncx2.pdf(x, -betac_inv, y)
-                    - strike / fwd * spst.ncx2.pdf(y, 4 - betac_inv, x)
-                )
-            )
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(x, -betac_inv, y)\
+                    - 2*x/betac_inv*(spst.ncx2.pdf(x, -betac_inv, y) - strike/fwd*spst.ncx2.pdf(y, 4 - betac_inv, x))
 
         delta *= df if self.is_fwd else divf
         return delta
@@ -168,75 +143,57 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
         fwd = self.forward(spot, texp)
 
         betac = 1.0 - self.beta
-        betac_inv = 1.0 / betac
-        alpha = self.sigma / np.power(fwd, betac)
-        sigma_std = np.maximum(alpha * np.sqrt(texp), np.finfo(float).eps)
-        kk = strike / fwd
-        x = 1.0 / np.square(betac * sigma_std)
-        y = np.power(kk, 2 * betac) * x
+        betac_inv = 1.0/betac
+        alpha = self.sigma/np.power(fwd, betac)
+        sigma_std = np.maximum(alpha*np.sqrt(texp), np.finfo(float).eps)
+        kk = strike/fwd
+        x = 1.0/np.square(betac*sigma_std)
+        y = np.power(kk, 2*betac)*x
 
-        cdf = np.where(
-            cp > 0, spst.ncx2.cdf(x, betac_inv, y), spst.ncx2.sf(x, betac_inv, y)
-        )
+        cdf = np.where(cp > 0, spst.ncx2.cdf(x, betac_inv, y), spst.ncx2.sf(x, betac_inv, y))
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
-        betac_inv = 1 / (1 - self.beta)
+        betac_inv = 1/(1 - self.beta)
 
-        k_star = 1.0 / np.square(self.sigma / betac_inv) / texp
-        x = k_star * np.power(fwd, 2 / betac_inv)
-        y = k_star * np.power(strike, 2 / betac_inv)
+        k_star = 1.0/np.square(self.sigma/betac_inv)/texp
+        x = k_star*np.power(fwd, 2/betac_inv)
+        y = k_star*np.power(strike, 2/betac_inv)
 
         if self.beta < 1.0:
-            gamma = (
-                (2 + betac_inv - x) * spst.ncx2.pdf(y, 4 + betac_inv, x)
-                + x * spst.ncx2.pdf(y, 6 + betac_inv, x)
-                + strike
-                / fwd
-                * (
-                    x * spst.ncx2.pdf(x, betac_inv, y)
-                    - y * spst.ncx2.pdf(x, 2 + betac_inv, y)
-                )
-            )
+            gamma = (2 + betac_inv - x)*spst.ncx2.pdf(y, 4 + betac_inv, x) \
+                    + x*spst.ncx2.pdf(y, 6 + betac_inv, x) \
+                    + strike/fwd*(x*spst.ncx2.pdf(x, betac_inv, y) - y*spst.ncx2.pdf(x, 2 + betac_inv, y))
         else:
-            gamma = (
-                x * spst.ncx2.pdf(x, -betac_inv, y)
-                - y * spst.ncx2.pdf(x, 2 - betac_inv, y)
-            ) + strike / fwd * (
-                (2 - betac_inv - x) * spst.ncx2.pdf(y, 4 - betac_inv, x)
-                + x * spst.ncx2.pdf(y, 6 - betac_inv, x)
-            )
+            gamma = (x*spst.ncx2.pdf(x, -betac_inv, y) - y*spst.ncx2.pdf(x, 2 - betac_inv, y)) \
+                    + strike/fwd*((2 - betac_inv - x)*spst.ncx2.pdf(y, 4 - betac_inv, x)
+                                  + x*spst.ncx2.pdf(y, 6 - betac_inv, x))
 
-        gamma *= 2 * (divf / betac_inv) ** 2 / df * x / fwd
+        gamma *= 2*(divf/betac_inv)**2/df*x/fwd
 
         if self.is_fwd:
-            gamma *= (df / divf) ** 2
+            gamma *= (df/divf)**2
 
         return gamma
 
     def vega(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
-        spot = fwd * df / divf
+        spot = fwd*df/divf
 
-        betac_inv = 1 / (1 - self.beta)
+        betac_inv = 1/(1 - self.beta)
 
-        k_star = 1.0 / np.square(self.sigma / betac_inv) / texp
-        x = k_star * np.power(fwd, 2 / betac_inv)
-        y = k_star * np.power(strike, 2 / betac_inv)
+        k_star = 1.0/np.square(self.sigma/betac_inv)/texp
+        x = k_star*np.power(fwd, 2/betac_inv)
+        y = k_star*np.power(strike, 2/betac_inv)
 
         if self.beta < 1.0:
-            vega = -fwd * spst.ncx2.pdf(y, 4 + betac_inv, x) + strike * spst.ncx2.pdf(
-                x, betac_inv, y
-            )
+            vega = -fwd*spst.ncx2.pdf(y, 4 + betac_inv, x) + strike*spst.ncx2.pdf(x, betac_inv, y)
         else:
-            vega = fwd * spst.ncx2.pdf(x, -betac_inv, y) - strike * spst.ncx2.pdf(
-                y, 4 - betac_inv, x
-            )
+            vega = fwd*spst.ncx2.pdf(x, -betac_inv, y) - strike*spst.ncx2.pdf(y, 4 - betac_inv, x)
 
-        sigma = self.sigma * spot ** (self.beta - 1)
-
-        vega *= df * 2 * x / sigma
+        sigma = self.sigma*np.power(spot, self.beta - 1)
+        vega *= df*2*x/sigma
         return vega
 
     def theta(self, strike, spot, texp, cp=1):

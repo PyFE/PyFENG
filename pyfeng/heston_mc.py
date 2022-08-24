@@ -25,7 +25,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         chi_dim = 4 * self.theta * self.mr / self.vov**2
         return chi_dim
 
-    def chi_lambda(self, df):
+    def chi_lambda(self, dt):
         """
         Noncentral Chi-square (NCX) distribution's noncentrality parameter
 
@@ -33,7 +33,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
             noncentrality parameter (scalar)
         """
         chi_lambda = 4 * self.sigma * self.mr / self.vov**2
-        chi_lambda /= np.exp(self.mr * df) - 1
+        chi_lambda /= np.exp(self.mr*dt) - 1
         return chi_lambda
 
     def phi_exp(self, texp):
@@ -117,6 +117,14 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     def cond_spot_sigma(self, var_0, texp):
         var_final, var_avg = self.cond_states(var_0, texp)
 
+        avgvar_m, avgvar_v = self.avgvar_mv(var_0, texp)
+        self.result = {**self.result,
+                       'avgvar mean': avgvar_m,
+                       'avgvar mean error': var_avg.mean()/avgvar_m - 1,
+                       'avgvar var': avgvar_v,
+                       'avgvar var error': np.square(var_avg - avgvar_m).mean()/avgvar_v - 1
+                       }
+
         spot_cond = ((var_final - var_0) - self.mr * texp * (self.theta - var_avg)) / self.vov \
              - 0.5 * self.rho * var_avg * texp
         np.exp(self.rho * spot_cond, out=spot_cond)
@@ -124,154 +132,6 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
-
-
-class HestonMcAndersen2008(HestonMcABC):
-    """
-    Heston model with conditional Monte-Carlo simulation
-
-    Conditional MC for Heston model based on QE discretization scheme by Andersen (2008).
-
-    Underlying price follows a geometric Brownian motion, and variance of the price follows a CIR process.
-
-    References:
-        - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
-
-    Examples:
-        >>> import numpy as np
-        >>> import pyfeng.ex as pfex
-        >>> strike = np.array([60, 100, 140])
-        >>> spot = 100
-        >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pfex.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
-        >>> m.price(strike, spot, texp)
-        >>> # true price: 44.330, 13.085, 0.296
-        array([44.31943535, 13.09371251,  0.29580431])
-    """
-    psi_c = 1.5  # parameter used by the Andersen QE scheme
-    scheme = 4
-
-    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
-        """
-        Set MC parameters
-
-        Args:
-            n_path: number of paths
-            dt: time step for Euler/Milstein steps
-            rn_seed: random number seed
-            antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for Poisson-mixture Gamma, 4 for Andersen (2008)'s QE scheme
-
-        References:
-            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
-        """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        self.scheme = scheme
-
-    def var_step_qe(self, var_0, dt):
-        m, s2 = self.var_mv(var_0, dt)
-        psi = s2 / m**2
-
-        zz = self.rv_normal(spawn=0)
-
-        # compute vt(i+1) given psi
-        # psi < psi_c
-        idx_below = (psi <= self.psi_c)
-        ins = 2 / psi[idx_below]
-        b2 = (ins - 1) + np.sqrt(ins * (ins - 1))
-        a = m[idx_below] / (1 + b2)
-
-        var_t = np.zeros(self.n_path)
-        var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2
-
-        # psi_c < psi
-        one_m_u = spst.norm.cdf(zz[~idx_below])  # 1 - U
-        var_t_above = np.zeros_like(one_m_u)
-
-        one_m_p = 2 / (psi[~idx_below] + 1)  # 1 - p
-        beta = one_m_p / m[~idx_below]
-
-        # No need to consider (uu <= pp) & ~idx_below because the var_t value will be zero
-        idx_above = (one_m_u <= one_m_p)
-        var_t_above[idx_above] = (np.log(one_m_p / one_m_u) / beta)[idx_above]
-
-        var_t[~idx_below] = var_t_above
-
-        return var_t
-
-    def vol_paths(self, tobs):
-        var_0 = self.sigma
-        dt = np.diff(tobs, prepend=0)
-        n_dt = len(dt)
-
-        var_path = np.full((n_dt + 1, self.n_path), var_0)  # variance series: V0, V1,...,VT
-        var_t = np.full(self.n_path, var_0)
-
-        if self.scheme < 2:
-            milstein = (self.scheme == 1)
-            for i in range(n_dt):
-                # Euler (or Milstein) scheme
-                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-                var_path[i + 1, :] = var_t
-
-        elif self.scheme == 2:
-            for i in range(n_dt):
-                var_t = self.var_step_ncx2(var_t, dt[i])
-                var_path[i + 1, :] = var_t
-
-        elif self.scheme == 3:
-            for i in range(n_dt):
-                var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
-                var_path[i + 1, :] = var_t
-
-        elif self.scheme == 4:
-            for i in range(n_dt):
-                var_t = self.var_step_qe(var_t, dt[i])
-                var_path[i + 1, :] = var_t
-
-        else:
-            raise ValueError(f'Invalid scheme: {self.scheme}')
-
-        return var_path
-
-    def cond_states(self, var_0, texp):
-
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        dt = np.diff(tobs, prepend=0)
-
-        # precalculate the Simpson's rule weight
-        weight = np.ones(n_dt + 1)
-        weight[1:-1] = 2
-        weight /= weight.sum()
-
-        var_t = np.full(self.n_path, var_0)
-        var_avg = weight[0] * var_t
-
-        if self.scheme < 2:
-            milstein = (self.scheme == 1)
-            for i in range(n_dt):
-                # Euler (or Milstein) scheme
-                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-                var_avg += weight[i + 1] * var_t
-
-        elif self.scheme == 2:
-            for i in range(n_dt):
-                var_t = self.var_step_ncx2(var_t, dt[i])
-                var_avg += weight[i + 1] * var_t
-
-        elif self.scheme == 3:
-            for i in range(n_dt):
-                var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
-                var_avg += weight[i + 1] * var_t
-
-        elif self.scheme == 4:
-            for i in range(n_dt):
-                var_t = self.var_step_qe(var_t, dt[i])
-                var_avg += weight[i + 1] * var_t
-
-        return var_t, var_avg  # * texp
 
 
 class HestonMcGlassermanKim2011(HestonMcABC):
@@ -797,6 +657,192 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         return var_t, var_avg
 
 
+class HestonMcAndersen2008(HestonMcGlassermanKim2011):
+    """
+    Heston model with conditional Monte-Carlo simulation
+
+    Conditional MC for Heston model based on QE discretization scheme by Andersen (2008).
+
+    Underlying price follows a geometric Brownian motion, and variance of the price follows a CIR process.
+
+    References:
+        - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng.ex as pfex
+        >>> strike = np.array([60, 100, 140])
+        >>> spot = 100
+        >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
+        >>> m = pfex.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
+        >>> m.price(strike, spot, texp)
+        >>> # true price: 44.330, 13.085, 0.296
+        array([44.31943535, 13.09371251,  0.29580431])
+    """
+    psi_c = 1.5  # parameter used by the Andersen QE scheme
+    scheme = 4
+
+    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            dt: time step for Euler/Milstein steps
+            rn_seed: random number seed
+            antithetic: antithetic
+            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for Poisson-mixture Gamma, 4 for Andersen (2008)'s QE scheme
+
+        References:
+            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
+        """
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
+        self.scheme = scheme
+
+    def var_step_qe(self, var_0, dt):
+        m, psi = self.var_mv(var_0, dt)  # put variance into psi
+        psi /= m**2
+
+        zz = self.rv_normal(spawn=0)
+
+        # compute vt(i+1) given psi
+        # psi < psi_c
+        idx_below = (psi <= self.psi_c)
+        ins = 2 / psi[idx_below]
+        b2 = (ins - 1) + np.sqrt(ins * (ins - 1))  # b^2. Eq (27)
+        a = m[idx_below] / (1 + b2)  # Eq (28)
+
+        var_t = np.zeros(self.n_path)
+        var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2  # Eq (23)
+
+        # psi_c < psi
+        one_m_u = spst.norm.cdf(zz[~idx_below])  # 1 - U
+        var_t_above = np.zeros_like(one_m_u)
+
+        one_m_p = 2 / (psi[~idx_below] + 1)  # 1 - p. Eq (29)
+        beta = one_m_p / m[~idx_below]  # Eq (30)
+
+        # No need to consider (uu <= pp) & ~idx_below because the var_t value will be zero
+        idx_above = (one_m_u <= one_m_p)
+        var_t_above[idx_above] = (np.log(one_m_p / one_m_u) / beta)[idx_above]  # Eq (25)
+
+        var_t[~idx_below] = var_t_above
+
+        return var_t
+
+    def vol_paths(self, tobs):
+        var_0 = self.sigma
+        dt = np.diff(tobs, prepend=0)
+        n_dt = len(dt)
+
+        var_path = np.full((n_dt + 1, self.n_path), var_0)  # variance series: V0, V1,...,VT
+        var_t = np.full(self.n_path, var_0)
+
+        if self.scheme < 2:
+            milstein = (self.scheme == 1)
+            for i in range(n_dt):
+                # Euler (or Milstein) scheme
+                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
+                var_path[i + 1, :] = var_t
+
+        elif self.scheme == 2:
+            for i in range(n_dt):
+                var_t = self.var_step_ncx2(var_t, dt[i])
+                var_path[i + 1, :] = var_t
+
+        elif self.scheme == 3:
+            for i in range(n_dt):
+                var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
+                var_path[i + 1, :] = var_t
+
+        elif self.scheme == 4:
+            for i in range(n_dt):
+                var_t = self.var_step_qe(var_t, dt[i])
+                var_path[i + 1, :] = var_t
+
+        else:
+            raise ValueError(f'Invalid scheme: {self.scheme}')
+
+        return var_path
+
+    def cond_states(self, var_0, texp):
+
+        tobs = self.tobs(texp)
+        n_dt = len(tobs)
+        dt = np.diff(tobs, prepend=0)
+
+        # precalculate the Trapezoidal rule weight
+        weight = np.full(n_dt + 1, 1/n_dt)
+        weight[[0, -1]] = 0.5/n_dt  # the first and last element
+
+        var_t = np.full(self.n_path, var_0)
+
+        if self.scheme < 2:
+            milstein = (self.scheme == 1)
+            var_avg = weight[0]*var_t
+            for i in range(n_dt):
+                # Euler (or Milstein) scheme
+                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
+                var_avg += weight[i + 1] * var_t
+
+        elif self.scheme == 2:
+            var_avg = weight[0]*var_t
+            for i in range(n_dt):
+                var_t = self.var_step_ncx2(var_t, dt[i])
+                var_avg += weight[i + 1] * var_t
+
+        elif self.scheme == 3:
+            var_avg = weight[0]*var_t
+            for i in range(n_dt):
+                var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
+                var_avg += weight[i + 1] * var_t
+
+        elif self.scheme == 4:
+            var_avg = weight[0]*var_t
+            for i in range(n_dt):
+                var_t = self.var_step_qe(var_t, dt[i])
+                var_avg += weight[i + 1] * var_t
+
+        elif self.scheme == 5:
+            m_x, _ = self.x1star_avgvar_mv(dt[0], kk=0)
+            m_z, _ = self.x2star_avgvar_mv(dt[0], kk=0)
+
+            weight *= 2 * m_x
+            weight_eta = 2 * m_z / n_dt
+            var_avg = weight[0] * var_t
+            for i in range(n_dt):
+                var_t, eta = self.var_step_ncx2_eta(var_t, dt[i])
+                var_avg += weight[i + 1] * var_t + weight_eta * eta
+
+            var_avg += 0.5 * m_z * self.chi_dim()
+
+        return var_t, var_avg
+
+    def avgvar_var_unexplained(self, texp, dt=None):
+        """
+        Unexplained variance ratio of average variance
+        This is valid only for time discretisation with Poisson conditioning.
+
+        Args:
+            texp: time to expiry
+            dt: time step
+
+        Returns:
+            ratio
+        """
+
+        dt = dt or self.dt
+        mean, var = self.avgvar_mv(self.sigma, texp)
+
+        m_x, v_x = self.x1star_avgvar_mv(dt, kk=0)
+        m_z, v_z = self.x2star_avgvar_mv(dt, kk=0)
+
+        vov2dt = self.vov**2 * dt
+        unex = (v_x*2 + v_z*4/vov2dt) * mean * dt / texp
+        return unex / var
+
+
 class HestonMcTseWan2013(HestonMcGlassermanKim2011):
     """
     Almost exact MC for Heston model.
@@ -958,4 +1004,3 @@ class HestonMcChoiKwok2023(HestonMcGlassermanKim2011):
         var_avg = self.draw_x123(var_sum, dt[0], shape_sum) / n_dt
 
         return var_t, var_avg
-
