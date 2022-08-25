@@ -1,7 +1,7 @@
 #from .heston_fft import HestonFft
 
 # SV models (CMC, AE) from ASP 2021
-from .heston_mc import HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013, HestonMcChoiKwok2023
+from .heston_mc import HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013, HestonMcChoiKwok2023, HestonMcPoisTimeStep
 from .sv32_mc import Sv32McCondQE, Sv32McAe2
 from .sv32_mc2 import Sv32McTimeStep, Sv32McExactBaldeaux2012, Sv32McExactChoiKwok2023
 from .subord_bm import VarGammaQuad, ExpNigQuad

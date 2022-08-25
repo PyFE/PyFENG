@@ -220,6 +220,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         """
         return NotImplementedError
 
+
     def price(self, strike, spot, texp, cp=1):
 
         kk = strike / spot
@@ -240,6 +241,30 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         price = spot * np.mean(price_grid, axis=1)
 
         return price[0] if scalar_output else price
+
+    @abc.abstractmethod
+    def avgvar_realized(self, texp):
+        return NotImplementedError
+
+    def price_var(self, strike, texp, cp=1):
+        """
+
+        Args:
+            strike: strike price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+
+        Returns:
+
+        """
+
+        var = self.avgvar_realized(texp)
+
+        if strike is None or cp == 0: # variance swap
+            return np.mean(var)
+        else: # variance option
+            return np.mean(np.fmax(np.sign(cp)*(var - strike, 0)))
+
 
     def price_paths(self, tobs):
         price = np.ones((len(tobs)+1, self.n_path))

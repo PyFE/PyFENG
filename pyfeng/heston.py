@@ -47,6 +47,41 @@ class HestonABC(sv.SvABC, abc.ABC):
         var *= (self.vov/mr_t)**2 * texp
         return mean, var
 
+    def fair_strike_var(self, texp, aa):
+        """
+        Analytic fair strike of variance swap
+
+        Args:
+            texp: time to expiry
+            aa: number of observation per year
+
+        Returns:
+            Fair strike
+        """
+
+        var0 = self.sigma
+
+        ### continuously monitored fair strike (same as mean of avgvar)
+        mr_t = self.mr*texp
+        e_mr = np.exp(-mr_t)
+        x0 = var0 - self.theta
+        strike = self.theta + x0*(1 - e_mr)/mr_t
+
+        if aa is not None:
+            ### adjustment for discrete monitoring
+            mr_a = self.mr/aa
+            e_mr_a = np.exp(-mr_a)
+
+            tmp = self.theta - 2*self.intr
+            strike += tmp / (4*aa) * (tmp + 2*x0*(1 - e_mr)/mr_t)
+
+            tmp = self.vov / self.mr
+            strike += self.theta*tmp * (tmp/4 - self.rho) * (1 - (1-e_mr_a)/mr_a)
+            strike += x0 * tmp * (tmp/2 - self.rho) * (1 - e_mr)/mr_t * (1 + mr_a/(1-e_mr_a))
+            strike -= (tmp**2*(self.mr - 2*var0) + 2*x0**2/self.mr) * (1 - e_mr**2)/(8*mr_t) * (1-e_mr_a)/(1+e_mr_a)
+
+        return strike
+
 
 class HestonUncorrBallRoma1994(HestonABC):
     """
