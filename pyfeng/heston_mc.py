@@ -132,7 +132,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     def cond_spot_sigma(self, var_0, texp):
         var_final, var_avg = self.cond_states(var_0, texp)
 
-        avgvar_m, avgvar_v = self.avgvar_mv(var_0, texp)
+        avgvar_m, avgvar_v = self.avgvar_mv(texp, var_0)
         self.result = {**self.result,
                        'avgvar mean': avgvar_m,
                        'avgvar mean error': var_avg.mean()/avgvar_m - 1,
@@ -140,7 +140,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
                        'avgvar var error': np.square(var_avg - avgvar_m).mean()/avgvar_v - 1
                        }
 
-        spot_cond = ((var_final - var_0) - self.mr * texp * (self.theta - var_avg)) / self.vov \
+        spot_cond = ((var_final - var_0) + self.mr * texp * (var_avg - self.theta)) / self.vov \
              - 0.5 * self.rho * var_avg * texp
         np.exp(self.rho * spot_cond, out=spot_cond)
         sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * var_avg)  # normalize by initial variance
@@ -161,8 +161,8 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             log return
         """
-        mean_ln = self.rho * ((var_t - var_0) - self.mr * dt * (self.theta - var_avg)) / self.vov \
-            - (self.intr - 0.5 * var_avg) * dt
+        mean_ln = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (var_avg - self.theta))  \
+            + (self.intr - 0.5 * var_avg) * dt
         sigma_ln = np.sqrt((1.0 - self.rho**2) * var_avg * dt)
         zn = self.rv_normal(spawn=4)
         return mean_ln + sigma_ln * zn
@@ -890,7 +890,7 @@ class HestonMcPoisTimeStep(HestonMcABC):
         """
 
         dt = dt or self.dt
-        mean, var = self.avgvar_mv(self.sigma, texp)
+        mean, var = self.avgvar_mv(texp)
 
         m_x, v_x = self.x1star_avgvar_mv(dt, kk=0)
         m_z, v_z = self.x2star_avgvar_mv(dt, kk=0)

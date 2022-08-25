@@ -246,7 +246,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     def avgvar_realized(self, texp):
         return NotImplementedError
 
-    def price_var(self, strike, texp, cp=1):
+    def price_varswapopt(self, strike, texp, cp=1):
         """
 
         Args:
