@@ -1,6 +1,5 @@
 import abc
 import numpy as np
-import scipy.stats as spst
 from . import sv_abc as sv
 from . import bsm
 
@@ -51,13 +50,13 @@ class HestonABC(sv.SvABC, abc.ABC):
         var *= (self.vov/mr_t)**2 * texp
         return mean, var
 
-    def varswap(self, texp, n_per_yr):
+    def strike_var_swap_analytic(self, texp, dt):
         """
         Analytic fair strike of variance swap. Eq (11) in Bernard & Cui (2014)
 
         Args:
             texp: time to expiry
-            n_per_yr: number of observation per year. If None, continuous monitoring
+            dt: observation time step. If None, continuous monitoring
 
         Returns:
             Fair strike
@@ -74,18 +73,18 @@ class HestonABC(sv.SvABC, abc.ABC):
         x0 = var0 - self.theta
         strike = self.theta + x0*(1 - e_mr_t)/mr_t
 
-        if n_per_yr is not None:
+        if dt is not None:
             ### adjustment for discrete monitoring
-            mr_a = self.mr/n_per_yr
-            e_mr_a = np.exp(-mr_a)
+            mr_h = self.mr * dt
+            e_mr_h = np.exp(-mr_h)
 
             tmp = self.theta - 2*self.intr
-            strike += tmp/(4*n_per_yr)*(tmp + 2*x0*(1 - e_mr_t)/mr_t)
+            strike += tmp*dt/4 * (tmp + 2*x0*(1 - e_mr_t)/mr_t)
 
             tmp = self.vov / self.mr
-            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - (1-e_mr_a)/mr_a)
-            strike += x0 * tmp * (tmp/2 - self.rho) * (1 - e_mr_t)/mr_t * (1 + mr_a/(1 - 1/e_mr_a))
-            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * (1 - e_mr_t**2)/(8*mr_t) * (1-e_mr_a)/(1+e_mr_a)
+            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - (1-e_mr_h)/mr_h)
+            strike += x0 * tmp * (tmp/2 - self.rho) * (1 - e_mr_t)/mr_t * (1 + mr_h/(1 - 1/e_mr_h))
+            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * (1 - e_mr_t**2)/(8*mr_t) * (1-e_mr_h)/(1+e_mr_h)
 
         return strike
 

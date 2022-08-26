@@ -192,9 +192,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         if self.antithetic:
             # generate random number in the order of (path, time) first and transposed
             # in this way, the same paths are generated when increasing n_path
-            bm_incr = self.rng_spawn[0].standard_normal((int(n_path // 2), n_dt)).T * np.sqrt(
-                dt[:, None]
-            )
+            bm_incr = self.rng_spawn[0].standard_normal((int(n_path // 2), n_dt)).T * np.sqrt(dt[:, None])
             bm_incr = np.stack([bm_incr, -bm_incr], axis=1).reshape((-1, n_path))
         else:
             bm_incr = self.rng_spawn[0].standard_normal(n_path, n_dt).T * np.sqrt(dt[:, None])
@@ -243,10 +241,10 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         return price[0] if scalar_output else price
 
     @abc.abstractmethod
-    def avgvar_realized(self, texp):
+    def return_var_realized(self, texp, cond):
         return NotImplementedError
 
-    def price_varswapopt(self, strike, texp, cp=1):
+    def price_var_opt(self, strike, texp, cp=1):
         """
 
         Args:
@@ -258,13 +256,22 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         """
 
-        var = self.avgvar_realized(texp)
+        var = self.return_var_realized(texp)
+        return np.mean(np.fmax(np.sign(cp)*(var - strike), 0))
 
-        if strike is None or cp == 0: # variance swap
-            return np.mean(var)
-        else: # variance option
-            return np.mean(np.fmax(np.sign(cp)*(var - strike, 0)))
+    def strike_var_swap(self, texp):
+        """
+        Variance swap price (fair strike)
 
+        Args:
+            texp: time to expiry
+
+        Returns:
+            Variance swap fair strike
+        """
+
+        var = self.return_var_realized(texp, cond=True)
+        return np.mean(var)
 
     def price_paths(self, tobs):
         price = np.ones((len(tobs)+1, self.n_path))

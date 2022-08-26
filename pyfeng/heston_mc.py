@@ -148,6 +148,19 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         # return normalized forward and volatility
         return spot_cond, sigma_cond
 
+    def strike_var_swap_analytic(self, texp, dt=None):
+        dt = dt or self.dt
+        rv = super().strike_var_swap_analytic(texp, dt)
+        return rv
+
+    def cond_return_var(self, var_0, var_t, var_avg, dt):
+
+        mean_ln = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (var_avg - self.theta))  \
+            + (self.intr - 0.5 * var_avg) * dt
+        sigma_ln = np.sqrt((1.0 - self.rho**2) * var_avg * dt)
+        return mean_ln**2 + sigma_ln**2
+
+
     def log_return(self, var_0, var_t, var_avg, dt):
         """
         Samples log return, log(S_t/S_0)
@@ -167,11 +180,13 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         zn = self.rv_normal(spawn=4)
         return mean_ln + sigma_ln * zn
 
-    def avgvar_realized(self, texp):
+    def return_var_realized(self, texp, cond=False):
         """
+        Annualized realized return variance
 
         Args:
-            texp:
+            texp: time to expiry
+            cond: use conditional expectation without simulating price
 
         Returns:
 
@@ -180,16 +195,22 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         n_dt = len(tobs)
         dt = np.diff(tobs, prepend=0)
 
-        var = np.zeros(self.n_path)
+        var_r = np.zeros(self.n_path)
         var_0 = np.full(self.n_path, self.sigma)
 
-        for i in range(n_dt):
-            var_t, var_avg = self.cond_states_step(var_0, dt[i])
-            r_ln = self.log_return(var_0, var_t, var_avg, dt[i])
-            var_0 = var_t
-            var += r_ln ** 2
+        if cond:
+            for i in range(n_dt):
+                var_t, var_avg = self.cond_states_step(var_0, dt[i])
+                var_r += self.cond_return_var(var_0, var_t, var_avg, dt[i])
+                var_0 = var_t
+        else:
+            for i in range(n_dt):
+                var_t, var_avg = self.cond_states_step(var_0, dt[i])
+                r_ln = self.log_return(var_0, var_t, var_avg, dt[i])
+                var_r += r_ln ** 2
+                var_0 = var_t
 
-        return var
+        return var_r / texp
 
     def gamma_lambda(self, dt, kk=0):
         """
@@ -896,6 +917,7 @@ class HestonMcPoisTimeStep(HestonMcABC):
         m_z, v_z = self.x2star_avgvar_mv(dt, kk=0)
 
         vov2dt = self.vov**2 * dt
+
         unex = (v_x*2 + v_z*4/vov2dt) * mean * dt / texp
         return unex / var
 
@@ -920,7 +942,7 @@ class HestonMcTseWan2013(HestonMcABC):
     """
     dist = 'ig'
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, scheme=3, dist=None):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=3, dist=None):
         """
         Set MC parameters
 
@@ -932,7 +954,7 @@ class HestonMcTseWan2013(HestonMcABC):
             dist: distribution to use for approximation.
                 'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
-        super().set_num_params(n_path, dt, rn_seed, scheme=scheme)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
         if dist is not None:
             self.dist = dist
 
