@@ -131,7 +131,7 @@ class Sv32McTimeStep(Sv32McABC):
         elif self.scheme == 3:
             for i in range(n_dt):
                 # Euler (or Milstein) scheme
-                var_t, _ = self._m_heston.var_step_ncx2_eta(1/var_t, dt[i])
+                var_t, _ = self._m_heston.var_step_ncx2_pois(1/var_t, dt[i])
                 var_t = 1/var_t
                 var_avg += weight[i + 1] * var_t
         else:
@@ -195,7 +195,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, _ = self._m_heston.var_step_ncx2_eta(1/var_0, texp)
+        x_t, _ = self._m_heston.var_step_ncx2_pois(1/var_0, texp)
 
         def laplace_cond(bb):
             return self.laplace(bb, var_0, 1/x_t, texp)
@@ -315,7 +315,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, eta = self._m_heston.var_step_ncx2_eta(1/var_0, texp)
+        x_t, eta = self._m_heston.var_step_ncx2_pois(1/var_0, texp)
         # print('eta', eta.min(), eta.mean(), eta.max())
 
         def laplace_cond(bb):
@@ -361,7 +361,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
 
         for i in range(n_dt):
 
-            inv_var_t, _ = self._m_heston.var_step_ncx2_eta(inv_var_0, dt[i])
+            inv_var_t, _ = self._m_heston.var_step_ncx2_pois(inv_var_0, dt[i])
             m1, var = self.cond_avgvar_mv_numeric(1/inv_var_0, 1/inv_var_t, dt[i])
             inv_var_0 = inv_var_t
 

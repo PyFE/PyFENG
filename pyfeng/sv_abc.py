@@ -255,9 +255,16 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns:
 
         """
-
+        scalar_output = np.isscalar(strike)
+        strike = np.atleast_1d(strike)
+        p = np.zeros_like(strike)
         var = self.return_var_realized(texp)
-        return np.mean(np.fmax(np.sign(cp)*(var - strike), 0))
+        for i, k in enumerate(strike):
+            p[i] = np.mean(np.fmax(np.sign(cp)*(var - k), 0))
+        if scalar_output:
+            p = p[0]
+
+        return p * np.exp(-self.intr * texp)
 
     def strike_var_swap(self, texp):
         """

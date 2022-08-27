@@ -79,7 +79,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         var_t = (exp / phi) * self.rng_spawn[0].noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
         return var_t
 
-    def var_step_ncx2_eta(self, var_0, dt):
+    def var_step_ncx2_pois(self, var_0, dt):
         """
         Draw final variance from NCX2 distribution with Poisson (scheme = 1)
 
@@ -157,8 +157,8 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         mean_ln = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (var_avg - self.theta))  \
             + (self.intr - 0.5 * var_avg) * dt
-        sigma_ln = np.sqrt((1.0 - self.rho**2) * var_avg * dt)
-        return mean_ln**2 + sigma_ln**2
+        sigma_ln2 = (1.0 - self.rho**2) * dt * var_avg
+        return mean_ln**2 + sigma_ln2
 
 
     def log_return(self, var_0, var_t, var_avg, dt):
@@ -206,8 +206,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         else:
             for i in range(n_dt):
                 var_t, var_avg = self.cond_states_step(var_0, dt[i])
-                r_ln = self.log_return(var_0, var_t, var_avg, dt[i])
-                var_r += r_ln ** 2
+                var_r += self.log_return(var_0, var_t, var_avg, dt[i]) ** 2
                 var_0 = var_t
 
         return var_r / texp
@@ -822,7 +821,7 @@ class HestonMcAndersen2008(HestonMcABC):
                 var_path[i + 1, :] = var_t
         elif self.scheme == 3:
             for i in range(n_dt):
-                var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
+                var_t, _ = self.var_step_ncx2_pois(var_t, dt[i])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
@@ -841,7 +840,7 @@ class HestonMcAndersen2008(HestonMcABC):
         elif self.scheme == 2:
             var_t = self.var_step_ncx2(var_0, dt)
         elif self.scheme == 3:
-            var_t, _ = self.var_step_ncx2_eta(var_0, dt)
+            var_t, _ = self.var_step_ncx2_pois(var_0, dt)
         elif self.scheme == 4:
             var_t = self.var_step_qe(var_0, dt)
         else:
@@ -882,7 +881,7 @@ class HestonMcPoisTimeStep(HestonMcABC):
         var_t = np.full(self.n_path, var_0)
 
         for i in range(n_dt):
-            var_t, _ = self.var_step_ncx2_eta(var_t, dt[i])
+            var_t, _ = self.var_step_ncx2_pois(var_t, dt[i])
             var_path[i + 1, :] = var_t
 
         return var_path
@@ -892,7 +891,7 @@ class HestonMcPoisTimeStep(HestonMcABC):
         m_x, _ = self.x1star_avgvar_mv(dt, kk=0)
         m_z, _ = self.x2star_avgvar_mv(dt, kk=0)
 
-        var_t, eta = self.var_step_ncx2_eta(var_0, dt)
+        var_t, eta = self.var_step_ncx2_pois(var_0, dt)
         var_avg = (var_0 + var_t)*m_x + (2*eta + 0.5*self.chi_dim())*m_z
 
         return var_t, var_avg
@@ -1047,7 +1046,7 @@ class HestonMcChoiKwok2023(HestonMcABC):
     def cond_states_step(self, var_0, dt):
 
         var_t = np.full(self.n_path, var_0)
-        var_t, eta = self.var_step_ncx2_eta(var_t, dt)
+        var_t, eta = self.var_step_ncx2_pois(var_t, dt)
         shape = 0.5 * self.chi_dim() + 2*eta
 
         # self.draw_x123 returns the average by dt. Need to convert to the average by texp
