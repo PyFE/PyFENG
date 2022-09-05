@@ -116,7 +116,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     correct_fwd = True
     result = {}
 
-    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True):
+    def set_num_params(self, n_path=10000, dt=0.25, rn_seed=None, antithetic=True):
         """
         Set MC parameters
 
@@ -133,7 +133,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         self.rng = np.random.default_rng(rn_seed)
         seed_seq = np.random.SeedSequence(rn_seed)
-        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(16)]
+        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(6)]
         self.result = {}
 
     def base_model(self, vol):

@@ -8,10 +8,18 @@ import functools
 from . import sv_abc as sv
 from . import heston
 
+#### Use of RN generation spawn:
+# 0: simulation of variance (gamma/ncx2/normal)
+# 1: eta or poisson (mu) for variance
+# 2: gamma series and truncation (gamma/IG) for integrated variance (avgvar)
+# 3: poisson in gamma series (Glasserman-Kim, Choi-Kwok)
+# 4: not used
+# 5: asset return
 
 class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
     scheme = None
+    correct_fwd = False
 
     def chi_dim(self):
         """
@@ -93,9 +101,37 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         chi_df = self.chi_dim()
         phi, exp = self.phi_exp(dt)
         chi_nonc = var_0 * exp * phi
-        pois = self.rng_spawn[0].poisson(chi_nonc / 2, size=self.n_path)
+        pois = self.rng_spawn[1].poisson(chi_nonc / 2, size=self.n_path)
         var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df / 2 + pois, size=self.n_path)
         return var_t, pois
+
+    def draw_from_mv(self, mean, var, dist):
+        """
+        Draw RNs from distributions with mean and variance matched
+        Args:
+            mean: mean
+            var: variance
+            dist: distribution. 'ig' for IG, 'ga' for Gamma, 'ln' for log-normal
+
+        Returns:
+            RNs with size of mean/variance
+        """
+        if dist.lower() == 'ig':
+            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+            # RNG.wald takes the same parameters
+            lam = mean ** 3 / var
+            avgvar = self.rng_spawn[2].wald(mean=mean, scale=lam)
+        elif dist.lower() == 'ga':
+            scale = var / mean
+            shape = mean / scale
+            avgvar = scale * self.rng_spawn[2].standard_gamma(shape=shape)
+        elif dist.lower() == 'ln':
+            scale = np.sqrt(np.log(1 + var / mean ** 2))
+            avgvar = mean * np.exp(scale * (self.rv_normal(spawn=2) - scale / 2))
+        else:
+            raise ValueError(f"Incorrect distribution: {dist}.")
+
+        return avgvar
 
     @abc.abstractmethod
     def cond_states_step(self, var_0, dt):
@@ -176,7 +212,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
                   + (self.intr - self.divr - 0.5 * avgvar) * dt
         sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
-        zn = self.rv_normal(spawn=4)
+        zn = self.rv_normal(spawn=5)
         return mean_ln + sigma_ln * zn
 
     def return_var_realized(self, texp, cond=False):
@@ -214,7 +250,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
                     var_r += (tmp*dt[i])**2 * avgvar_v_inc
                 var_0 = var_t
 
-        return var_r / texp
+        return var_r / texp  # annualized
 
     def gamma_lambda(self, dt, kk=0):
         """
@@ -386,8 +422,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
     """
 
+    dist = 'ga'  # distribution for the truncated series
     kk = 1  # K for series truncation.
     tabulate_x2_z = False
+
 
     def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, kk=1):
         """
@@ -581,22 +619,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         Returns:
             x1/dt
         """
-        # For fixed k, theta, vov, texp, generate some parameters firstly
-
         gamma_n, lambda_n = self.gamma_lambda(dt, self.kk)
-        # the following para will change with VO and VT
         pois = self.rng_spawn[3].poisson(lam=(var_0 + var_t) * lambda_n[:, None])  # (kk, n_path)
 
-        rv_exp_sum = self.rng_spawn[1].standard_gamma(shape=pois)
+        rv_exp_sum = self.rng_spawn[2].standard_gamma(shape=pois)
         x1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
-        trunc_mean_x1, trunc_var_x1 = self.x1star_avgvar_mv(dt, kk=self.kk)
-        trunc_scale = trunc_var_x1 / trunc_mean_x1
-        trunc_shape = trunc_mean_x1 / trunc_scale * (var_0 + var_t)
+        trunc_m, trunc_v = self.x1star_avgvar_mv(dt, kk=self.kk)
+        trunc_scale = trunc_v / trunc_m
+        trunc_shape = trunc_m / trunc_scale * (var_0 + var_t)
 
-        self.result['x1_trunc'] = {'shape': trunc_shape.mean(), 'scale': trunc_scale.mean()}
-
-        x1 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
+        # we could call self.draw_from_mv, but we don't to make the code simple.
+        x1 += trunc_scale * self.rng_spawn[2].standard_gamma(trunc_shape)
         return x1
 
     def x2_cdf_points_aw(self, shape, dt):
@@ -665,7 +699,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         temp = np.arange(1, 16)[:, None]  # Bessel distribution has short tail, 30 maybe enough
         p = zz**2 / (4 * temp * (temp + iv_index))
         p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
-        rv_uni = self.rv_uniform(spawn=2)
+        rv_uni = self.rv_uniform(spawn=1)
         eta = np.sum(p < rv_uni, axis=0).astype(np.uint32)
 
         return eta
@@ -686,20 +720,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         gamma_n, _ = self.gamma_lambda(dt, kk=self.kk)
 
-        gamma_rv = self.rng_spawn[1].standard_gamma(shape, size=(self.kk, size))
+        gamma_rv = self.rng_spawn[2].standard_gamma(shape, size=(self.kk, size))
         x2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
-        trunc_mean, trunc_var = self.x2star_avgvar_mv(dt, self.kk)
-        trunc_scale = trunc_var / trunc_mean
-        trunc_shape = trunc_mean / trunc_scale * shape
+        trunc_m, trunc_v = self.x2star_avgvar_mv(dt, self.kk)
+        trunc_scale = trunc_v / trunc_m
+        trunc_shape = trunc_m / trunc_scale * shape
 
-        if shape == 2:
-            self.result['z_trunc'] = {'shape': trunc_shape, 'scale': trunc_scale}
-        else:
-            self.result['x2_trunc'] = {'shape': trunc_shape, 'scale': trunc_scale}
+        # we could call self.draw_from_mv, but we don't to make the code simple.
+        # trunc_scale and trunc_shape are scalar values
+        x2 += trunc_scale * self.rng_spawn[2].standard_gamma(trunc_shape, size=size)
 
-        x2 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape, size=size)
         return x2
 
     def cond_states_step(self, var_0, dt):
@@ -713,10 +745,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         avgvar = self.draw_x1(var_0, var_t, dt)
         if self.tabulate_x2_z:
             interp_obj = self.x2_icdf_interp(self.chi_dim()/2, dt, k1=self.params_hash())
-            avgvar += interp_obj(self.rng_spawn[1].uniform(size=self.n_path))
+            avgvar += interp_obj(self.rng_spawn[2].uniform(size=self.n_path))
 
             interp_obj = self.x2_icdf_interp(2, dt, k1=self.params_hash())
-            zz = interp_obj(self.rng_spawn[1].uniform(size=eta.sum()))
+            zz = interp_obj(self.rng_spawn[2].uniform(size=eta.sum()))
         else:
             avgvar += self.draw_x2(self.chi_dim()/2, dt, size=self.n_path)
             zz = self.draw_x2(2.0, dt, size=eta.sum())
@@ -759,24 +791,7 @@ class HestonMcAndersen2008(HestonMcABC):
         array([44.31943535, 13.09371251,  0.29580431])
     """
     psi_c = 1.5  # parameter used by the Andersen QE scheme
-    scheme = 4  # Andersen's QE scheme, but can be overide
-
-    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=4):
-        """
-        Set MC parameters
-
-        Args:
-            n_path: number of paths
-            dt: time step for Euler/Milstein steps
-            rn_seed: random number seed
-            antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for Poisson-mixture Gamma, 4 for Andersen (2008)'s QE scheme
-
-        References:
-            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
-        """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        self.scheme = scheme
+    scheme = 4  # Andersen's QE scheme. Alternative: 0/1 for Euler/Milstein, 2 for NCX2, 3 for Pois-Gamma
 
     def var_step_qe(self, var_0, dt):
         m, psi = self.var_mv(var_0, dt)  # put variance into psi
@@ -944,41 +959,12 @@ class HestonMcTseWan2013(HestonMcABC):
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far
     """
-    dist = 'ig'
-
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, dist=None):
-        """
-        Set MC parameters
-
-        Args:
-            n_path: number of paths
-            dt: time step
-            rn_seed: random number seed
-            dist: distribution to use for approximation.
-                'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
-        """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        if dist is not None:
-            self.dist = dist
+    dist = 'ig'  # can override with 'ga' 'ln' 'n'
 
     def cond_states_step(self, var_0, dt):
         var_t = self.var_step_ncx2(var_0, dt)
         avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=None, kk=0)
-
-        if self.dist.lower() == 'ig':
-            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
-            # RNG.wald takes the same parameters
-            lam = avgvar_m**3 / avgvar_v
-            avgvar = self.rng_spawn[1].wald(mean=avgvar_m, scale=lam)
-        elif self.dist.lower() == 'ga':
-            scale = avgvar_v / avgvar_m
-            shape = avgvar_m / scale
-            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
-        elif self.dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + avgvar_v/avgvar_m**2))
-            avgvar = avgvar_m * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
-        else:
-            raise ValueError(f"Incorrect distribution: {self.dist}.")
+        avgvar = self.draw_from_mv(avgvar_m, avgvar_v, dist=self.dist)
 
         return var_t, avgvar, None
 
@@ -1025,32 +1011,18 @@ class HestonMcChoiKwok2023(HestonMcABC):
 
         if self.kk > 0:
             pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
-            x123 = np.sum(self.rng_spawn[1].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
+            x123 = np.sum(self.rng_spawn[2].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
         else:
             x123 = np.zeros_like(var_sum)
 
-        trunc_mean, trunc_var = self.x1star_avgvar_mv(dt, self.kk)
-        trunc_mean *= var_sum
-        trunc_var *= var_sum
+        trunc_m, trunc_v = self.x1star_avgvar_mv(dt, self.kk)
+        trunc_m *= var_sum
+        trunc_v *= var_sum
 
-        mean_x23, var_x23 = self.x2star_avgvar_mv(dt, self.kk)
-        trunc_mean += mean_x23 * shape_sum
-        trunc_var += var_x23 * shape_sum
-
-        if self.dist.lower() == 'ig':
-            lam = trunc_mean**3 / trunc_var
-            x123 += self.rng_spawn[1].wald(mean=trunc_mean, scale=lam)
-        elif self.dist.lower() == 'ga':
-            trunc_scale = trunc_var / trunc_mean
-            trunc_shape = trunc_mean / trunc_scale
-            self.result['x123_trunc'] = {'shape': trunc_shape.mean(), 'scale': trunc_scale.mean()}
-
-            x123 += trunc_scale * self.rng_spawn[1].standard_gamma(trunc_shape)
-        elif self.dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + trunc_var / trunc_mean**2))
-            x123 += trunc_mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
-        else:
-            raise ValueError(f"Incorrect distribution: {self.dist}.")
+        x23_m, x23_v = self.x2star_avgvar_mv(dt, self.kk)
+        trunc_m += x23_m * shape_sum
+        trunc_v += x23_v * shape_sum
+        x123 += self.draw_from_mv(trunc_m, trunc_v, self.dist)
 
         return x123
 
