@@ -41,7 +41,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
     def var_step_euler(self, var_0, dt, milstein=False):
         """
-        Simulate final variance with Euler/Milstein schemes (scheme = 0, 1)
+        Simulate final variance after dt with Euler/Milstein schemes (scheme = 0, 1)
 
         Args:
             var_0: initial variance
@@ -64,7 +64,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
     def var_step_ncx2(self, var_0, dt):
         """
-        Draw final variance from NCX2 distribution (scheme = 0)
+        Draw final variance after dt from NCX2 distribution (scheme = 0)
 
         Args:
             var_0: initial variance
@@ -79,16 +79,16 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         var_t = (exp / phi) * self.rng_spawn[0].noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
         return var_t
 
-    def var_step_ncx2_pois(self, var_0, dt):
+    def var_step_pois_gamma(self, var_0, dt):
         """
-        Draw final variance from NCX2 distribution with Poisson (scheme = 1)
+        Draw final variance after dt from NCX2 distribution via Poisson-mixture gamma
 
         Args:
             var_0: initial variance
             dt: time step
 
         Returns:
-            final variance and eta (at t=T)
+            final variance and poisson RN (at t=T)
         """
         chi_df = self.chi_dim()
         phi, exp = self.phi_exp(dt)
@@ -108,42 +108,42 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
             dt: time step
 
         Returns:
-            (var_final, var_avg)
+            (var_t, avgvar)
         """
         return NotImplementedError
 
-    def cond_states(self, vol_0, texp):
-
+    def cond_spot_sigma(self, var_0, texp):
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
 
-        var_t = np.full(self.n_path, vol_0)
-        var_avg = np.zeros(self.n_path)
+        var_t = np.full(self.n_path, var_0)
+        avgvar = np.zeros(self.n_path)
+        intvar_v = np.zeros(self.n_path)
 
         for i in range(n_dt):
-            var_t, d_v = self.cond_states_step(var_t, dt[i])
-            var_avg += d_v * dt[i]
+            var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_t, dt[i])
 
-        var_avg /= texp
+            avgvar += avgvar_inc * dt[i]
+            if avgvar_v_inc is not None:
+                intvar_v += avgvar_v_inc * dt[i]**2
 
-        return var_t, var_avg
+        avgvar /= texp
 
-    def cond_spot_sigma(self, var_0, texp):
-        var_final, var_avg = self.cond_states(var_0, texp)
-
-        avgvar_m, avgvar_v = self.avgvar_mv(texp, var_0)
+        avgvar_m_anal, avgvar_v_anal = self.avgvar_mv(texp)  # analytic mean and variance of avgvar
         self.result = {**self.result,
-                       'avgvar mean': avgvar_m,
-                       'avgvar mean error': var_avg.mean()/avgvar_m - 1,
-                       'avgvar var': avgvar_v,
-                       'avgvar var error': np.square(var_avg - avgvar_m).mean()/avgvar_v - 1
+                       'avgvar mean': avgvar_m_anal,
+                       'avgvar mean error': avgvar.mean()/avgvar_m_anal - 1,
+                       'avgvar var': avgvar_v_anal,
+                       'avgvar var error': np.square(avgvar - avgvar_m_anal).mean()/avgvar_v_anal - 1
                        }
 
-        spot_cond = ((var_final - var_0) + self.mr * texp * (var_avg - self.theta)) / self.vov \
-             - 0.5 * self.rho * var_avg * texp
-        np.exp(self.rho * spot_cond, out=spot_cond)
-        sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * var_avg)  # normalize by initial variance
+        spot_cond = ((var_t - var_0) + self.mr * texp * (avgvar - self.theta)) / self.vov - 0.5 * self.rho * texp * avgvar
+        spot_cond *= self.rho
+        spot_cond += 0.5 * (self.rho/self.vov*self.mr - 0.5*self.rho**2)**2 * intvar_v
+        np.exp(spot_cond, out=spot_cond)
+
+        sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * avgvar)  # normalize by initial variance
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
@@ -153,30 +153,29 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         rv = super().strike_var_swap_analytic(texp, dt)
         return rv
 
-    def cond_return_var(self, var_0, var_t, var_avg, dt):
+    def cond_log_return_var(self, var_0, var_t, avgvar, dt):
 
-        mean_ln = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (var_avg - self.theta))  \
-            + (self.intr - 0.5 * var_avg) * dt
-        sigma_ln2 = (1.0 - self.rho**2) * dt * var_avg
+        mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
+                  + (self.intr - self.divr - 0.5 * avgvar) * dt
+        sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
         return mean_ln**2 + sigma_ln2
 
-
-    def log_return(self, var_0, var_t, var_avg, dt):
+    def draw_log_return(self, var_0, var_t, avgvar, dt):
         """
         Samples log return, log(S_t/S_0)
 
         Args:
             var_0: initial variance
             var_t: final variance
-            var_avg: average variance
+            avgvar: average variance
             dt: time step
 
         Returns:
             log return
         """
-        mean_ln = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (var_avg - self.theta))  \
-            + (self.intr - 0.5 * var_avg) * dt
-        sigma_ln = np.sqrt((1.0 - self.rho**2) * var_avg * dt)
+        mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
+                  + (self.intr - self.divr - 0.5 * avgvar) * dt
+        sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
         zn = self.rv_normal(spawn=4)
         return mean_ln + sigma_ln * zn
 
@@ -198,15 +197,21 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         var_r = np.zeros(self.n_path)
         var_0 = np.full(self.n_path, self.sigma)
 
+        tmp = self.rho/self.vov*self.mr - 0.5
+
         if cond:
             for i in range(n_dt):
-                var_t, var_avg = self.cond_states_step(var_0, dt[i])
-                var_r += self.cond_return_var(var_0, var_t, var_avg, dt[i])
+                var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_0, dt[i])
+                var_r += self.cond_log_return_var(var_0, var_t, avgvar_inc, dt[i])
+                if avgvar_v_inc is not None:
+                    var_r += (tmp*dt[i])**2 * avgvar_v_inc
                 var_0 = var_t
         else:
             for i in range(n_dt):
-                var_t, var_avg = self.cond_states_step(var_0, dt[i])
-                var_r += self.log_return(var_0, var_t, var_avg, dt[i]) ** 2
+                var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_0, dt[i])
+                var_r += self.draw_log_return(var_0, var_t, avgvar_inc, dt[i]) ** 2
+                if avgvar_v_inc is not None:
+                    var_r += (tmp*dt[i])**2 * avgvar_v_inc
                 var_0 = var_t
 
         return var_r / texp
@@ -249,6 +254,10 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             mean, variance
         """
+        # x = np.arange(1, 10) * 0.02
+        # y1 = 1 / x / np.tanh(x) - 1 / np.sinh(x)**2
+        # y2 = 2 / 3 - (4 / 45) * x**2 + (4 / 315) * x**4 - (8 / 4725) * x**6
+        # y2 - y1
 
         mrt_h = self.mr * dt / 2
         vov2dt = self.vov**2 * dt
@@ -282,6 +291,10 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             mean, variance
         """
+        # x = np.arange(1, 10) * 0.02
+        # y1 = (x / np.tanh(x) - 1) / x**2
+        # y2 = 1 / 3 - (1 / 45) * x**2 + (2 / 945) * x**4
+        # y2 - y1
 
         mrt_h = self.mr * dt / 2
         vov2dt = self.vov**2 * dt
@@ -327,14 +340,14 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         return mean, var
 
-    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None, kk=0):
+    def cond_avgvar_mv(self, var_0, var_t, dt, pois=None, kk=0):
         """
         Mean and variance of the average variance conditional on initial var, final var, and eta
 
         Args:
             var_0: initial variance
             var_t: final variance
-            eta: Poisson RV
+            pois: Poisson RV. If None, assume to be an eta RV.
             dt: time step
             kk: number of gamma expansion terms
 
@@ -345,29 +358,24 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
             Proposition 3.1 in Tse & Wan (2013)
         """
 
-        # x = np.arange(1, 10) * 0.02
-        # y1 = 1 / x / np.tanh(x) - 1 / np.sinh(x)**2
-        # y2 = 2 / 3 - (4 / 45) * x**2 + (4 / 315) * x**4 - (8 / 4725) * x**6
-        # y2 - y1
-        # y1 = (x / np.tanh(x) - 1) / x**2
-        # y2 = 1 / 3 - (1 / 45) * x**2 + (2 / 945) * x**4
-        # y2 - y1
-
-        if eta is None:
-            eta_mean, eta_var = self.eta_mv(var_0, var_t, dt)
+        if pois is None:
+            m_eta, v_eta = self.eta_mv(var_0, var_t, dt)
         else:
-            eta_mean, eta_var = eta, 0.0
+            m_eta, v_eta = pois, 0.0
 
-        x1_mean, x1_var = self.x1star_avgvar_mv(dt, kk=kk)
-        x1_mean *= (var_0 + var_t)
-        x1_var *= (var_0 + var_t)
+        m_x, v_x = self.x1star_avgvar_mv(dt, kk=kk)
+        tmp = var_0 + var_t
+        m_x *= tmp
+        v_x *= tmp
 
-        x2_mean, x2_var = self.x2star_avgvar_mv(dt, kk=kk)
-        x23_mean = (2*eta_mean + self.chi_dim()/2) * x2_mean
-        x23_var = (2*eta_mean + self.chi_dim()/2) * x2_var
-        x23_var += eta_var * (2*x2_mean)**2
+        m_z, v_z = self.x2star_avgvar_mv(dt, kk=kk)
+        tmp = 2*m_eta + self.chi_dim()/2
+        v_z *= tmp
+        if pois is None:
+            v_z += v_eta * (2*m_z)**2
+        m_z *= tmp  # do this later on purpose
 
-        return x1_mean + x23_mean, x1_var + x23_var
+        return m_x + m_z, v_x + v_z
 
 
 class HestonMcGlassermanKim2011(HestonMcABC):
@@ -702,15 +710,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman & Kim (2011)
 
-        var_avg = self.draw_x1(var_0, var_t, dt)
+        avgvar = self.draw_x1(var_0, var_t, dt)
         if self.tabulate_x2_z:
             interp_obj = self.x2_icdf_interp(self.chi_dim()/2, dt, k1=self.params_hash())
-            var_avg += interp_obj(self.rng_spawn[1].uniform(size=self.n_path))
+            avgvar += interp_obj(self.rng_spawn[1].uniform(size=self.n_path))
 
             interp_obj = self.x2_icdf_interp(2, dt, k1=self.params_hash())
             zz = interp_obj(self.rng_spawn[1].uniform(size=eta.sum()))
         else:
-            var_avg += self.draw_x2(self.chi_dim()/2, dt, size=self.n_path)
+            avgvar += self.draw_x2(self.chi_dim()/2, dt, size=self.n_path)
             zz = self.draw_x2(2.0, dt, size=eta.sum())
 
         total = 0
@@ -719,12 +727,12 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             count = eta_above_i.sum()
             if count == 0:
                 continue
-            var_avg[eta_above_i] += zz[total:total+count]
+            avgvar[eta_above_i] += zz[total:total+count]
             total += count
 
         assert eta.sum() == total
 
-        return var_t, var_avg
+        return var_t, avgvar, None
 
 
 class HestonMcAndersen2008(HestonMcABC):
@@ -821,7 +829,7 @@ class HestonMcAndersen2008(HestonMcABC):
                 var_path[i + 1, :] = var_t
         elif self.scheme == 3:
             for i in range(n_dt):
-                var_t, _ = self.var_step_ncx2_pois(var_t, dt[i])
+                var_t, _ = self.var_step_pois_gamma(var_t, dt[i])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
@@ -840,16 +848,16 @@ class HestonMcAndersen2008(HestonMcABC):
         elif self.scheme == 2:
             var_t = self.var_step_ncx2(var_0, dt)
         elif self.scheme == 3:
-            var_t, _ = self.var_step_ncx2_pois(var_0, dt)
+            var_t, _ = self.var_step_pois_gamma(var_0, dt)
         elif self.scheme == 4:
             var_t = self.var_step_qe(var_0, dt)
         else:
             ValueError(f"Incorrect scheme: {self.scheme}.")
 
         # Trapezoidal rule
-        var_avg = (var_0 + var_t)/2
+        avgvar = (var_0 + var_t)/2
 
-        return var_t, var_avg
+        return var_t, avgvar, None
 
 
 class HestonMcPoisTimeStep(HestonMcABC):
@@ -857,7 +865,7 @@ class HestonMcPoisTimeStep(HestonMcABC):
     Heston simulation scheme Poisson-conditioned time discretization quadrature
 
     References:
-        - Choi and Kwok (2023)
+        - Choi & Kwok (2023). Simulation schemes for the Heston model with Poisson conditioning. Working paper.
 
     Examples:
         >>> import numpy as np
@@ -881,20 +889,17 @@ class HestonMcPoisTimeStep(HestonMcABC):
         var_t = np.full(self.n_path, var_0)
 
         for i in range(n_dt):
-            var_t, _ = self.var_step_ncx2_pois(var_t, dt[i])
+            var_t, _ = self.var_step_pois_gamma(var_t, dt[i])
             var_path[i + 1, :] = var_t
 
         return var_path
 
     def cond_states_step(self, var_0, dt):
 
-        m_x, _ = self.x1star_avgvar_mv(dt, kk=0)
-        m_z, _ = self.x2star_avgvar_mv(dt, kk=0)
+        var_t, pois = self.var_step_pois_gamma(var_0, dt)
+        avgvar, v_avgvar = self.cond_avgvar_mv(var_0, var_t, dt, pois=pois, kk=0)
 
-        var_t, eta = self.var_step_ncx2_pois(var_0, dt)
-        var_avg = (var_0 + var_t)*m_x + (2*eta + 0.5*self.chi_dim())*m_z
-
-        return var_t, var_avg
+        return var_t, avgvar, v_avgvar
 
     def avgvar_var_unexplained(self, texp, dt=None):
         """
@@ -941,7 +946,7 @@ class HestonMcTseWan2013(HestonMcABC):
     """
     dist = 'ig'
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=3, dist=None):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, dist=None):
         """
         Set MC parameters
 
@@ -949,7 +954,6 @@ class HestonMcTseWan2013(HestonMcABC):
             n_path: number of paths
             dt: time step
             rn_seed: random number seed
-            scheme: simulation scheme for jumping from 0 to texp
             dist: distribution to use for approximation.
                 'ig' for inverse Gaussian (default), 'ga' for Gamma, 'ln' for LN
         """
@@ -958,29 +962,36 @@ class HestonMcTseWan2013(HestonMcABC):
             self.dist = dist
 
     def cond_states_step(self, var_0, dt):
-
         var_t = self.var_step_ncx2(var_0, dt)
-        m1, var = self.cond_avgvar_mv(var_0, var_t, dt, eta=None, kk=0)
+        avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=None, kk=0)
 
         if self.dist.lower() == 'ig':
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
-            lam = m1**3 / var
-            var_avg = self.rng_spawn[1].wald(mean=m1, scale=lam)
+            lam = avgvar_m**3 / avgvar_v
+            avgvar = self.rng_spawn[1].wald(mean=avgvar_m, scale=lam)
         elif self.dist.lower() == 'ga':
-            scale = var / m1
-            shape = m1 / scale
-            var_avg = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            scale = avgvar_v / avgvar_m
+            shape = avgvar_m / scale
+            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
         elif self.dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + var/m1**2))
-            var_avg = m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
+            scale = np.sqrt(np.log(1 + avgvar_v/avgvar_m**2))
+            avgvar = avgvar_m * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
         else:
             raise ValueError(f"Incorrect distribution: {self.dist}.")
 
-        return var_t, var_avg
+        return var_t, avgvar, None
 
 
 class HestonMcChoiKwok2023(HestonMcABC):
+    """
+    Simulation scheme with Poisson conditioning.
+    Enhanced Glasserman & Kim (2011) and Tse & Wan (2013)
+
+    References:
+        - Choi & Kwok (2023). Simulation schemes for the Heston model with Poisson conditioning. Working paper.
+
+    """
 
     dist = 'ig'  # distribution for series truncation
     kk = 1  # K for series truncation.
@@ -1045,11 +1056,10 @@ class HestonMcChoiKwok2023(HestonMcABC):
 
     def cond_states_step(self, var_0, dt):
 
-        var_t = np.full(self.n_path, var_0)
-        var_t, eta = self.var_step_ncx2_pois(var_t, dt)
-        shape = 0.5 * self.chi_dim() + 2*eta
+        var_t, pois = self.var_step_pois_gamma(var_0, dt)
+        shape = 0.5*self.chi_dim() + 2*pois
 
-        # self.draw_x123 returns the average by dt. Need to convert to the average by texp
-        var_avg = self.draw_x123(var_0 + var_t, dt, shape)
+        # self.draw_x123 returns the average by dt. Need to convert to the int variance by multiplying texp
+        avgvar = self.draw_x123(var_0 + var_t, dt, shape)
 
-        return var_t, var_avg
+        return var_t, avgvar, None

@@ -78,7 +78,7 @@ class HestonABC(sv.SvABC, abc.ABC):
             mr_h = self.mr * dt
             e_mr_h = np.exp(-mr_h)
 
-            tmp = self.theta - 2*self.intr
+            tmp = self.theta - 2*(self.intr - self.divr)
             strike += tmp*dt/4 * (tmp + 2*x0*(1 - e_mr_t)/mr_t)
 
             tmp = self.vov / self.mr

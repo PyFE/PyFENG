@@ -133,7 +133,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         self.rng = np.random.default_rng(rn_seed)
         seed_seq = np.random.SeedSequence(rn_seed)
-        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(5)]
+        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(16)]
         self.result = {}
 
     def base_model(self, vol):
@@ -149,7 +149,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Returns:
             array of observation time
         """
-        if self.dt is None:
+        if self.dt is None or self.dt >= texp:
             return np.array([texp])
         else:
             n_dt = np.ceil(texp / self.dt)
