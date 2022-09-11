@@ -20,6 +20,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
     scheme = None
     correct_fwd = False
+    correct_martingale = False
 
     def chi_dim(self):
         """
@@ -101,8 +102,11 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         chi_df = self.chi_dim()
         phi, exp = self.phi_exp(dt)
         chi_nonc = var_0 * exp * phi
-        pois = self.rng_spawn[1].poisson(chi_nonc / 2, size=self.n_path)
-        var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df / 2 + pois, size=self.n_path)
+        pois = self.rng_spawn[1].poisson(chi_nonc/2, size=self.n_path)
+        ### I had an idea of approximating the Poisson RV with the mean-var-matched gamma RV
+        ### If chi_nonc is large (>4), sampling Poisson RV is slower than Gamma RV.
+        #pois = self.rng_spawn[1].standard_gamma(chi_nonc/2, size=self.n_path)
+        var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df/2 + pois, size=self.n_path)
         return var_t, pois
 
     def draw_from_mv(self, mean, var, dist):
@@ -155,14 +159,20 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         var_t = np.full(self.n_path, var_0)
         avgvar = np.zeros(self.n_path)
-        intvar_v = np.zeros(self.n_path)
+        m_corr = np.zeros(self.n_path)  # martingale correction
 
         for i in range(n_dt):
-            var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_t, dt[i])
-
+            var_t, avgvar_inc, extra = self.cond_states_step(var_t, dt[i])
             avgvar += avgvar_inc * dt[i]
-            if avgvar_v_inc is not None:
-                intvar_v += avgvar_v_inc * dt[i]**2
+
+            if self.correct_martingale:
+                pois_avgvar_v = extra.get('pois_avgvar_v', None)
+                qe_m_corr = extra.get('qe_m_corr', None)
+
+                if pois_avgvar_v is not None:  # martingale correction in POIS-TD
+                    m_corr += 0.5*(self.rho*(1/self.vov*self.mr - 0.5*self.rho)*dt[i])**2 * pois_avgvar_v
+                elif qe_m_corr is not None:  # martingale correction in QE
+                    m_corr += qe_m_corr
 
         avgvar /= texp
 
@@ -176,7 +186,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         spot_cond = ((var_t - var_0) + self.mr * texp * (avgvar - self.theta)) / self.vov - 0.5 * self.rho * texp * avgvar
         spot_cond *= self.rho
-        spot_cond += 0.5 * (self.rho/self.vov*self.mr - 0.5*self.rho**2)**2 * intvar_v
+        spot_cond += m_corr
         np.exp(spot_cond, out=spot_cond)
 
         sigma_cond = np.sqrt((1.0 - self.rho**2) / var_0 * avgvar)  # normalize by initial variance
@@ -235,20 +245,24 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         tmp = self.rho/self.vov*self.mr - 0.5
 
-        if cond:
-            for i in range(n_dt):
-                var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_0, dt[i])
+        for i in range(n_dt):
+            var_t, avgvar_inc, extra = self.cond_states_step(var_0, dt[i])
+
+            if cond:
                 var_r += self.cond_log_return_var(var_0, var_t, avgvar_inc, dt[i])
-                if avgvar_v_inc is not None:
-                    var_r += (tmp*dt[i])**2 * avgvar_v_inc
-                var_0 = var_t
-        else:
-            for i in range(n_dt):
-                var_t, avgvar_inc, avgvar_v_inc = self.cond_states_step(var_0, dt[i])
-                var_r += self.draw_log_return(var_0, var_t, avgvar_inc, dt[i]) ** 2
-                if avgvar_v_inc is not None:
-                    var_r += (tmp*dt[i])**2 * avgvar_v_inc
-                var_0 = var_t
+            else:
+                var_r += self.draw_log_return(var_0, var_t, avgvar_inc, dt[i])**2
+
+            if self.correct_martingale:
+                pois_avgvar_v = extra.get('pois_avgvar_v', None)
+                qe_m_corr = extra.get('qe_m_corr', None)
+
+                if pois_avgvar_v is not None:  # missing variance:
+                    var_r += (tmp*dt[i])**2 * pois_avgvar_v
+                elif qe_m_corr is not None:  # QE Maratingale correction:
+                    var_r += qe_m_corr
+
+            var_0 = var_t
 
         return var_r / texp  # annualized
 
@@ -764,7 +778,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         assert eta.sum() == total
 
-        return var_t, avgvar, None
+        return var_t, avgvar, {}
 
 
 class HestonMcAndersen2008(HestonMcABC):
@@ -794,8 +808,20 @@ class HestonMcAndersen2008(HestonMcABC):
     scheme = 4  # Andersen's QE scheme. Alternative: 0/1 for Euler/Milstein, 2 for NCX2, 3 for Pois-Gamma
 
     def var_step_qe(self, var_0, dt):
+        """
+        QE step by Andersen (2008)
+
+        Args:
+            var_0: initial variance
+            dt: time step
+
+        Returns:
+           variance after dt
+        """
+
         m, psi = self.var_mv(var_0, dt)  # put variance into psi
         psi /= m**2
+        m_corr = 0
 
         zz = self.rv_normal(spawn=0)
 
@@ -822,7 +848,16 @@ class HestonMcAndersen2008(HestonMcABC):
 
         var_t[~idx_below] = var_t_above
 
-        return var_t
+        ### Martingale Correction: p 24
+        k1_half_k3 = dt/2 * (self.mr * self.rho / self.vov - 0.5) - self.rho / self.vov  # k1
+        k1_half_k3 += dt/4 * (1 - self.rho ** 2)  # k3 / 2
+        aa = k1_half_k3 + 2 * self.rho / self.vov  # A in Proposition 7
+
+        m_corr = -k1_half_k3 * var_0 + dt * self.rho * self.mr * self.theta / self.vov
+        m_corr[idx_below] += -aa * b2 * a / (1 - 2 * aa * a) + 0.5 * np.log(1 - 2 * aa * a)
+        m_corr[~idx_below] += -np.log(1.0-one_m_p + (beta*one_m_p)/(beta - aa))
+
+        return var_t, m_corr
 
     def vol_paths(self, tobs):
         var_0 = self.sigma
@@ -848,7 +883,7 @@ class HestonMcAndersen2008(HestonMcABC):
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
-                var_t = self.var_step_qe(var_t, dt[i])
+                var_t, _ = self.var_step_qe(var_t, dt[i])
                 var_path[i + 1, :] = var_t
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
@@ -857,6 +892,7 @@ class HestonMcAndersen2008(HestonMcABC):
 
     def cond_states_step(self, var_0, dt):
 
+        extra = {}
         if self.scheme < 2:
             milstein = (self.scheme == 1)
             var_t = self.var_step_euler(var_0, dt, milstein=milstein)
@@ -865,14 +901,15 @@ class HestonMcAndersen2008(HestonMcABC):
         elif self.scheme == 3:
             var_t, _ = self.var_step_pois_gamma(var_0, dt)
         elif self.scheme == 4:
-            var_t = self.var_step_qe(var_0, dt)
+            var_t, m_corr = self.var_step_qe(var_0, dt)
+            extra = {'qe_m_corr': m_corr}
         else:
             ValueError(f"Incorrect scheme: {self.scheme}.")
 
         # Trapezoidal rule
         avgvar = (var_0 + var_t)/2
 
-        return var_t, avgvar, None
+        return var_t, avgvar, extra
 
 
 class HestonMcPoisTimeStep(HestonMcABC):
@@ -912,9 +949,10 @@ class HestonMcPoisTimeStep(HestonMcABC):
     def cond_states_step(self, var_0, dt):
 
         var_t, pois = self.var_step_pois_gamma(var_0, dt)
-        avgvar, v_avgvar = self.cond_avgvar_mv(var_0, var_t, dt, pois=pois, kk=0)
+        avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=pois, kk=0)
+        extra = {'pois_avgvar_v': avgvar_v}
 
-        return var_t, avgvar, v_avgvar
+        return var_t, avgvar_m, extra
 
     def avgvar_var_unexplained(self, texp, dt=None):
         """
@@ -966,7 +1004,7 @@ class HestonMcTseWan2013(HestonMcABC):
         avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=None, kk=0)
         avgvar = self.draw_from_mv(avgvar_m, avgvar_v, dist=self.dist)
 
-        return var_t, avgvar, None
+        return var_t, avgvar, {}
 
 
 class HestonMcChoiKwok2023(HestonMcABC):
@@ -1034,4 +1072,4 @@ class HestonMcChoiKwok2023(HestonMcABC):
         # self.draw_x123 returns the average by dt. Need to convert to the int variance by multiplying texp
         avgvar = self.draw_x123(var_0 + var_t, dt, shape)
 
-        return var_t, avgvar, None
+        return var_t, avgvar, {}
