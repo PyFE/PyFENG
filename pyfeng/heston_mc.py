@@ -248,19 +248,18 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         for i in range(n_dt):
             var_t, avgvar_inc, extra = self.cond_states_step(var_0, dt[i])
 
+            if self.correct_martingale:
+                pois_avgvar_v = extra.get('pois_avgvar_v', None)
+                if pois_avgvar_v is not None:  # missing variance:
+                    var_r += (tmp*dt[i])**2 * pois_avgvar_v
+                qe_m_corr = extra.get('qe_m_corr', 0.0)
+            else:
+                qe_m_corr = 0.0
+
             if cond:
                 var_r += self.cond_log_return_var(var_0, var_t, avgvar_inc, dt[i])
             else:
-                var_r += self.draw_log_return(var_0, var_t, avgvar_inc, dt[i])**2
-
-            if self.correct_martingale:
-                pois_avgvar_v = extra.get('pois_avgvar_v', None)
-                qe_m_corr = extra.get('qe_m_corr', None)
-
-                if pois_avgvar_v is not None:  # missing variance:
-                    var_r += (tmp*dt[i])**2 * pois_avgvar_v
-                elif qe_m_corr is not None:  # QE Maratingale correction:
-                    var_r += qe_m_corr
+                var_r += (self.draw_log_return(var_0, var_t, avgvar_inc, dt[i]) + qe_m_corr)**2
 
             var_0 = var_t
 
@@ -806,6 +805,7 @@ class HestonMcAndersen2008(HestonMcABC):
     """
     psi_c = 1.5  # parameter used by the Andersen QE scheme
     scheme = 4  # Andersen's QE scheme. Alternative: 0/1 for Euler/Milstein, 2 for NCX2, 3 for Pois-Gamma
+    correct_martingale = True
 
     def var_step_qe(self, var_0, dt):
         """
@@ -821,7 +821,6 @@ class HestonMcAndersen2008(HestonMcABC):
 
         m, psi = self.var_mv(var_0, dt)  # put variance into psi
         psi /= m**2
-        m_corr = 0
 
         zz = self.rv_normal(spawn=0)
 
@@ -849,13 +848,12 @@ class HestonMcAndersen2008(HestonMcABC):
         var_t[~idx_below] = var_t_above
 
         ### Martingale Correction: p 24
-        k1_half_k3 = dt/2 * (self.mr * self.rho / self.vov - 0.5) - self.rho / self.vov  # k1
-        k1_half_k3 += dt/4 * (1 - self.rho ** 2)  # k3 / 2
-        aa = k1_half_k3 + 2 * self.rho / self.vov  # A in Proposition 7
+        k1_half_k3 = dt/4 * self.rho * (2*self.mr/self.vov - self.rho) - self.rho/self.vov  # k1 + k3/2
+        aa = k1_half_k3 + 2*self.rho/self.vov  # A in Proposition 7
 
         m_corr = -k1_half_k3 * var_0 + dt * self.rho * self.mr * self.theta / self.vov
         m_corr[idx_below] += -aa * b2 * a / (1 - 2 * aa * a) + 0.5 * np.log(1 - 2 * aa * a)
-        m_corr[~idx_below] += -np.log(1.0-one_m_p + (beta*one_m_p)/(beta - aa))
+        m_corr[~idx_below] += -np.log(1.0 - one_m_p + (beta*one_m_p)/(beta - aa))
 
         return var_t, m_corr
 
@@ -931,6 +929,8 @@ class HestonMcPoisTimeStep(HestonMcABC):
         >>> # true price: 44.330, 13.085, 0.296
         array([44.31943535, 13.09371251,  0.29580431])
     """
+
+    correct_martingale = True
 
     def vol_paths(self, tobs):
         var_0 = self.sigma
