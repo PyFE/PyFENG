@@ -246,6 +246,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     def price_var_opt(self, strike, texp, cp=1):
         """
+        Variance option price
 
         Args:
             strike: strike price
@@ -253,7 +254,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
             cp: 1/-1 for call/put option
 
         Returns:
-
+            variance option price
         """
         scalar_output = np.isscalar(strike)
         strike = np.atleast_1d(strike)
