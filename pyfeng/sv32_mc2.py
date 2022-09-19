@@ -110,7 +110,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
         # print(f'phi: {phi}, nu: {nu}, zz: {zz.mean()}')
         if eta is None:
-            iv = self.ivc(nu, zz)
+            iv = spsp.iv(nu, zz)
             iv_d1, iv_d2 = self.ivc_d12(nu, zz)
             d1 = - (iv_d1 * d1_nu_bb) / iv
             var = (iv_d1 * d2_nu_bb + iv_d2 * d1_nu_bb**2) / iv - d1**2
@@ -187,11 +187,12 @@ class Sv32McTimeStep(Sv32McABC):
             var_t = self.var_step_euler(var_0, dt, milstein=milstein)
         elif self.scheme == 2:
             # Euler (or Milstein) scheme
-            var_t = 1/self._m_heston.var_step_ncx2(1/var_0, dt)
+            var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+            np.divide(1.0, var_t, out=var_t)
         elif self.scheme == 3:
             # Euler (or Milstein) scheme
             var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
-            var_t = 1/var_t
+            np.divide(1.0, var_t, out=var_t)
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
@@ -234,10 +235,11 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
+        var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        np.divide(1.0, var_t, out=var_t)
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, 1/x_t, dt)
+            return self.laplace(bb, var_0, var_t, dt)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -274,7 +276,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
 
         guess = m1 * np.exp(ln_sig*(zz - ln_sig/2))
         int_var = spop.newton(root, guess)
-        return 1 / x_t, int_var / dt
+        return var_t, int_var/dt
 
 
 class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
@@ -330,11 +332,13 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, eta = self._m_heston.var_step_pois_gamma(1 / var_0, texp)
+        var_t, eta = self._m_heston.var_step_pois_gamma(1 / var_0, texp)
+        # var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        np.divide(1.0, var_t, out=var_t)
         # print('eta', eta.min(), eta.mean(), eta.max())
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, 1/x_t, texp, eta)
+            return self.laplace(bb, var_0, var_t, texp, eta)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -363,7 +367,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             return rv
 
         int_var = spop.newton(root, m1)
-        return 1 / x_t, int_var/texp
+        return var_t, int_var/texp
 
     def cond_states_step(self, var_0, dt):
         """
@@ -378,22 +382,24 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             (var_t, avgvar)
         """
 
-        inv_var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
-        m1, var = self.cond_avgvar_mv(var_0, 1.0/inv_var_t, dt)
+        # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
+        var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        np.divide(1.0, var_t, out=var_t)
+        m1, var = self.cond_avgvar_mv(var_0, var_t, dt, eta=None)
 
         if self.dist.lower() == 'ig':
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
             lam = m1 ** 3 / var
-            var_avg = self.rng_spawn[1].wald(mean=m1, scale=lam)
+            avgvar = self.rng_spawn[1].wald(mean=m1, scale=lam)
         elif self.dist.lower() == 'ga':
             scale = var / m1
             shape = m1 / scale
-            var_avg = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
         elif self.dist.lower() == 'ln':
             scale = np.sqrt(np.log(1 + var / m1 ** 2))
-            var_avg = m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
+            avgvar = m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {self.dist}.")
 
-        return 1/inv_var_t, var_avg
+        return var_t, avgvar
