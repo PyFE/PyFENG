@@ -38,7 +38,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def ivc(nu, zz):
+    def iv_complex(nu, zz):
         """
         Modified Bessel function of the first kind with complex argument
 
@@ -57,7 +57,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         return iv
 
     @staticmethod
-    def ivc_d12(nu, zz):
+    def iv_d12(nu, zz):
         """
         The 1st and 2nd derivative of modified Bessel function of the first kind w.r.t. the index nu
 
@@ -111,7 +111,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         # print(f'phi: {phi}, nu: {nu}, zz: {zz.mean()}')
         if eta is None:
             iv = spsp.iv(nu, zz)
-            iv_d1, iv_d2 = self.ivc_d12(nu, zz)
+            iv_d1, iv_d2 = self.iv_d12(nu, zz)
             d1 = - (iv_d1 * d1_nu_bb) / iv
             var = (iv_d1 * d2_nu_bb + iv_d2 * d1_nu_bb**2) / iv - d1**2
         else:
@@ -222,7 +222,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         nu = self._m_heston.chi_dim()/2 - 1
         nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
         zz = phi / np.sqrt(var_0 * var_t)
-        ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+        ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
         return ret
 
     def cond_states_step(self, var_0, dt):
@@ -290,7 +290,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         zz = phi / np.sqrt(var_0 * var_t)
 
         if eta is None:
-            ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+            ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
         else:
             nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
             ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
