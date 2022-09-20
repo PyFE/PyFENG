@@ -54,13 +54,14 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def _m_base(self, vol, is_fwd=None):
+    def base_model(self, vol, is_fwd=None):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
 
         Args:
             vol: base model volatility
+            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns: model
         """
@@ -234,14 +235,14 @@ class SabrVolApproxABC(SabrABC):
 
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)
-        m_vol = self._m_base(vol)
+        m_vol = self.base_model(vol)
         price = m_vol.price(strike, spot, texp, cp=cp)
         return price
 
     def impvol(self, price, strike, spot, texp, cp=1, setval=False):
         model = copy.copy(self)
 
-        vol = self._m_base(None).impvol(price, strike, spot, texp, cp=cp)
+        vol = self.base_model(None).impvol(price, strike, spot, texp, cp=cp)
 
         def iv_func(_sigma):
             model.sigma = _sigma
@@ -349,7 +350,7 @@ class SabrHagan2002(SabrVolApproxABC):
         if is_vol:
             vol3 = price_or_vol3
         else:
-            vol3 = self._m_base(None).impvol(price_or_vol3, strike3, spot, texp, cp=cp)
+            vol3 = self.base_model(None).impvol(price_or_vol3, strike3, spot, texp, cp=cp)
 
         def iv_func(x):
             model.sigma = np.exp(x[0])

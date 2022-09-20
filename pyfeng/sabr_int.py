@@ -86,7 +86,7 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
 
         vol = self.sigma * np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
 
-        p_grid = self._m_base(vol[:, None]).price(strike, spot, texp, cp=cp)
+        p_grid = self.base_model(vol[:, None]).price(strike, spot, texp, cp=cp)
         p = np.sum(p_grid * ww[:, None], axis=0)
         return p
 
@@ -104,14 +104,14 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
             log_mass = (
                 np.log(ww)
                 + log_rn_deriv
-                + self._m_base(vol).mass_zero(spot, texp, log=True)
+                + self.base_model(vol).mass_zero(spot, texp, log=True)
             )
             log_max = np.amax(log_mass)
             log_mass -= log_max
             log_mass = log_max + np.log(np.sum(np.exp(log_mass)))
             return log_mass
         else:
-            mass = self._m_base(vol).mass_zero(spot, texp, log=False)
+            mass = self.base_model(vol).mass_zero(spot, texp, log=False)
             mass = np.sum(mass * ww * np.exp(log_rn_deriv))
             return mass
 
@@ -150,7 +150,7 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
         vol_eff = np.expand_dims(vol_eff[ind], -1)
         ww = np.expand_dims(ww[ind], -1)
 
-        base_model = self._m_base(alpha*vol_eff)
+        base_model = self.base_model(alpha * vol_eff)
         price_vec = base_model.price(kk, fwd_eff, texp, cp=cp)
         price = np.sum(price_vec * ww, axis=0)
         return fwd*price
