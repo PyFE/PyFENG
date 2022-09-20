@@ -16,7 +16,7 @@ from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 from .heston import HestonUncorrBallRoma1994
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
-from .sabr_mc import SabrMcCond
+from .sabr_mc import SabrMcTimeDisc
 from .nsvh import Nsvh1, NsvhMc
 from .multiasset import (
     BsmSpreadKirk,
