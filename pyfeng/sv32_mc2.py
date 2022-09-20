@@ -123,7 +123,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         var[var < 0] = 1e-64
         return d1/dt, var/dt**2
 
-    def cond_spot_sigma(self, var_0, texp):
+    def cond_spot_sigma(self, texp, var_0):
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
@@ -187,11 +187,11 @@ class Sv32McTimeStep(Sv32McABC):
             var_t = self.var_step_euler(var_0, dt, milstein=milstein)
         elif self.scheme == 2:
             # Euler (or Milstein) scheme
-            var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+            var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
             np.divide(1.0, var_t, out=var_t)
         elif self.scheme == 3:
             # Euler (or Milstein) scheme
-            var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
+            var_t, _ = self._m_heston.var_step_pois_gamma(dt, 1 / var_0)
             np.divide(1.0, var_t, out=var_t)
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
@@ -235,7 +235,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
         np.divide(1.0, var_t, out=var_t)
 
         def laplace_cond(bb):
@@ -332,7 +332,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t, eta = self._m_heston.var_step_pois_gamma(1 / var_0, texp)
+        var_t, eta = self._m_heston.var_step_pois_gamma(texp, 1 / var_0)
         # var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
         np.divide(1.0, var_t, out=var_t)
         # print('eta', eta.min(), eta.mean(), eta.max())
@@ -383,7 +383,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         """
 
         # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
-        var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
         np.divide(1.0, var_t, out=var_t)
         m1, var = self.cond_avgvar_mv(var_0, var_t, dt, eta=None)
 

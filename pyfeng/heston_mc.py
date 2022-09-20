@@ -16,6 +16,7 @@ from . import heston
 # 4: not used
 # 5: asset return
 
+
 class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     var_process = True
     scheme = None
@@ -48,13 +49,13 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         phi = 4*self.mr / self.vov**2 / (1/exp - exp)
         return phi, exp
 
-    def var_step_euler(self, var_0, dt, milstein=False):
+    def var_step_euler(self, dt, var_0, milstein=False):
         """
         Simulate final variance after dt with Euler/Milstein schemes (scheme = 0, 1)
 
         Args:
-            var_0: initial variance
             dt: time step
+            var_0: initial variance
             milstein: True or False (default)
 
         Returns:
@@ -71,16 +72,16 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         var_t[var_t < 0] = 0  # variance should be larger than zero
         return var_t
 
-    def var_step_ncx2(self, var_0, dt):
+    def var_step_ncx2(self, dt, var_0):
         """
         Draw final variance after dt from NCX2 distribution (scheme = 0)
 
         Args:
-            var_0: initial variance
             dt: time step
+            var_0: initial variance
 
         Returns:
-            final variance (at t=T)
+            final variance after dt
         """
         chi_df = self.chi_dim()
         phi, exp = self.phi_exp(dt)
@@ -88,13 +89,13 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         var_t = (exp / phi) * self.rng_spawn[0].noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
         return var_t
 
-    def var_step_pois_gamma(self, var_0, dt):
+    def var_step_pois_gamma(self, dt, var_0):
         """
         Draw final variance after dt from NCX2 distribution via Poisson-mixture gamma
 
         Args:
-            var_0: initial variance
             dt: time step
+            var_0: initial variance
 
         Returns:
             final variance and poisson RN (at t=T)
@@ -138,21 +139,21 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         return avgvar
 
     @abc.abstractmethod
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
         """
         Final variance and integrated variance over dt given var_0
         The int_var is normalized by dt
 
         Args:
-            var_0: initial variance
             dt: time step
+            var_0: initial variance
 
         Returns:
             (var_t, avgvar)
         """
         return NotImplementedError
 
-    def cond_spot_sigma(self, var_0, texp):
+    def cond_spot_sigma(self, texp, var_0):
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
@@ -162,7 +163,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         m_corr = np.zeros(self.n_path)  # martingale correction
 
         for i in range(n_dt):
-            var_t, avgvar_inc, extra = self.cond_states_step(var_t, dt[i])
+            var_t, avgvar_inc, extra = self.cond_states_step(dt[i], var_t)
             avgvar += avgvar_inc * dt[i]
 
             if self.correct_martingale:
@@ -199,22 +200,22 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         rv = super().strike_var_swap_analytic(texp, dt)
         return rv
 
-    def cond_log_return_var(self, var_0, var_t, avgvar, dt):
+    def cond_log_return_var(self, dt, var_0, var_t, avgvar):
 
         mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
                   + (self.intr - self.divr - 0.5 * avgvar) * dt
         sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
         return mean_ln**2 + sigma_ln2
 
-    def draw_log_return(self, var_0, var_t, avgvar, dt):
+    def draw_log_return(self, dt, var_0, var_t, avgvar):
         """
         Samples log return, log(S_t/S_0)
 
         Args:
+            dt: time step
             var_0: initial variance
             var_t: final variance
             avgvar: average variance
-            dt: time step
 
         Returns:
             log return
@@ -246,7 +247,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         tmp = self.rho/self.vov*self.mr - 0.5
 
         for i in range(n_dt):
-            var_t, avgvar_inc, extra = self.cond_states_step(var_0, dt[i])
+            var_t, avgvar_inc, extra = self.cond_states_step(dt[i], var_0)
 
             if self.correct_martingale:
                 pois_avgvar_v = extra.get('pois_avgvar_v', None)
@@ -257,9 +258,9 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
                 qe_m_corr = 0.0
 
             if cond:
-                var_r += self.cond_log_return_var(var_0, var_t, avgvar_inc, dt[i])
+                var_r += self.cond_log_return_var(dt[i], var_0, var_t, avgvar_inc)
             else:
-                var_r += (self.draw_log_return(var_0, var_t, avgvar_inc, dt[i]) + qe_m_corr)**2
+                var_r += (self.draw_log_return(dt[i], var_0, var_t, avgvar_inc) + qe_m_corr) ** 2
 
             var_0 = var_t
 
@@ -361,14 +362,14 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         return mean, var
 
-    def eta_mv(self, var_0, var_t, dt):
+    def eta_mv(self, dt, var_0, var_t):
         """
         The mean and variance of eta RV.
 
         Args:
+            dt: time step
             var_0: initial variance
             var_t: final variance
-            dt: time step
 
         Returns:
             eta (n_path, 1)
@@ -389,15 +390,15 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
 
         return mean, var
 
-    def cond_avgvar_mv(self, var_0, var_t, dt, pois=None, kk=0):
+    def cond_avgvar_mv(self, dt, var_0, var_t, pois=None, kk=0):
         """
         Mean and variance of the average variance conditional on initial var, final var, and eta
 
         Args:
+            dt: time step
             var_0: initial variance
             var_t: final variance
             pois: Poisson RV. If None, assume to be an eta RV.
-            dt: time step
             kk: number of gamma expansion terms
 
         Returns:
@@ -408,7 +409,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         """
 
         if pois is None:
-            m_eta, v_eta = self.eta_mv(var_0, var_t, dt)
+            m_eta, v_eta = self.eta_mv(dt, var_0, var_t)
         else:
             m_eta, v_eta = pois, 0.0
 
@@ -454,15 +455,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         super().set_num_params(n_path, dt, rn_seed, antithetic)
         self.kk = kk
 
-    def cond_avgvar_mgf(self, aa, var_0, var_t, dt):
+    def cond_avgvar_mgf(self, aa, dt, var_0, var_t):
         """
         MGF of the average variance conditional on the initial and final variance.
 
         Args:
             aa: dummy variable in the transformation
+            dt: time step
             var_0: initial variance
             var_t: final variance
-            dt: time step
 
         Returns:
             Conditional MGF at dummy variable aa
@@ -497,15 +498,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return mgf
 
-    def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
+    def cond_avgvar_mv_numeric(self, dt, var_0, var_t):
         """
         Mean and variance of the average variance conditional on initial var, final var.
         It is computed from the numerical derivatives of the conditional Laplace transform.
 
         Args:
+            dt: time step
             var_0: initial variance
             var_t: final variance
-            dt: time step
 
         Returns:
             mean, variance
@@ -515,7 +516,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(aa):
-            return np.log(self.cond_avgvar_mgf(aa, var_0, var_t, dt))
+            return np.log(self.cond_avgvar_mgf(aa, dt, var_0, var_t))
 
         m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-5)
         var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-5)
@@ -620,7 +621,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
         return m1, var
 
-    def draw_x1(self, var_0, var_t, dt):
+    def draw_x1(self, dt, var_0, var_t):
         """
         Samples of x1/dt using truncated Gamma expansion in Glasserman & Kim (2011)
 
@@ -646,7 +647,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         x1 += trunc_scale * self.rng_spawn[2].standard_gamma(trunc_shape)
         return x1
 
-    def x2_cdf_points_aw(self, shape, dt):
+    def x2_cdf_points_aw(self, dt, shape):
         """
         Simulation of X2 or Z from its CDF based on Abate-Whitt algorithm from formula (4.1) in Glasserman & Kim (2011)
         Used if self.tabulate_x2_z is True.
@@ -684,15 +685,15 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         return x_i, cdf_i
 
     @functools.lru_cache()
-    def x2_icdf_interp(self, shape, dt, *args, **kwargs):
-        xx, cdf = self.x2_cdf_points_aw(shape, dt)
+    def x2_icdf_interp(self, dt, shape, *args, **kwargs):
+        xx, cdf = self.x2_cdf_points_aw(dt, shape)
         xx = np.insert(xx, 0, 0)
         cdf = np.insert(cdf, 0, 0)
         rv = spinterp.interp1d(cdf, xx, kind='linear')
         print(f'Tabulated icdf for gamma shape={shape}')
         return rv
 
-    def draw_eta(self, var_0, var_t, dt):
+    def draw_eta(self, dt, var_0, var_t):
         """
         generate Bessel RV from p 285 of Glasserman & Kim (2011)
 
@@ -717,7 +718,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return eta
 
-    def draw_x2(self, shape, dt, size):
+    def draw_x2(self, dt, shape, size):
         """
         Simulation of x2/dt (or Z/dt) using truncated Gamma expansion in Glasserman & Kim (2011)
         X2 is the case with shape = delta / 2 and Z is the case with shape = 2
@@ -747,24 +748,24 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         return x2
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
 
-        var_t = self.var_step_ncx2(var_0=var_0, dt=dt)
-        eta = self.draw_eta(var_0, var_t, dt)
+        var_t = self.var_step_ncx2(dt=dt, var_0=var_0)
+        eta = self.draw_eta(dt, var_0, var_t)
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
         # int_var = X1+X2+X3 from formula(2.7) in Glasserman & Kim (2011)
 
-        avgvar = self.draw_x1(var_0, var_t, dt)
+        avgvar = self.draw_x1(dt, var_0, var_t)
         if self.tabulate_x2_z:
-            interp_obj = self.x2_icdf_interp(self.chi_dim()/2, dt, k1=self.params_hash())
+            interp_obj = self.x2_icdf_interp(dt, self.chi_dim() / 2, k1=self.params_hash())
             avgvar += interp_obj(self.rng_spawn[2].uniform(size=self.n_path))
 
-            interp_obj = self.x2_icdf_interp(2, dt, k1=self.params_hash())
+            interp_obj = self.x2_icdf_interp(dt, 2, k1=self.params_hash())
             zz = interp_obj(self.rng_spawn[2].uniform(size=eta.sum()))
         else:
-            avgvar += self.draw_x2(self.chi_dim()/2, dt, size=self.n_path)
-            zz = self.draw_x2(2.0, dt, size=eta.sum())
+            avgvar += self.draw_x2(dt, self.chi_dim() / 2, size=self.n_path)
+            zz = self.draw_x2(dt, 2.0, size=eta.sum())
 
         total = 0
         for i in np.arange(eta.max()):
@@ -807,7 +808,7 @@ class HestonMcAndersen2008(HestonMcABC):
     scheme = 4  # Andersen's QE scheme. Alternative: 0/1 for Euler/Milstein, 2 for NCX2, 3 for Pois-Gamma
     correct_martingale = True
 
-    def var_step_qe(self, var_0, dt):
+    def var_step_qe(self, dt, var_0):
         """
         QE step by Andersen (2008)
 
@@ -869,37 +870,37 @@ class HestonMcAndersen2008(HestonMcABC):
             milstein = (self.scheme == 1)
             for i in range(n_dt):
                 # Euler (or Milstein) scheme
-                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
+                var_t = self.var_step_euler(dt[i], var_t, milstein=milstein)
                 var_path[i + 1, :] = var_t
         elif self.scheme == 2:
             for i in range(n_dt):
-                var_t = self.var_step_ncx2(var_t, dt[i])
+                var_t = self.var_step_ncx2(dt[i], var_t)
                 var_path[i + 1, :] = var_t
         elif self.scheme == 3:
             for i in range(n_dt):
-                var_t, _ = self.var_step_pois_gamma(var_t, dt[i])
+                var_t, _ = self.var_step_pois_gamma(dt[i], var_t)
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
-                var_t, _ = self.var_step_qe(var_t, dt[i])
+                var_t, _ = self.var_step_qe(dt[i], var_t)
                 var_path[i + 1, :] = var_t
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
         return var_path
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
 
         extra = {}
         if self.scheme < 2:
             milstein = (self.scheme == 1)
-            var_t = self.var_step_euler(var_0, dt, milstein=milstein)
+            var_t = self.var_step_euler(dt, var_0, milstein=milstein)
         elif self.scheme == 2:
-            var_t = self.var_step_ncx2(var_0, dt)
+            var_t = self.var_step_ncx2(dt, var_0)
         elif self.scheme == 3:
-            var_t, _ = self.var_step_pois_gamma(var_0, dt)
+            var_t, _ = self.var_step_pois_gamma(dt, var_0)
         elif self.scheme == 4:
-            var_t, m_corr = self.var_step_qe(var_0, dt)
+            var_t, m_corr = self.var_step_qe(dt, var_0)
             extra = {'qe_m_corr': m_corr}
         else:
             ValueError(f"Incorrect scheme: {self.scheme}.")
@@ -941,15 +942,15 @@ class HestonMcPoisTimeStep(HestonMcABC):
         var_t = np.full(self.n_path, var_0)
 
         for i in range(n_dt):
-            var_t, _ = self.var_step_pois_gamma(var_t, dt[i])
+            var_t, _ = self.var_step_pois_gamma(dt[i], var_t)
             var_path[i + 1, :] = var_t
 
         return var_path
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.var_step_pois_gamma(var_0, dt)
-        avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=pois, kk=0)
+        var_t, pois = self.var_step_pois_gamma(dt, var_0)
+        avgvar_m, avgvar_v = self.cond_avgvar_mv(dt, var_0, var_t, pois=pois, kk=0)
         extra = {'pois_avgvar_v': avgvar_v}
 
         return var_t, avgvar_m, extra
@@ -999,9 +1000,9 @@ class HestonMcTseWan2013(HestonMcABC):
     """
     dist = 'ig'  # can override with 'ga' 'ln' 'n'
 
-    def cond_states_step(self, var_0, dt):
-        var_t = self.var_step_ncx2(var_0, dt)
-        avgvar_m, avgvar_v = self.cond_avgvar_mv(var_0, var_t, dt, pois=None, kk=0)
+    def cond_states_step(self, dt, var_0):
+        var_t = self.var_step_ncx2(dt, var_0)
+        avgvar_m, avgvar_v = self.cond_avgvar_mv(dt, var_0, var_t, pois=None, kk=0)
         avgvar = self.draw_from_mv(avgvar_m, avgvar_v, dist=self.dist)
 
         return var_t, avgvar, {}
@@ -1033,14 +1034,14 @@ class HestonMcChoiKwok2023(HestonMcABC):
         super().set_num_params(n_path, dt, rn_seed, antithetic)
         self.kk = kk
 
-    def draw_x123(self, var_sum, dt, shape_sum):
+    def draw_x123(self, dt, var_sum, shape_sum):
         """
         Samples of (X1 + X2 + X3)/dt using truncated Gamma expansion improved in Choi & Kwok (2023)
 
         Args:
+            dt: time step
             var_sum: sum of v_t at the observation times. (n_paths,)
             shape_sum: sum of gamma shape parameters
-            dt: time step
 
         Returns:
             (X1 + X2 + X3)/dt  (n_paths,)
@@ -1064,12 +1065,12 @@ class HestonMcChoiKwok2023(HestonMcABC):
 
         return x123
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.var_step_pois_gamma(var_0, dt)
+        var_t, pois = self.var_step_pois_gamma(dt, var_0)
         shape = 0.5*self.chi_dim() + 2*pois
 
         # self.draw_x123 returns the average by dt. Need to convert to the int variance by multiplying texp
-        avgvar = self.draw_x123(var_0 + var_t, dt, shape)
+        avgvar = self.draw_x123(dt, var_0 + var_t, shape)
 
         return var_t, avgvar, {}

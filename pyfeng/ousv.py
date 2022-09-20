@@ -9,14 +9,14 @@ class OusvABC(sv.SvABC, abc.ABC):
 
     model_type = "OUSV"
 
-    def avgvar_mv(self, var0, texp):
+    def avgvar_mv(self, texp, vol_0):
         """
         Mean and variance of the variance V(t+dt) given V(0) = var_0
         (variance is not implemented yet)
 
         Args:
-            var0: initial variance
             texp: time step
+            vol_0: initial variance
 
         Returns:
             mean, variance(=None)
@@ -24,7 +24,7 @@ class OusvABC(sv.SvABC, abc.ABC):
 
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        x0 = var0 - self.theta
+        x0 = vol_0 - self.theta
         vv = self.vov**2/2/self.mr + self.theta**2 + \
              ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
         return vv, None
@@ -144,7 +144,7 @@ class OusvUncorrBallRoma1994(OusvABC):
         if not np.isclose(self.rho, 0.0):
             print(f"Pricing ignores rho = {self.rho}.")
 
-        avgvar, _ = self.avgvar_mv(self.sigma, texp)
+        avgvar, _ = self.avgvar_mv(texp, self.sigma)
 
         m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
         price = m_bs.price(strike, spot, texp, cp)
@@ -160,21 +160,21 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
     var_process = False
 
     @abc.abstractmethod
-    def cond_states(self, vol_0, texp):
+    def cond_states_step(self, dt, vol_0):
         """
         Final variance and integrated variance over dt given var_0
         The integrated variance is normalized by dt
 
         Args:
+            dt: time-to-expiry
             vol_0: initial volatility
-            texp: time-to-expiry
 
         Returns:
             (var_final, var_mean, vol_mean)
         """
         return NotImplementedError
 
-    def vol_step(self, vol_0, dt, zn=None):
+    def vol_step(self, dt, vol_0, zn=None):
         """
         Stepping volatility according to OU process dynamics
 
@@ -193,17 +193,33 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         vol_t = self.theta + (vol_0 - self.theta)*e_mr + self.vov*np.sqrt((1 - e_mr**2)/(2*self.mr))*zn
         return vol_t
 
-    def cond_spot_sigma(self, vol_0, texp):
-        vol_texp, var_mean, vol_mean = self.cond_states(vol_0, texp)
+    def cond_spot_sigma(self, texp, vol_0):
+        tobs = self.tobs(texp)
+        dt = np.diff(tobs, prepend=0)
+        n_dt = len(dt)
 
-        spot_cond = (vol_texp**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
-            - (self.mr * self.theta / self.vov) * texp * vol_mean \
-            + (self.mr / self.vov - self.rho / 2) * texp * var_mean
+        vol_t = np.full(self.n_path, vol_0)
+        avgvar = np.zeros(self.n_path)
+        avgvol = np.zeros(self.n_path)
+
+        for i in range(n_dt):
+            vol_t, avgvar_inc, avgvol_inc = self.cond_states_step(dt[i], vol_t)
+            avgvar += avgvar_inc * dt[i]
+            avgvol += avgvol_inc * dt[i]
+
+        avgvar /= texp
+        avgvol /= texp
+
+        spot_cond = (vol_t**2 - vol_0**2) / (2 * self.vov) - self.vov * texp / 2 \
+            - (self.mr * self.theta / self.vov) * texp * avgvol \
+            + (self.mr / self.vov - self.rho / 2) * texp * avgvar
         np.exp(self.rho * spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1 - self.rho**2) * var_mean) / vol_0
+        sigma_cond = np.sqrt((1 - self.rho**2) * avgvar) / vol_0
         return spot_cond, sigma_cond
 
+    def return_var_realized(self, texp, cond):
+        return None
 
 class OusvMcTimeStep(OusvMcABC):
     """
@@ -222,7 +238,7 @@ class OusvMcTimeStep(OusvMcABC):
         sigma_t = np.insert(sigma_t, 0, self.sigma, axis=0)
         return sigma_t
 
-    def cond_states_full(self, sig_0, texp):
+    def cond_states_full(self, texp, sig_0):
         tobs = self.tobs(texp)
         n_dt = len(tobs)
         sigma_paths = self.vol_paths(tobs)
@@ -232,27 +248,13 @@ class OusvMcTimeStep(OusvMcABC):
 
         return s_t, v_t_std, u_t_std
 
-    def cond_states(self, vol_0, texp):
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        dt = np.diff(tobs, prepend=0)
+    def cond_states_step(self, dt, vol_0):
 
-        # precalculate the Simpson's rule weight
-        weight = np.ones(n_dt + 1)
-        weight[1:-1:2] = 4
-        weight[2:-1:2] = 2
-        weight /= weight.sum()
+        vol_t = self.vol_step(dt, vol_0)
+        avgvol = (vol_0 + vol_t)/2
+        avgvar = (vol_0**2 + vol_t**2)/2
 
-        vol_t = np.full(self.n_path, vol_0)
-        mean_vol = weight[0] * vol_t
-        mean_var = weight[0] * vol_t**2
-
-        for i in range(n_dt):
-            vol_t = self.vol_step(vol_t, dt[i])
-            mean_vol += weight[i+1] * vol_t
-            mean_var += weight[i+1] * vol_t**2
-
-        return vol_t, mean_var, mean_vol
+        return vol_t, avgvar, avgvol
 
 
 class OusvMcChoi2023(OusvMcABC):
@@ -450,34 +452,13 @@ class OusvMcChoi2023(OusvMcABC):
             rv -= np.sum(a6n2)
         return rv
 
-    def cond_states(self, vol_0, texp):
-        if self.dt is None:
-            vol_t, var_mean, vol_mean = self.cond_states_step(vol_0, texp)
-        else:
-            tobs = self.tobs(texp)
-            n_dt = len(tobs)
-            dt = np.diff(tobs, prepend=0)
-
-            vol_t = np.full(self.n_path, vol_0)
-            vol_mean = np.zeros(self.n_path)
-            var_mean = np.zeros(self.n_path)
-
-            for i in range(n_dt):
-                vol_t, d_v, d_u = self.cond_states_step(vol_t, dt[i])
-                vol_mean += d_u * dt[i]
-                var_mean += d_v * dt[i]
-
-            vol_mean /= texp
-            var_mean /= texp
-        return vol_t, var_mean, vol_mean
-
-    def cond_states_step(self, vol0, dt, zn=None):
+    def cond_states_step(self, dt, vol_0, zn=None):
         """
         Incremental conditional states
 
         Args:
-            vol0: initial volatility
             dt: time step
+            vol_0: initial volatility
             zn: specified normal rvs to use. (n_sin + 1, n_path)
 
         Returns:
@@ -492,11 +473,11 @@ class OusvMcChoi2023(OusvMcABC):
         cosh = np.cosh(mr_t)
         vovn = self.vov * np.sqrt(dt)  # normalized vov
 
-        x_0 = vol0 - self.theta
+        x_0 = vol_0 - self.theta
         if zn is None:
-            x_t = self.vol_step(vol0, dt) - self.theta
+            x_t = self.vol_step(dt, vol_0) - self.theta
         else:
-            x_t = self.vol_step(vol0, dt, zn=zn[0, :]) - self.theta
+            x_t = self.vol_step(dt, vol_0, zn=zn[0, :]) - self.theta
         sighat = x_t - x_0 * e_mr
 
         if zn is None:
@@ -584,11 +565,11 @@ class OusvMcChoi2023(OusvMcABC):
         x_0 = self.sigma - self.theta
 
         if zn is None:
-            vol_t = self.vol_step(self.sigma, dt)
+            vol_t = self.vol_step(dt, self.sigma)
             zn = self.rng_spawn[1].standard_normal(size=(self.n_sin, self.n_path))
             n_sin, n_path = self.n_sin, self.n_path
         else:
-            vol_t = self.vol_step(self.sigma, dt, zn[0, :])
+            vol_t = self.vol_step(dt, self.sigma, zn[0, :])
             n_sin = zn.shape[0] - 1
 
         sighat = vol_t - self.theta - x_0 * e_mr
@@ -615,7 +596,7 @@ class OusvMcChoi2023(OusvMcABC):
 
         """
         df = np.exp(-self.intr * texp)
-        vol_t, vv_t, uu_t = self.cond_states(self.sigma, texp)
+        vol_t, vv_t, uu_t = self.cond_states(texp, self.sigma)
         # vv_t is the average variance
         price = df * np.fmax(np.sign(cp)*(vv_t[:, None] - strike), 0).mean(axis=0)
         return price

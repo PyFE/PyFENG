@@ -44,8 +44,8 @@ class TestHestonMc(unittest.TestCase):
         for no in [1, 2, 3]:
             m, p, rv = pfex.HestonMcGlassermanKim2011.init_benchmark(no)
             ratio = np.random.uniform(0.25, 4, 10)
-            m1, v1 = m.cond_avgvar_mv_numeric(m.sigma, m.sigma * ratio, rv['args_pricing']['texp'])
-            m2, v2 = m.cond_avgvar_mv(m.sigma, m.sigma * ratio, rv['args_pricing']['texp'])
+            m1, v1 = m.cond_avgvar_mv_numeric(rv['args_pricing']['texp'], m.sigma, m.sigma * ratio)
+            m2, v2 = m.cond_avgvar_mv(rv['args_pricing']['texp'], m.sigma, m.sigma * ratio)
             np.testing.assert_allclose(m1, m2, rtol=5e-3)  # default: rtol=1e-7
             np.testing.assert_allclose(v1, v2, rtol=5e-3)
 

@@ -203,7 +203,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         return bm_incr
 
     @abc.abstractmethod
-    def cond_spot_sigma(self, var_0, texp):
+    def cond_spot_sigma(self, texp, var_0):
         """
         Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
         The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
@@ -211,8 +211,8 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         Volatility, not variance, is returned.
 
         Args:
-            var_0: initial variance (or vol)
             texp: time-to-expiry
+            var_0: initial variance (or vol)
 
         Returns: (forward, volatility)
         """
@@ -225,7 +225,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         scalar_output = np.isscalar(kk)
         kk = np.atleast_1d(kk)
 
-        fwd_cond, sigma_cond = self.cond_spot_sigma(self.sigma, texp)
+        fwd_cond, sigma_cond = self.cond_spot_sigma(texp, self.sigma)
 
         fwd_mean = fwd_cond.mean()
         self.result['spot error'] = fwd_mean - 1
@@ -287,7 +287,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         s_0 = np.full(self.n_path, self.sigma)
 
         for k, dt in enumerate(dt_arr):
-            spot, sigma = self.cond_spot_sigma(s_0, dt)
+            spot, sigma = self.cond_spot_sigma(dt, s_0)
 
             xx = np.random.standard_normal(int(self.n_path // 2))
             xx = np.array([xx, -xx]).flatten('F')
