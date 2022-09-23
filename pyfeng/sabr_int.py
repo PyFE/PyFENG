@@ -47,7 +47,6 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         return price
 
     def mass_zero(self, spot, texp, log=False, mu=0):
-        assert np.isclose(self.rho, 0.0)
 
         fwd = self.forward(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
