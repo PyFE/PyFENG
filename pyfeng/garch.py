@@ -17,6 +17,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
 
     model_type = "GarchDiff"
+    var_process = True
     order = 2
 
     def avgvar_mv(self, texp, var0):

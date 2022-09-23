@@ -18,36 +18,9 @@ from . import heston
 
 
 class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
-    var_process = True
     scheme = None
     correct_fwd = False
     correct_martingale = False
-
-    def chi_dim(self):
-        """
-        Noncentral Chi-square (NCX) distribution's degree of freedom
-
-        Returns:
-            degree of freedom (scalar)
-        """
-        chi_dim = 4 * self.theta * self.mr / self.vov**2
-        return chi_dim
-
-    def chi_lambda(self, dt):
-        """
-        Noncentral Chi-square (NCX) distribution's noncentrality parameter
-
-        Returns:
-            noncentrality parameter (scalar)
-        """
-        chi_lambda = 4 * self.sigma * self.mr / self.vov**2
-        chi_lambda /= np.exp(self.mr*dt) - 1
-        return chi_lambda
-
-    def phi_exp(self, texp):
-        exp = np.exp(-self.mr*texp/2)
-        phi = 4*self.mr / self.vov**2 / (1/exp - exp)
-        return phi, exp
 
     def var_step_euler(self, dt, var_0, milstein=False):
         """

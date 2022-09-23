@@ -8,6 +8,7 @@ from . import bsm
 class OusvABC(sv.SvABC, abc.ABC):
 
     model_type = "OUSV"
+    var_process = False
 
     def avgvar_mv(self, texp, vol_0):
         """
@@ -156,8 +157,6 @@ class OusvUncorrBallRoma1994(OusvABC):
 
 
 class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
-
-    var_process = False
 
     @abc.abstractmethod
     def cond_states_step(self, dt, vol_0):

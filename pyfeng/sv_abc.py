@@ -104,6 +104,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     """
     Abstract Class for conditional Monte-Carlo method for BSM-based stochastic volatility models
     """
+    var_process: bool = NotImplementedError
 
     dt = 0.05
     n_path = 10000
@@ -112,7 +113,6 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng_spawn = []
     antithetic = True
 
-    var_process = True
     correct_fwd = True
     result = {}
 
@@ -297,3 +297,55 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         np.cumprod(price, axis=0, out=price)
 
         return price
+
+class SvMixtureABC(smile.OptSmileABC, abc.ABC):
+    """
+    Abstract Class for BS-mixture model for the BSM-based stochastic volatility models
+    """
+    var_process: bool = NotImplementedError
+
+    correct_fwd = False
+    result = {}
+
+    def base_model(self, vol):
+        return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
+
+    @abc.abstractmethod
+    def cond_spot_sigma(self, texp):
+        """
+        Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
+        The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
+        Therefore, they should be scaled by the original F_0 and sigma_0 values.
+        Volatility, not variance, is returned.
+
+        Args:
+            texp: time-to-expiry
+
+        Returns: (spot, volatility, weight)
+        """
+        return NotImplementedError
+
+    def price(self, strike, spot, texp, cp=1):
+
+        kk = strike / spot
+        scalar_output = np.isscalar(kk)
+        kk = np.atleast_1d(kk)
+
+        spot_cond, sigma_cond, ww = self.cond_spot_sigma(texp)
+
+        spot_mean = np.sum(spot_cond * ww)
+        self.result['spot error'] = spot_mean - 1
+        if self.correct_fwd:
+            spot_cond /= spot_mean
+        assert np.isclose(np.sum(ww), 1)
+
+        spot_cond = np.expand_dims(spot_cond, axis=-1)
+        sigma_cond = np.expand_dims(sigma_cond, axis=-1)
+        ww = np.expand_dims(ww, axis=-1)
+
+        sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
+        base_model = self.base_model(sigma * sigma_cond)
+        price_vec = base_model.price(kk, spot_cond, texp=texp, cp=cp)
+        price = spot * np.sum(price_vec * ww, axis=0)
+
+        return price[0] if scalar_output else price

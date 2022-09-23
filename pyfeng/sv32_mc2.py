@@ -9,8 +9,8 @@ from scipy.misc import derivative
 
 
 class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
-    var_process = True
     model_type = "3/2"
+    var_process = True
     scheme = None
     _m_heston = None
 
