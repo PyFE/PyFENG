@@ -29,36 +29,10 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
         - Gulisashvili, A., Horvath, B., & Jacquier, A. (2018). Mass at zero in the uncorrelated SABR model and implied volatility asymptotics. Quantitative Finance, 18(10), 1753–1765. https://doi.org/10.1080/14697688.2018.1432883
     """
 
-    n_quad = 9
-
-    def __init__(
-        self,
-        sigma,
-        vov=0.0,
-        rho=0.0,
-        beta=1.0,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-        n_quad=9,
-    ):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility. Should be 0 in this model.
-            beta: elasticity parameter. 0.5 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-            n_quad: number of quadrature points
-        """
-        assert abs(rho) < 1e-8
-        self.n_quad = n_quad
-        super().__init__(sigma, vov, 0.0, beta, intr=intr, divr=divr, is_fwd=is_fwd)
+    n_quad = 10
 
     @staticmethod
-    def int_var_lndist(vovn):
+    def avgvar_lndist(vovn):
         """
         Lognormal distribution parameters of integrated integrated variance:
         sigma^2 * texp * m1 * exp(sig*Z - 0.5*sig^2)
@@ -78,8 +52,9 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
         return m1, sig
 
     def price(self, strike, spot, texp, cp=1):
+        assert np.isclose(self.rho, 0.0)
         assert self._base_beta is None
-        m1, fac = self.int_var_lndist(self.vov * np.sqrt(texp))
+        m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
 
         zz, ww = spsp.roots_hermitenorm(self.n_quad)
         ww /= np.sqrt(2 * np.pi)
@@ -91,7 +66,8 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
         return p
 
     def mass_zero(self, spot, texp, log=False, mu=0):
-        m1, fac = self.int_var_lndist(self.vov * np.sqrt(texp))
+        assert np.isclose(self.rho, 0.0)
+        m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
 
         zz, ww = spsp.roots_hermitenorm(self.n_quad)
         ww /= np.sqrt(2 * np.pi)
@@ -117,7 +93,7 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
 
 
 class SabrCondDistABC(sabr.SabrABC, abc.ABC):
-    fwd_cv = False
+    correct_fwd = False
 
     @abc.abstractmethod
     def cond_spot_sigma(self, fwd, texp):
@@ -136,7 +112,7 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
 
         fwd_eff, vol_eff, ww = self.cond_spot_sigma(fwd, texp)
         # print(f'E(F) = {np.sum(fwd_eff*ww)}')
-        if self.fwd_cv:
+        if self.correct_fwd:
             fwd_eff /= np.sum(fwd_eff*ww)
         assert np.isclose(np.sum(ww), 1)
 
@@ -152,8 +128,8 @@ class SabrCondDistABC(sabr.SabrABC, abc.ABC):
 
         base_model = self.base_model(alpha * vol_eff)
         price_vec = base_model.price(kk, fwd_eff, texp, cp=cp)
-        price = np.sum(price_vec * ww, axis=0)
-        return fwd*price
+        price = fwd * np.sum(price_vec * ww, axis=0)
+        return price
 
 
 class SabrCondQuad(SabrCondDistABC):

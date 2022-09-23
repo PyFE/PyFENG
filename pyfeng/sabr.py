@@ -21,6 +21,7 @@ from . import cev
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
     model_type = "SABR"
+    var_process = False
     _base_beta = None
 
     def __init__(
