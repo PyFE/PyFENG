@@ -50,7 +50,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta
         alpha = self.sigma / np.power(fwd, betac)  # if self.beta > 0.0 else self.sigma
-        rho2 = self.rho * self.rho
+        rho2 = self.rho**2
         rhoc = np.sqrt(1.0 - rho2)
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
@@ -492,9 +492,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
         vov_over_alpha_safe = self.vov / np.maximum(alpha, np.finfo(float).eps)
         tmp = self._int_inv_locvol(kk, self.beta)
-        qq_ratio = (
-            1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
-        )
+        qq_ratio = 1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
 
         qq = tmp * (kk - 1.0)
         zz = vov_over_alpha_safe * qq  # zeta = (vov/sigma0) q
@@ -504,14 +502,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
         # term11: O(alpha*vov)
         # C(k)-C(1)/(k-1). Notice that 1/beta comes from int_inv_locvol
-        term11 = (
-            self.rho
-            * self.beta
-            / 4
-            * self.vov
-            * alpha
-            * self._int_inv_locvol(kk, betac)
-        )
+        term11 = self.rho * self.beta / 4 * self.vov * alpha * self._int_inv_locvol(kk, betac)
 
         # term20: O(alpha^2)
         if np.isclose(self.beta, vol_beta):
@@ -521,13 +512,8 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
                 ## Override ATM (qq=0)
                 term20 = np.where(
                     np.fabs(qq) < 1e-6,
-                    (np.square(betac) - np.square(vol_betac)) / 24 * np.square(alpha),
-                    (
-                        0.5 * (self.beta - self._base_beta) * np.log(kk)
-                        - np.log(qq_ratio)
-                    )
-                    * np.square(alpha)
-                    / qq,
+                    (betac**2 - vol_betac**2) / 24 * alpha**2,
+                    (0.5*(self.beta - self._base_beta) * np.log(kk) - np.log(qq_ratio)) * alpha**2 / qq,
                 )
         # else:
         #    raise ValueError('Cannot handle this vol_beta different from beta')
@@ -683,7 +669,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
 
             gg_diff = self.rho * self.beta / (rhoc * betac) * (gg2 - gg1)
 
-        zz2_safe = np.maximum(np.square(zz), np.finfo(float).eps)
+        zz2_safe = np.maximum(zz**2, np.finfo(float).eps)
 
         if np.isclose(self.beta, vol_beta):
             tmp = 0.0
@@ -699,19 +685,12 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
                 (0.5 * (self.beta - self._base_beta) * np.log(kk) - np.log(qq_ratio)) * np.square(alpha) / qq
             )
         """
-        order1 = (
-            np.square(self.vov * hh)
-            / zz2_safe
-            * (tmp + 0.5 * np.log(v_m / np.square(hh)) + gg_diff)
-        )
+        order1 = (self.vov * hh)**2 / zz2_safe * (tmp + 0.5 * np.log(v_m / np.square(hh)) + gg_diff)
 
         ## Override ATM (z=0)
         ind_atm = abs(zz) < 1e-6
-        order1[ind_atm] = (
-            np.square(betac) - np.square(vol_betac)
-        ) / 24 * alpha * alpha + (
-            (self.rho * self.beta / 4) * alpha + (2 - 3 * rho2) / 24 * self.vov
-        ) * self.vov  # RHS scalar
+        order1[ind_atm] = (betac**2 - vol_betac**2)/24 * alpha**2 \
+                          + ((self.rho * self.beta / 4) * alpha + (2 - 3 * rho2) / 24 * self.vov) * self.vov  # RHS scalar
 
         # return value
         if self.approx_order == 0:

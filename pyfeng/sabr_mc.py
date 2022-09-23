@@ -46,14 +46,24 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         """
         return NotImplementedError
 
-    def cond_spot_sigma(self, texp, sigma_0, mu=0):
-        rhoc = np.sqrt(1.0 - self.rho ** 2)
-        rho_sigma = self.rho * sigma_0
+    def cond_spot_sigma(self, texp, fwd, mu=0):
+        """
+        Spot and sigma ratio.
+
+        Args:
+            texp: time to expiry
+            fwd: forward. Only used for calculating alpha
+            mu: BM shift (currently not used)
+
+        Returns:
+            (spot ratio, sigma ratio)
+        """
 
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
 
+        #### sigma is normalized to 1
         sigma_t = np.full(self.n_path, 1.0)
         avgvar = np.zeros(self.n_path)
 
@@ -62,30 +72,40 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
             avgvar += avgvar_inc * dt[i]
 
         avgvar /= texp
+
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
         vol_cond = rhoc * np.sqrt(avgvar)
+        rho_alpha = self.rho * alpha
 
         if np.isclose(self.beta, 0):
-            spot_cond = rho_sigma / self.vov * (sigma_t - 1)
+            spot_cond = 1 + rho_alpha / self.vov * (sigma_t - 1)
         else:
-            spot_cond = 1.0 / self.vov * (sigma_t - 1) - 0.5 * rho_sigma * avgvar * texp
-            np.exp(rho_sigma * spot_cond, out=spot_cond)
+            spot_cond = 1.0 / self.vov * (sigma_t - 1) - 0.5 * rho_alpha * avgvar * texp
+            np.exp(rho_alpha * spot_cond, out=spot_cond)
 
         return spot_cond, vol_cond
 
     def price(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)
-        fwd_cond, vol_cond = self.cond_spot_sigma(texp, self.sigma)
-        if np.isclose(self.beta, 0):
-            base_model = self.base_model(self.sigma * vol_cond, is_fwd=True)
-            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
-            price = np.mean(price_grid, axis=1)
-        else:
-            alpha = self.sigma / np.power(spot, 1.0 - self.beta)
-            kk = strike / fwd
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
+        kk = strike / fwd
 
-            base_model = self.base_model(alpha * vol_cond, is_fwd=True)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp, cp=cp)
-            price = fwd * np.mean(price_grid, axis=1)
+        fwd_ratio, vol_ratio = self.cond_spot_sigma(texp, fwd)
+
+        if self.correct_fwd:
+            fwd_ratio /= np.mean(fwd_ratio)
+
+        if self.beta > 0:
+            ind = (fwd_ratio > 1e-16)
+        else:
+            ind = (fwd_ratio > -999)
+
+        fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
+        vol_ratio = np.expand_dims(vol_ratio[ind], -1)
+
+        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
+        price = fwd * np.sum(price_vec, axis=0) / self.n_path
 
         return price
 
@@ -158,26 +178,32 @@ class SabrMcTimeDisc(SabrMcABC):
     def mass_zero(self, spot, texp, log=False, mu=0):
 
         assert 0 < self.beta < 1
-        assert self.rho == 0
+        assert np.isclose(self.rho, 0.0)
 
-        eta = self.vov * np.power(spot, 1.0 - self.beta) / (self.sigma * (1.0 - self.beta))
-        vovn = self.vov * np.sqrt(texp)
+        ### We calculate under normalization by fwd.
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
+        ### mu is currently not used.
         if mu is None:
+            eta = self.vov * np.power(spot, betac) / (self.sigma * betac)
+            vovn = self.vov * np.sqrt(texp)
             mu = 0.5 * (vovn + np.log(1 + eta ** 2) / vovn)
             # print(f'mu = {mu}')
 
-        #### Currently use the _volpath version because of the rn_deriv
-        fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma_volpath(texp, self.sigma, mu=mu)
-        base_model = cev.Cev(sigma=self.sigma * vol_cond, beta=self.beta)
+        fwd_ratio, vol_ratio = self.cond_spot_sigma(texp, fwd)
+        assert np.isclose(fwd_ratio, 1.0).all()
+        log_rn_deriv = 0.0  ## currently not used
+
+        base_model = cev.Cev(sigma=alpha * vol_ratio, beta=self.beta)
         if log:
-            log_mass_grid = base_model.mass_zero(spot, texp, log=True) + log_rn_deriv
+            log_mass_grid = base_model.mass_zero(1.0, texp, log=True) + log_rn_deriv
             log_mass_max = np.amax(log_mass_grid)
             log_mass_grid -= log_mass_max
             log_mass = log_mass_max + np.log(np.mean(np.exp(log_mass_grid)))
             return log_mass
         else:
-            mass_grid = base_model.mass_zero(spot, texp, log=False) * np.exp(log_rn_deriv)
+            mass_grid = base_model.mass_zero(1.0, texp, log=False) * np.exp(log_rn_deriv)
             mass = np.mean(mass_grid)
             return mass
 

@@ -6,7 +6,72 @@ import scipy.stats as spst
 from . import opt_smile_abc as smile
 
 
-class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
+class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
+
+    correct_fwd = False
+
+    @abc.abstractmethod
+    def cond_spot_sigma(self, texp, fwd):
+        # return (fwd, vol, weight) each 1d array
+        return NotImplementedError
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
+        #if self.beta == 0:
+        #    kk = strike - fwd + 1.0
+        #    fwd = 1.0
+        #else:
+        kk = strike / fwd
+
+        fwd_ratio, vol_ratio, ww = self.cond_spot_sigma(texp, fwd)
+        # print(f'E(F) = {np.sum(fwd_ratio * ww)}')
+
+        if self.correct_fwd:
+            fwd_ratio /= np.sum(fwd_ratio*ww)
+        assert np.isclose(np.sum(ww), 1)
+
+        # apply if beta > 0
+        if self.beta > 0:
+            ind = (fwd_ratio*ww > 1e-16)
+        else:
+            ind = (fwd_ratio*ww > -999)
+
+        fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
+        vol_ratio = np.expand_dims(vol_ratio[ind], -1)
+        ww = np.expand_dims(ww[ind], -1)
+
+        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
+        price = fwd * np.sum(price_vec * ww, axis=0)
+        return price
+
+    def mass_zero(self, spot, texp, log=False, mu=0):
+        assert np.isclose(self.rho, 0.0)
+
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
+        fwd_ratio, vol_ratio, ww = self.cond_spot_sigma(texp, fwd)
+
+        if self.correct_fwd:
+            fwd_ratio /= np.sum(fwd_ratio*ww)
+        assert np.isclose(np.sum(ww), 1)
+
+        base_m = self.base_model(alpha * vol_ratio, is_fwd=True)
+
+        if log:
+            log_mass = np.log(ww) + base_m.mass_zero(fwd_ratio, texp, log=True)
+            log_max = np.amax(log_mass)
+            log_mass -= log_max
+            log_mass = log_max + np.log(np.sum(np.exp(log_mass)))
+            return log_mass
+        else:
+            mass = base_m.mass_zero(fwd_ratio, texp, log=False)
+            mass = np.sum(mass * ww)
+            return mass
+
+
+class SabrUncorrChoiWu2021(SabrMixtureABC):
     """
     The uncorrelated SABR (rho=0) model pricing by approximating the integrated variance with
     a log-normal distribution.
@@ -34,7 +99,7 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
     @staticmethod
     def avgvar_lndist(vovn):
         """
-        Lognormal distribution parameters of integrated integrated variance:
+        Lognormal distribution parameters of the normalized average variance:
         sigma^2 * texp * m1 * exp(sig*Z - 0.5*sig^2)
 
         Args:
@@ -51,88 +116,22 @@ class SabrUncorrChoiWu2021(sabr.SabrABC, smile.MassZeroABC):
         sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
         return m1, sig
 
-    def price(self, strike, spot, texp, cp=1):
+    def cond_spot_sigma(self, texp, _):
+
         assert np.isclose(self.rho, 0.0)
-        assert self._base_beta is None
+        assert 0 < self.beta < 1
+
         m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
 
         zz, ww = spsp.roots_hermitenorm(self.n_quad)
         ww /= np.sqrt(2 * np.pi)
 
-        vol = self.sigma * np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
+        vol_ratio = np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
 
-        p_grid = self.base_model(vol[:, None]).price(strike, spot, texp, cp=cp)
-        p = np.sum(p_grid * ww[:, None], axis=0)
-        return p
-
-    def mass_zero(self, spot, texp, log=False, mu=0):
-        assert np.isclose(self.rho, 0.0)
-        m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
-
-        zz, ww = spsp.roots_hermitenorm(self.n_quad)
-        ww /= np.sqrt(2 * np.pi)
-
-        log_rn_deriv = 0.0 if mu == 0 else -mu * (zz + 0.5 * mu)
-        zz += mu
-        vol = self.sigma * np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
-
-        if log:
-            log_mass = (
-                np.log(ww)
-                + log_rn_deriv
-                + self.base_model(vol).mass_zero(spot, texp, log=True)
-            )
-            log_max = np.amax(log_mass)
-            log_mass -= log_max
-            log_mass = log_max + np.log(np.sum(np.exp(log_mass)))
-            return log_mass
-        else:
-            mass = self.base_model(vol).mass_zero(spot, texp, log=False)
-            mass = np.sum(mass * ww * np.exp(log_rn_deriv))
-            return mass
+        return np.full(self.n_quad, 1.0), vol_ratio, ww
 
 
-class SabrCondDistABC(sabr.SabrABC, abc.ABC):
-    correct_fwd = False
-
-    @abc.abstractmethod
-    def cond_spot_sigma(self, fwd, texp):
-        # return (fwd, vol, weight) each 1d array
-        return NotImplementedError
-
-    def price(self, strike, spot, texp, cp=1):
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
-
-        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
-        #if self.beta == 0:
-        #    kk = strike - fwd + 1.0
-        #    fwd = 1.0
-        #else:
-        kk = strike / fwd
-
-        fwd_eff, vol_eff, ww = self.cond_spot_sigma(fwd, texp)
-        # print(f'E(F) = {np.sum(fwd_eff*ww)}')
-        if self.correct_fwd:
-            fwd_eff /= np.sum(fwd_eff*ww)
-        assert np.isclose(np.sum(ww), 1)
-
-        # apply if beta > 0
-        if self.beta > 0:
-            ind = (fwd_eff*ww > 1e-16)
-        else:
-            ind = (fwd_eff*ww > -999)
-
-        fwd_eff = np.expand_dims(fwd_eff[ind], -1)
-        vol_eff = np.expand_dims(vol_eff[ind], -1)
-        ww = np.expand_dims(ww[ind], -1)
-
-        base_model = self.base_model(alpha * vol_eff)
-        price_vec = base_model.price(kk, fwd_eff, texp, cp=cp)
-        price = fwd * np.sum(price_vec * ww, axis=0)
-        return price
-
-
-class SabrCondQuad(SabrCondDistABC):
+class SabrMixture(SabrMixtureABC):
     n_quad = None
     dist = 'ln'
 
@@ -140,7 +139,7 @@ class SabrCondQuad(SabrCondDistABC):
         return self.n_quad or np.floor(3 + 4*vovn)
 
     @staticmethod
-    def condvar_m1(z, vovn):
+    def cond_avgvar_m1(z, vovn):
         """
         Calculate the conditional mean of the normalized integrated variance of SABR model
         E{ int_0^1 exp{2 vov sqrt(T) Z_s - vov^2 T s^2} ds | Z_1 = z }
@@ -151,14 +150,14 @@ class SabrCondQuad(SabrCondDistABC):
         return m1 #*np.exp(vovn*z)
 
     @staticmethod
-    def condvar_m2(z, vovn):
+    def cond_avgvar_m2(z, vovn):
         """
         Calculate the 2nd moment of the normalized integrated variance of SABR model
         E{ int_0^1 exp{2 vov sqrt(T) Z_s - vov^2 T s^2} ds | Z_1 = z }
         int_0^T exp{vov Z_t - vov^2/2 t^2} dt =
         """
-        m2 = (SabrCondQuad.condvar_m1(z, 2*vovn)
-              - SabrCondQuad.condvar_m1(z, vovn)*np.cosh(z*vovn))/vovn**2
+        m2 = (SabrMixture.cond_avgvar_m1(z, 2 * vovn)
+              - SabrMixture.cond_avgvar_m1(z, vovn) * np.cosh(z * vovn)) / vovn ** 2
         return m2 #*np.exp(2*vovn*z)
 
     def zhat_weight(self, vovn):
@@ -179,10 +178,10 @@ class SabrCondQuad(SabrCondDistABC):
         ww = ww[:, None]
         return zhat, ww
 
-    def cond_int_var(self, vovn, zhat):
+    def cond_avgvar(self, vovn, zhat):
 
-        m1 = self.condvar_m1(zhat, vovn)
-        m2 = self.condvar_m2(zhat, vovn)
+        m1 = self.cond_avgvar_m1(zhat, vovn)
+        m2 = self.cond_avgvar_m2(zhat, vovn)
         m1m2_ratio = m2 / m1**2
         m1 *= np.exp(zhat * vovn)
 
@@ -206,24 +205,24 @@ class SabrCondQuad(SabrCondDistABC):
         assert r_var.shape == w2.shape
         return r_var, r_vol, w2
 
-    def cond_spot_sigma(self, fwd, texp):
+    def cond_spot_sigma(self, texp, fwd):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
         rho_alpha = self.rho * alpha
 
         zhat, w0 = self.zhat_weight(vovn)  # column vectors
-        r_var, r_vol, w123 = self.cond_int_var(vovn, zhat)
+        r_var, r_vol, w123 = self.cond_avgvar(vovn, zhat)
         w0123 = w0 * w123
 
         r_vol *= rhoc  # matrix
         exp_plus = np.exp(0.5*vovn*zhat)
         exp_plus2 = exp_plus**2
 
-        if self.beta == 0:
+        if np.isclose(self.beta, 0):
             fwd_ratio = 1 + (rho_alpha/self.vov) * (exp_plus2 - 1)
             #fwd_ratio = fwd_ratio * np.ones(self.n_quad[1])
         elif self.beta > 0:
             fwd_ratio = rho_alpha * ((exp_plus2 - 1)/self.vov - 0.5*rho_alpha*texp*r_var)
-            fwd_ratio = np.exp(fwd_ratio)
+            np.exp(fwd_ratio, out=fwd_ratio)
         else:
             fwd_ratio = 1.0
 

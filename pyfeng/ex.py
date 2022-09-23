@@ -8,7 +8,7 @@ from .sv32_mc2 import Sv32McTimeStep, Sv32McExactBaldeaux2012, Sv32McExactChoiKw
 from .subord_bm import VarGammaQuad, ExpNigQuad
 
 # SABR / OUSV models for research
-from .sabr_int import SabrCondQuad
+from .sabr_int import SabrMixture
 from .sabr_mc import SabrMcCai2017Exact
 from .ousv import OusvSchobelZhu1998, OusvMcTimeStep, OusvMcChoi2023
 
