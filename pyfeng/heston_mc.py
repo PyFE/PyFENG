@@ -407,6 +407,18 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     References:
         - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.array([60, 70, 100, 140])
+        >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
+        >>> m = pf.HestonMcGlassermanKim2011(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m.set_num_params(n_path=1e5, kk=4, rn_seed=123456)
+        >>> m.price(strike, spot, texp)
+        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+        array([44.35153812, 35.86029054, 13.17026256,  0.29550527])
+
     """
 
     dist = 'ga'  # distribution for the truncated series
@@ -767,15 +779,14 @@ class HestonMcAndersen2008(HestonMcABC):
 
     Examples:
         >>> import numpy as np
-        >>> import pyfeng.ex as pfex
-        >>> strike = np.array([60, 100, 140])
-        >>> spot = 100
-        >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pfex.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
+        >>> import pyfeng as pf
+        >>> strike = np.array([60, 70, 100, 140])
+        >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
+        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
-        >>> # true price: 44.330, 13.085, 0.296
-        array([44.31943535, 13.09371251,  0.29580431])
+        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+        array([44.28356337, 35.80059515, 13.05391402,  0.29848727])
     """
     psi_c = 1.5  # parameter used by the Andersen QE scheme
     scheme = 4  # Andersen's QE scheme. Alternative: 0/1 for Euler/Milstein, 2 for NCX2, 3 for Pois-Gamma
@@ -884,7 +895,7 @@ class HestonMcAndersen2008(HestonMcABC):
         return var_t, avgvar, extra
 
 
-class HestonMcPoisTimeStep(HestonMcABC):
+class HestonMcChoiKwok2023PoisTd(HestonMcABC):
     """
     Heston simulation scheme Poisson-conditioned time discretization quadrature
 
@@ -893,15 +904,15 @@ class HestonMcPoisTimeStep(HestonMcABC):
 
     Examples:
         >>> import numpy as np
-        >>> import pyfeng.ex as pfex
-        >>> strike = np.array([60, 100, 140])
+        >>> import pyfeng as pf
+        >>> strike = np.array([60, 70, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pfex.HestonMcPoisTimeStep(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m = pf.HestonMcChoiKwok2023PoisTd(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
-        >>> # true price: 44.330, 13.085, 0.296
-        array([44.31943535, 13.09371251,  0.29580431])
+        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+        array([44.36484309, 35.87571609, 13.08606262,  0.29620234])
     """
 
     correct_martingale = True
@@ -981,13 +992,25 @@ class HestonMcTseWan2013(HestonMcABC):
         return var_t, avgvar, {}
 
 
-class HestonMcChoiKwok2023(HestonMcABC):
+class HestonMcChoiKwok2023PoisGe(HestonMcABC):
     """
-    Simulation scheme with Poisson conditioning.
-    Enhanced Glasserman & Kim (2011) and Tse & Wan (2013)
+    Poisson-conditioned exact simulation scheme from Choi & Kwok (2023).
+    This scheme enhances the gamma expansion of Glasserman & Kim (2011).
 
     References:
         - Choi & Kwok (2023). Simulation schemes for the Heston model with Poisson conditioning. Working paper.
+        - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.array([60, 70, 100, 140])
+        >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
+        >>> m = pf.HestonMcChoiKwok2023PoisGe(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m.set_num_params(n_path=1e5, kk=4, rn_seed=123456)
+        >>> m.price(strike, spot, texp)
+        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+        array([44.35753578, 35.8767866 , 13.12277647,  0.29461611])
 
     """
 

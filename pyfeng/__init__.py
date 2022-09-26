@@ -14,6 +14,10 @@ from .sabr import (
 )
 from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 from .heston import HestonUncorrBallRoma1994
+from .heston_mc import (
+    HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
+    HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd
+)
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrMcTimeDisc
