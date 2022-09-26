@@ -4,11 +4,15 @@
 [![Downloads](https://pepy.tech/badge/pyfeng)](https://pepy.tech/project/pyfeng)
 
 PyFENG is the python implemention of the standard option pricing models in financial engineering.
-  * Black-Scholes-Merton (and displaced diffusion)
-  * Bachelier (Normal)
-  * Constant-elasticity-of-variance (CEV)
-  * Stochastic-alpha-beta-rho (SABR)
-  * Hyperbolic normal stochastic volatility model (NSVh)
+
+## Models implemented 
+  * Black-Scholes-Merton (and displaced diffusion) model
+  * Bachelier (Normal) model
+  * Constant-elasticity-of-variance (CEV) model
+  * Stochastic-alpha-beta-rho (SABR) model
+  * Hyperbolic normal stochastic volatility (NSVh) model
+  * Heston model
+  * Ornstein-Uhlenbeck driven stochastic volatility model
 
 ## About the package
 * It assumes variables are `numpy` arrays. So the computations are naturally vectorized.
