@@ -17,7 +17,7 @@ from .heston import HestonUncorrBallRoma1994
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrMcTimeDisc
-from .nsvh import Nsvh1, NsvhMc
+from .nsvh import Nsvh1, NsvhMc, NsvhQuadInt
 from .multiasset import (
     BsmSpreadKirk,
     BsmSpreadBjerksund2014,

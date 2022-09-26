@@ -1,5 +1,7 @@
 import numpy as np
 import scipy.stats as spst
+import scipy.special as spsp
+import scipy.stats as spst
 import scipy.optimize as spop
 from . import sabr
 
@@ -24,17 +26,26 @@ class Nsvh1(sabr.SabrABC):
     beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
     is_atmvol = False
 
-    def __init__(
-        self,
-        sigma,
-        vov=0.0,
-        rho=0.0,
-        beta=None,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-        is_atmvol=False,
-    ):
+    def _sig0_from_atmvol(self, texp):
+        s_sqrt = self.vov * np.sqrt(texp)
+        vov_var = np.exp(0.5 * s_sqrt**2)
+        rhoc = np.sqrt(1 - self.rho**2)
+
+        d = (np.arctanh(self.rho) - np.arcsinh(self.rho * vov_var / rhoc)) / s_sqrt
+        ncdf_p = spst.norm.cdf(d + s_sqrt)
+        ncdf_m = spst.norm.cdf(d - s_sqrt)
+        ncdf = spst.norm.cdf(d)
+
+        price = (
+            0.5
+            / self.vov
+            * vov_var
+            * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
+        )
+        sig0 = self.sigma * np.sqrt(texp / 2 / np.pi) / price
+        return sig0
+
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -52,25 +63,6 @@ class Nsvh1(sabr.SabrABC):
         self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
-    def _sig0_from_atmvol(self, texp):
-        s_sqrt = self.vov * np.sqrt(texp)
-        vov_var = np.exp(0.5 * s_sqrt ** 2)
-        rhoc = np.sqrt(1 - self.rho ** 2)
-
-        d = (np.arctanh(self.rho) - np.arcsinh(self.rho * vov_var / rhoc)) / s_sqrt
-        ncdf_p = spst.norm.cdf(d + s_sqrt)
-        ncdf_m = spst.norm.cdf(d - s_sqrt)
-        ncdf = spst.norm.cdf(d)
-
-        price = (
-            0.5
-            / self.vov
-            * vov_var
-            * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
-        )
-        sig0 = self.sigma * np.sqrt(texp / 2 / np.pi) / price
-        return sig0
-
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
 
@@ -82,8 +74,8 @@ class Nsvh1(sabr.SabrABC):
 
         sig_sqrt = sig0 * np.sqrt(texp)
 
-        vov_var = np.exp(0.5 * s_sqrt ** 2)
-        rhoc = np.sqrt(1 - self.rho ** 2)
+        vov_var = np.exp(0.5 * s_sqrt**2)
+        rhoc = np.sqrt(1 - self.rho**2)
 
         d = (
             np.arctanh(self.rho)
@@ -111,8 +103,8 @@ class Nsvh1(sabr.SabrABC):
 
         s_sqrt = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)
-        vov_var = np.exp(0.5 * s_sqrt ** 2)
-        rhoc = np.sqrt(1 - self.rho ** 2)
+        vov_var = np.exp(0.5 * s_sqrt**2)
+        rhoc = np.sqrt(1 - self.rho**2)
 
         d = (
             np.arctanh(self.rho)
@@ -133,15 +125,15 @@ class Nsvh1(sabr.SabrABC):
             (variance, skewness, and ex-kurtosis)
         """
         vol_std = self.vov * np.sqrt(texp)
-        ww = np.exp(vol_std ** 2)
-        rho2 = self.rho ** 2
+        ww = np.exp(vol_std**2)
+        rho2 = self.rho**2
         rho3 = self.rho * rho2
-        rho4 = rho2 ** 2
+        rho4 = rho2**2
 
         c20 = ww + 1
         c22 = ww - 1
 
-        c31 = 3 * (ww + 1) ** 2
+        c31 = 3 * (ww + 1)**2
         c33 = (ww - 1) * (ww + 3)
 
         # C40 = (ww + 1)**2*(ww**4 + 2*ww**2 + 3)
@@ -152,9 +144,9 @@ class Nsvh1(sabr.SabrABC):
 
         m2 = (1 / 2) * (ww - 1) * (c20 + rho2 * c22)
 
-        k0 = (ww + 1) ** 3 * (ww ** 2 + 3)
-        k2 = 6 * (ww + 1) ** 2 * (ww ** 3 + ww ** 2 + 3 * ww - 1)
-        k4 = (ww - 1) * (ww ** 4 + 4 * ww ** 3 + 10 * ww ** 2 + 12 * ww - 3)
+        k0 = (ww + 1)**3 * (ww**2 + 3)
+        k2 = 6 * (ww + 1)**2 * (ww**3 + ww**2 + 3 * ww - 1)
+        k4 = (ww - 1) * (ww**4 + 4 * ww**3 + 10 * ww**2 + 12 * ww - 3)
 
         skew = (
             np.sqrt(ww * (ww - 1) / 2)
@@ -162,10 +154,10 @@ class Nsvh1(sabr.SabrABC):
             / np.power(c20 + rho2 * c22, 1.5)
         )
         exkurt = (
-            (1 / 2) * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22) ** 2
+            (1 / 2) * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22)**2
         )
 
-        return m2 * (self.sigma / self.vov) ** 2, skew, exkurt
+        return m2 * (self.sigma / self.vov)**2, skew, exkurt
 
     def calibrate_vsk(self, var, skew, exkurt, texp=1, setval=False):
         """
@@ -183,7 +175,7 @@ class Nsvh1(sabr.SabrABC):
             Tuenter, H. J. H. (2001). An algorithm to determine the parameters of SU-curves in the johnson system of probabillity distributions by moment matching. Journal of Statistical Computation and Simulation, 70(4), 325–347. https://doi.org/10.1080/00949650108812126
         """
         assert exkurt > 0
-        beta1 = skew ** 2
+        beta1 = skew**2
         beta2 = exkurt + 3
 
         # min of w search
@@ -195,19 +187,19 @@ class Nsvh1(sabr.SabrABC):
 
         def f_beta1(w):
             term1 = np.sqrt(4 + 2 * (w * w - (beta2 + 3) / (w * w + 2 * w + 3)))
-            return (w + 1 - term1) * (w + 1 + 0.5 * term1) ** 2 - beta1
+            return (w + 1 - term1) * (w + 1 + 0.5 * term1)**2 - beta1
 
         assert f_beta1(w_min) >= 0
         # print(w_min, f_beta1(w_min), w_max, f_beta1(w_max))
 
-        # root finding for w = exp(S) = exp(vov^2 texp)
+        # root finding for w = np.exp(S) = np.exp(vov^2 texp)
         w_root = spop.brentq(f_beta1, w_min, w_max)
         m = -2 + np.sqrt(
-            4 + 2 * (w_root ** 2 - (beta2 + 3) / (w_root ** 2 + 2 * w_root + 3))
+            4 + 2 * (w_root**2 - (beta2 + 3) / (w_root**2 + 2 * w_root + 3))
         )
         term = (
             (w_root + 1) / (2 * w_root) * ((w_root - 1) / m - 1)
-        )  # - sinh(Omega) = rho / rho_*
+        )  # - sinh(Omega) = rho / rhoc*
 
         # if term is slightly negative, next line error in sqrt
         if abs(term) < np.finfo(float).eps * 100:
@@ -215,7 +207,7 @@ class Nsvh1(sabr.SabrABC):
 
         rho = np.sign(skew) * np.sqrt(1 - 1 / (1 + term))
         vov = np.sqrt(np.log(w_root) / texp)
-        m2 = 0.5 * (w_root - 1) * ((w_root + 1) + rho ** 2 * (w_root - 1))
+        m2 = 0.5 * (w_root - 1) * ((w_root + 1) + rho**2 * (w_root - 1))
         sig0 = np.sqrt(var / m2) * vov
 
         if setval:
@@ -241,23 +233,13 @@ class NsvhMc(sabr.SabrABC):
     rng = np.random.default_rng(None)
     antithetic = True
 
-    def __init__(
-        self,
-        sigma,
-        vov=0.0,
-        rho=0.0,
-        lam=0,
-        beta=None,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-    ):
+    def __init__(self, sigma, vov=0.0, rho=0.0, lam=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
             sigma: model volatility at t=0
             vov: volatility of volatility
             rho: correlation between price and volatility
-            lam: lambda. Norma SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
+            lam: lambda. Normal SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
             beta: elasticity parameter. should be 0 or None.
             intr: interest rate (domestic interest rate)
             divr: dividend/convenience yield (foreign interest rate)
@@ -269,7 +251,7 @@ class NsvhMc(sabr.SabrABC):
         self.lam = lam
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
-    def set_mc_params(self, n_path=1e6, rn_seed=None, antithetic=True):
+    def set_num_params(self, n_path=1e6, rn_seed=None, antithetic=True):
         self.n_path = int(n_path)
         self.rn_seed = rn_seed
         self.antithetic = antithetic
@@ -289,26 +271,22 @@ class NsvhMc(sabr.SabrABC):
         # forward path starting from zero
         # returns both sigma and price
 
-        rhoc = np.sqrt(1 - self.rho ** 2)
-        vol_var = self.vov ** 2 * texp
+        rhoc = np.sqrt(1 - self.rho**2)
+        vol_var = self.vov**2 * texp
         vol_std = np.sqrt(vol_var)
 
         z_rn = self.rng.normal(size=(int(self.n_path / 2), 3))
         z_rn = np.stack([z_rn, -z_rn], axis=1).reshape((-1, 3))
         z_rn[:, 2] += 0.5 * (self.lam - 1) * vol_std  # add shift
 
-        r2 = np.sum(z_rn[:, 0:2] ** 2, axis=1)
+        r2 = np.sum(z_rn[:, 0:2]**2, axis=1)
         exp_plus = np.exp(0.5 * vol_std * z_rn[:, 2])
 
-        phi_r1 = np.sqrt(2 / r2) * np.sqrt(
-            np.cosh(np.sqrt(r2 + z_rn[:, 2] ** 2) * vol_std)
-            - np.cosh(z_rn[:, 2] * vol_std)
-        )
+        phi_r1 = np.sqrt(2/r2) * np.sqrt(np.cosh(np.sqrt(r2 + z_rn[:, 2]**2) * vol_std) - np.cosh(z_rn[:, 2] * vol_std))
 
-        df_z = exp_plus ** 2
-        df_w = (
-            exp_plus[:, None] * z_rn[:, 0:2] * phi_r1[:, None]
-        )  # use both X and Y components
+        df_z = exp_plus**2
+        # use both X and Y components
+        df_w = (exp_plus[:, None] * z_rn[:, 0:2] * phi_r1[:, None])
 
         path = (
             df_z,
@@ -327,8 +305,8 @@ class NsvhMc(sabr.SabrABC):
         Args:
             strike: strike price
             spot: spot price
-            texp: time to expiry
-            cp: 1 or call, -1 for put option
+            texp: time to np.expiry
+            cp: 1/-1 for call/put
 
         Returns:
             vanilla option price
@@ -349,3 +327,75 @@ class NsvhMc(sabr.SabrABC):
         if scalar_output:
             price = price[0]
         return df * price
+
+
+class NsvhQuadInt(sabr.SabrABC):
+
+    n_quad = (8, 16)
+
+    def __init__(self, sigma, vov=0.0, rho=0.0, lam=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Args:
+            sigma: model volatility at t=0
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            lam: lambda. Normal SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
+            beta: elasticity parameter. should be 0 or None.
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f"Ignoring beta = {beta}...")
+        self.lam = lam
+        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def price(self, strike, spot, texp, cp=1):
+
+        fwd = self.forward(spot, texp)
+        _, _, rhoc, rho2, vovn = self._variables(1.0, texp)
+
+        ##get the nodes of x,y,z , get the weight of z,v
+        z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
+        z_weight = z_weight[:, None] / np.sqrt(2 * np.pi)
+        z_value = z_value[:, None]
+
+        if self.n_quad[1] > 0:
+            # The integration weight = v^alpha * np.exp(-v/2)
+            alpha = 0.5
+            v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], alpha)
+            v_value *= 2.0
+            v_weight *= 2 * np.power(2.0, alpha) / np.power(v_value, alpha)
+        else:
+            # uniform grid from v=0 to 40 from np.exp(-20) ~ 2e-9
+            v_value = np.range(1, 8001) / 200
+            v_weight = np.full_like(v_value, 1 / 200) * np.exp(-v_value/2)
+
+        vov_var = np.exp(0.5 * self.lam * vovn**2)
+        strike_eff = (self.vov/self.sigma) * (strike - fwd)
+        
+        z_star = vovn * z_value + 0.5 * self.lam * vovn**2  # column (z direction)
+        exp_plus = np.exp(z_star/2)
+        z_star_cosh = np.cosh(z_star)
+        price = np.zeros_like(strike)
+        
+        for k in range(len(strike)):
+            g_vec = self.rho * exp_plus - (self.rho * vov_var + strike_eff[k]) / exp_plus
+            temp1 = z_star_cosh + 0.5 * g_vec**2 / (1 - rho2)
+            v_star = (np.arccosh(temp1)**2 - z_star**2) / (vovn**2)
+            
+            h_mat = rhoc * np.sqrt(2*np.cosh(np.sqrt(z_star**2 + vovn**2*(v_star + v_value))) - 2*np.cosh(z_star))
+            theta_mat = np.arccos(np.abs(g_vec) / h_mat)
+            
+            int1 = -np.abs(g_vec) * theta_mat
+            int2 = np.sqrt(h_mat**2 - g_vec**2)
+            integrand = int1 + int2
+            int_v = np.sum(integrand * v_weight, axis=1) / (2*np.pi)  # integrating over v (rows)
+            
+            integrand = int_v * np.exp(-v_star/2) + np.fmax(g_vec, 0.0)
+
+            int_z = np.sum(integrand * z_weight)
+            price[k] = np.exp((2*self.lam - 1)/8 * vovn**2) * (self.sigma/self.vov) * int_z
+
+        return price
