@@ -15,6 +15,7 @@
    nsvh
    sabr
    sabr_int
+   sv_fft
    gamma
    multiasset
    multiasset_mc
