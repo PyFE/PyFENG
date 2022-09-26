@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
-import scipy.stats as spst
 import scipy.optimize as spop
 from . import sabr
 
@@ -11,15 +10,14 @@ class Nsvh1(sabr.SabrABC):
     Hyperbolic Normal Stochastic Volatility (NSVh) model with lambda=1 by Choi et al. (2019)
 
     References:
-        Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
-        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+        - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
 
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.Nsvh1(sigma=20, vov=0.2, rho=-0.3)
+        >>> m = pf.Nsvh1(sigma=20, vov=0.8, rho=-0.3)
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
-        array([22.45639334, 14.89800673,  8.88641613,  4.65917923,  2.10575204])
+        array([25.51200027, 17.87539874, 11.47308947,  6.75128331,  3.79464422])
     """
 
     model_type = "Nsvh"
@@ -27,22 +25,17 @@ class Nsvh1(sabr.SabrABC):
     is_atmvol = False
 
     def _sig0_from_atmvol(self, texp):
-        s_sqrt = self.vov * np.sqrt(texp)
-        vov_var = np.exp(0.5 * s_sqrt**2)
+        vovn = self.vov * np.sqrt(texp)
+        vov_var = np.exp(0.5 * vovn**2)
         rhoc = np.sqrt(1 - self.rho**2)
 
-        d = (np.arctanh(self.rho) - np.arcsinh(self.rho * vov_var / rhoc)) / s_sqrt
-        ncdf_p = spst.norm.cdf(d + s_sqrt)
-        ncdf_m = spst.norm.cdf(d - s_sqrt)
+        d = (np.arctanh(self.rho) - np.arcsinh(self.rho * vov_var / rhoc)) / vovn
+        ncdf_p = spst.norm.cdf(d + vovn)
+        ncdf_m = spst.norm.cdf(d - vovn)
         ncdf = spst.norm.cdf(d)
 
-        price = (
-            0.5
-            / self.vov
-            * vov_var
-            * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
-        )
-        sig0 = self.sigma * np.sqrt(texp / 2 / np.pi) / price
+        price = 0.5/self.vov*vov_var * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
+        sig0 = self.sigma * np.sqrt(texp/2/np.pi) / price
         return sig0
 
     def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
@@ -66,52 +59,33 @@ class Nsvh1(sabr.SabrABC):
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        s_sqrt = self.vov * np.sqrt(texp)
-        if self.is_atmvol:
-            sig0 = self._sig0_from_atmvol(texp)
-        else:
-            sig0 = self.sigma
-
+        vovn = self.vov * np.sqrt(texp)
+        sig0 = self._sig0_from_atmvol(texp) if self.is_atmvol else self.sigma
         sig_sqrt = sig0 * np.sqrt(texp)
 
-        vov_var = np.exp(0.5 * s_sqrt**2)
+        vov_var = np.exp(0.5 * vovn**2)
         rhoc = np.sqrt(1 - self.rho**2)
 
-        d = (
-            np.arctanh(self.rho)
-            + np.arcsinh(
-                ((fwd - strike) * s_sqrt / sig_sqrt - self.rho * vov_var) / rhoc
-            )
-        ) / s_sqrt
-        ncdf_p = spst.norm.cdf(cp * (d + s_sqrt))
-        ncdf_m = spst.norm.cdf(cp * (d - s_sqrt))
+        d = (np.arctanh(self.rho) + np.arcsinh(((fwd - strike)*vovn/sig_sqrt - self.rho*vov_var) / rhoc)) / vovn
+        ncdf_p = spst.norm.cdf(cp * (d + vovn))
+        ncdf_m = spst.norm.cdf(cp * (d - vovn))
         ncdf = spst.norm.cdf(cp * d)
 
-        price = (
-            0.5
-            * sig_sqrt
-            / s_sqrt
-            * vov_var
-            * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
-            + (fwd - strike) * ncdf
-        )
+        price = 0.5*sig_sqrt/vovn*vov_var \
+                * ((1 + self.rho)*ncdf_p - (1 - self.rho)*ncdf_m - 2*self.rho*ncdf) + (fwd - strike)*ncdf
         price *= cp * df
+
         return price
 
     def cdf(self, strike, spot, texp, cp=-1):
         fwd = self.forward(spot, texp)
 
-        s_sqrt = self.vov * np.sqrt(texp)
+        vovn = self.vov * np.sqrt(texp)
         sig_sqrt = self.sigma * np.sqrt(texp)
-        vov_var = np.exp(0.5 * s_sqrt**2)
+        vov_var = np.exp(0.5 * vovn**2)
         rhoc = np.sqrt(1 - self.rho**2)
 
-        d = (
-            np.arctanh(self.rho)
-            + np.arcsinh(
-                ((fwd - strike) * s_sqrt / sig_sqrt - self.rho * vov_var) / rhoc
-            )
-        ) / s_sqrt
+        d = (np.arctanh(self.rho) + np.arcsinh(((fwd - strike)*vovn/sig_sqrt - self.rho*vov_var) / rhoc)) / vovn
         return spst.norm.cdf(cp * d)
 
     def moments_vsk(self, texp=1):
@@ -124,8 +98,8 @@ class Nsvh1(sabr.SabrABC):
         Returns:
             (variance, skewness, and ex-kurtosis)
         """
-        vol_std = self.vov * np.sqrt(texp)
-        ww = np.exp(vol_std**2)
+        vovn = self.vov * np.sqrt(texp)
+        ww = np.exp(vovn**2)
         rho2 = self.rho**2
         rho3 = self.rho * rho2
         rho4 = rho2**2
@@ -153,9 +127,7 @@ class Nsvh1(sabr.SabrABC):
             * (self.rho * c31 + rho3 * c33)
             / np.power(c20 + rho2 * c22, 1.5)
         )
-        exkurt = (
-            (1 / 2) * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22)**2
-        )
+        exkurt = 0.5 * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22)**2
 
         return m2 * (self.sigma / self.vov)**2, skew, exkurt
 
@@ -194,12 +166,8 @@ class Nsvh1(sabr.SabrABC):
 
         # root finding for w = np.exp(S) = np.exp(vov^2 texp)
         w_root = spop.brentq(f_beta1, w_min, w_max)
-        m = -2 + np.sqrt(
-            4 + 2 * (w_root**2 - (beta2 + 3) / (w_root**2 + 2 * w_root + 3))
-        )
-        term = (
-            (w_root + 1) / (2 * w_root) * ((w_root - 1) / m - 1)
-        )  # - sinh(Omega) = rho / rhoc*
+        m = -2 + np.sqrt(4 + 2 * (w_root**2 - (beta2 + 3) / (w_root**2 + 2 * w_root + 3)))
+        term = (w_root + 1) / (2 * w_root) * ((w_root - 1) / m - 1)  # - sinh(Omega) = rho / rhoc*
 
         # if term is slightly negative, next line error in sqrt
         if abs(term) < np.finfo(float).eps * 100:
@@ -220,15 +188,32 @@ class Nsvh1(sabr.SabrABC):
 
 class NsvhMc(sabr.SabrABC):
     """
-    Monte-Carlo model of Hyperbolic Normal Stochastic Volatility (NSVh) model
+    Monte-Carlo model of Hyperbolic Normal Stochastic Volatility (NSVh) model.
+
+    NSVh with lambda = 0 is the normal SABR model, and NSVh with lambda = 1 has analytic pricing (Nsvh1)
 
     References:
-        Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
-        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+        - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+
+    See Also:
+        Nsvh1
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.NsvhMc(sigma=20, vov=0.8, rho=-0.3, lam=0.0)
+        >>> m.price(np.arange(80, 121, 10), 100, 1.2)
+        array([23.52722081, 15.63212633,  9.19644639,  4.81061848,  2.39085097])
+        >>> m1 = pf.NsvhMc(sigma=20, vov=0.8, rho=-0.3, lam=1.0)
+        >>> m2 = pf.Nsvh1(sigma=20, vov=0.8, rho=-0.3)
+        >>> p1 = m1.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p2 = m2.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p1 - p2
+        array([-0.00328887,  0.00523714,  0.00808885,  0.0069694 ,  0.00205566])
     """
 
     lam = 0
-    n_path = int(1e6)
+    n_path = int(16e4)
     rn_seed = None
     rng = np.random.default_rng(None)
     antithetic = True
@@ -318,20 +303,48 @@ class NsvhMc(sabr.SabrABC):
         scalar_output = np.isscalar(strike_std)
         cp *= np.ones_like(strike_std)
 
-        price = np.array(
-            [
-                np.mean(np.fmax(cp[k] * (mc_path[1] - strike_std[k]), 0))
-                for k in range(len(strike_std))
-            ]
-        )
+        price = np.array([np.mean(np.fmax(cp[k] * (mc_path[1] - strike_std[k]), 0)) for k in range(len(strike_std))])
         if scalar_output:
             price = price[0]
         return df * price
 
 
 class NsvhQuadInt(sabr.SabrABC):
+    """
+    Quadrature integration method of Hyperbolic Normal Stochastic Volatility (NSVh) model.
 
-    n_quad = (8, 16)
+    NSVh with lambda = 0 is the normal SABR model, and NSVh with lambda = 1 has analytic pricing (Nsvh1)
+
+    References:
+        - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+
+    See Also:
+        Nsvh1, SabrNormalVolApprox
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> #### Nsvh1: comparison with analytic pricing
+        >>> m1 = pf.NsvhQuadInt(sigma=20, vov=0.8, rho=-0.3, lam=1.0)
+        >>> m2 = pf.Nsvh1(sigma=20, vov=0.8, rho=-0.3)
+        >>> p1 = m1.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p2 = m2.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p1 - p2
+        array([0.00345526, 0.00630649, 0.00966333, 0.00571175, 0.00017924])
+        >>> #### Normal SABR: comparison with vol approximation
+        >>> m1 = pf.NsvhQuadInt(sigma=20, vov=0.8, rho=-0.3, lam=0.0)
+        >>> m2 = pf.SabrNormVolApprox(sigma=20, vov=0.8, rho=-0.3)
+        >>> p1 = m1.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p2 = m2.price(np.arange(80, 121, 10), 100, 1.2)
+        >>> p1 - p2
+        array([-0.17262802, -0.10160687, -0.00802731,  0.0338126 ,  0.01598512])
+
+    References:
+        Choi J (2023), Unpublished Working Paper.
+
+    """
+
+    n_quad = (7, 7)
 
     def __init__(self, sigma, vov=0.0, rho=0.0, lam=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False):
         """
@@ -353,49 +366,56 @@ class NsvhQuadInt(sabr.SabrABC):
 
     def price(self, strike, spot, texp, cp=1):
 
-        fwd = self.forward(spot, texp)
+        fwd, df, _ = self._fwd_factor(spot, texp)
         _, _, rhoc, rho2, vovn = self._variables(1.0, texp)
 
-        ##get the nodes of x,y,z , get the weight of z,v
+        ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
-        z_weight = z_weight[:, None] / np.sqrt(2 * np.pi)
-        z_value = z_value[:, None]
+        z_weight /= np.sqrt(2 * np.pi)
 
-        if self.n_quad[1] > 0:
-            # The integration weight = v^alpha * np.exp(-v/2)
-            alpha = 0.5
-            v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], alpha)
+        if self.n_quad[1] is not None:
+            # quadrature point & weight for exp(-v) derived from sqrt(v) * np.exp(-v/2)
+            v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
+            v_weight *= 2 / np.sqrt(v_value)
             v_value *= 2.0
-            v_weight *= 2 * np.power(2.0, alpha) / np.power(v_value, alpha)
         else:
             # uniform grid from v=0 to 40 from np.exp(-20) ~ 2e-9
-            v_value = np.range(1, 8001) / 200
+            v_value = np.arange(1, 8001) / 200
             v_weight = np.full_like(v_value, 1 / 200) * np.exp(-v_value/2)
 
-        vov_var = np.exp(0.5 * self.lam * vovn**2)
-        strike_eff = (self.vov/self.sigma) * (strike - fwd)
-        
-        z_star = vovn * z_value + 0.5 * self.lam * vovn**2  # column (z direction)
-        exp_plus = np.exp(z_star/2)
-        z_star_cosh = np.cosh(z_star)
-        price = np.zeros_like(strike)
-        
-        for k in range(len(strike)):
-            g_vec = self.rho * exp_plus - (self.rho * vov_var + strike_eff[k]) / exp_plus
-            temp1 = z_star_cosh + 0.5 * g_vec**2 / (1 - rho2)
-            v_star = (np.arccosh(temp1)**2 - z_star**2) / (vovn**2)
-            
-            h_mat = rhoc * np.sqrt(2*np.cosh(np.sqrt(z_star**2 + vovn**2*(v_star + v_value))) - 2*np.cosh(z_star))
-            theta_mat = np.arccos(np.abs(g_vec) / h_mat)
-            
-            int1 = -np.abs(g_vec) * theta_mat
-            int2 = np.sqrt(h_mat**2 - g_vec**2)
-            integrand = int1 + int2
-            int_v = np.sum(integrand * v_weight, axis=1) / (2*np.pi)  # integrating over v (rows)
-            
-            integrand = int_v * np.exp(-v_star/2) + np.fmax(g_vec, 0.0)
+        ### axis 0: dependence on v
+        v_value = v_value[:, None]
+        v_weight = v_weight[:, None]
 
-            int_z = np.sum(integrand * z_weight)
-            price[k] = np.exp((2*self.lam - 1)/8 * vovn**2) * (self.sigma/self.vov) * int_z
+        vov_var = np.exp(0.5 * self.lam * vovn**2)
+
+        #### effective strike
+        strike_eff = (self.vov/self.sigma) * (strike - fwd)
+        scalar_output = np.isscalar(strike_eff)
+
+        strike_eff, cp = np.broadcast_arrays(np.atleast_1d(strike_eff), cp)
+        
+        u_hat = (z_value + 0.5 * self.lam * vovn)  # column (z direction)
+        exp_plus = np.exp(vovn * u_hat/2)
+        z_star_cosh = (exp_plus**2 + 1/exp_plus**2)/2
+        price = np.zeros_like(strike, dtype=float)
+        
+        for i, k_eff in enumerate(strike_eff):
+            g_vec = self.rho * exp_plus - (self.rho * vov_var + k_eff) / exp_plus
+            temp1 = z_star_cosh + 0.5 * g_vec**2 / (1 - rho2)
+            v_0 = (np.arccosh(temp1) / vovn)**2 - u_hat**2
+            h_mat = rhoc * np.sqrt(2*np.cosh(vovn * np.sqrt((u_hat**2 + v_0 + v_value))) - 2*np.cosh(vovn * u_hat))
+            theta_mat = np.arccos(np.abs(g_vec) / h_mat)
+
+            int_z_v = np.sqrt(h_mat**2 - g_vec**2) - np.abs(g_vec) * theta_mat
+            int_z = np.sum(int_z_v * v_weight, axis=0) / (2*np.pi)  # integrating over v (column)
+            int_z[:] = int_z * np.exp(-v_0/2) + np.fmax(cp[i] * g_vec, 0.0)  # in-place operation
+
+            price[i] = np.sum(int_z * z_weight)
+
+        price *= np.exp((2*self.lam - 1)/8 * vovn**2) * (self.sigma/self.vov) * df
+
+        if scalar_output:
+            price = price[0]
 
         return price

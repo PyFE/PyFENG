@@ -213,12 +213,10 @@ class SabrMixture(SabrMixtureABC):
         w0123 = w0 * w123
 
         r_vol *= rhoc  # matrix
-        exp_plus = np.exp(0.5*vovn*zhat)
-        exp_plus2 = exp_plus**2
+        exp_plus2 = np.exp(vovn*zhat)
 
         if np.isclose(self.beta, 0):
             fwd_ratio = 1 + (rho_alpha/self.vov) * (exp_plus2 - 1)
-            #fwd_ratio = fwd_ratio * np.ones(self.n_quad[1])
         elif self.beta > 0:
             fwd_ratio = rho_alpha * ((exp_plus2 - 1)/self.vov - 0.5*rho_alpha*texp*r_var)
             np.exp(fwd_ratio, out=fwd_ratio)

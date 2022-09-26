@@ -380,11 +380,11 @@ class SabrNormVolApprox(SabrVolApproxABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.SabrNormVolApprox(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m = pf.SabrNormVolApprox(sigma=20, vov=0.8, rho=-0.3)
         >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
-        array([0.21976016, 0.20922027, 0.200432  , 0.19311113, 0.18703486])
+        array([24.97568842, 22.78062691, 21.1072    , 20.38569729, 20.78963436])
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
-        array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
+        array([23.70791426, 15.74437409,  9.22425529,  4.78754361,  2.38004685])
     """
 
     _base_beta = 0  # should not be changed
