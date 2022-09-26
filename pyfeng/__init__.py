@@ -7,7 +7,7 @@ from .gamma import InvGam, InvGauss
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft
 from .sabr import (
     SabrHagan2002,
-    SabrNorm,
+    SabrNormVolApprox,
     SabrLorig2017,
     SabrChoiWu2021H,
     SabrChoiWu2021P,
