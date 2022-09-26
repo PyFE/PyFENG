@@ -45,9 +45,7 @@ class Cev(opt.OptAnalyticABC, smile.OptSmileABC, smile.MassZeroABC):
 
         betac = 1.0 - self.beta
         a = 0.5/betac
-        sigma_std = np.maximum(
-            self.sigma/np.power(fwd, betac)*np.sqrt(texp), np.finfo(float).eps
-        )
+        sigma_std = np.maximum(self.sigma/np.power(fwd, betac)*np.sqrt(texp), np.finfo(float).eps)
         x = 0.5/np.square(betac*sigma_std)
 
         if log:

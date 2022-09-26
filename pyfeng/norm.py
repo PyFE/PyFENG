@@ -87,9 +87,7 @@ class Norm(opt.OptAnalyticABC):
         d = (fwd - strike) / sigma_std
 
         cp = np.array(cp)
-        price = df * (
-            cp * (fwd - strike) * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d)
-        )
+        price = df * (cp * (fwd - strike) * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
         return price
 
     def _impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
@@ -122,9 +120,8 @@ class Norm(opt.OptAnalyticABC):
         # v = |fwd - strike|/(call + put) = np.fabs(strike_std) / strd, ATM when v=0
         # v1 = 1 - v, ATM when v1=1
         # Use v1 instead of v to preserve the option value < machine epsilon
-        v1 = np.clip(
-            2 * time_val / strd, 0, 1
-        )  # bound between 0 and 1 for now. Out-of-bound value will be handleded later
+        v1 = np.clip(2 * time_val / strd, 0, 1)
+        # bound between 0 and 1 for now. Out-of-bound value will be handleded later
         v_sq = (1 - v1) ** 2
 
         # ignore 'divide by 0' error when v1 = 0 for now.
@@ -135,11 +132,7 @@ class Norm(opt.OptAnalyticABC):
                 2 * (1 - v1) / (np.log((2.0 - v1) / v1)),
                 1 / (1 + v_sq * (1 / 3 + v_sq / 5)),
             )
-        h_a = (
-            np.sqrt(eta)
-            * np.polyval(Norm._POLY_NU, eta)
-            / np.polyval(Norm._POLY_DE, eta)
-        )
+        h_a = np.sqrt(eta) * np.polyval(Norm._POLY_NU, eta) / np.polyval(Norm._POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
         _sigma = np.where(
             time_val >= -self.IMPVOL_TOL,
@@ -159,9 +152,8 @@ class Norm(opt.OptAnalyticABC):
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
-        vega = (
-            df * spst.norm.pdf(d) * np.sqrt(texp)
-        )  # formula according to lecture notes
+        # formula according to lecture notes
+        vega = df * spst.norm.pdf(d) * np.sqrt(texp)
         return vega
 
     def delta(self, strike, spot, texp, cp=1):
@@ -205,9 +197,7 @@ class Norm(opt.OptAnalyticABC):
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
         theta = sigma_std * spst.norm.pdf(d)
-        theta = -0.5 * theta / texp + self.intr * (
-            theta - cp * strike * spst.norm.cdf(cp * d)
-        )
+        theta = -0.5 * theta / texp + self.intr * (theta - cp * strike * spst.norm.cdf(cp * d))
         return df * theta
 
     def price_binary(self, strike, spot, texp, cp=1, opt_type="cash"):
@@ -217,9 +207,7 @@ class Norm(opt.OptAnalyticABC):
         d = (fwd - strike) / sigma_std
 
         if opt_type.lower() == "asset":
-            price = df * (
-                cp * fwd * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d)
-            )
+            price = df * (cp * fwd * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
         else:
             price = df * spst.norm.cdf(cp * d)
 
@@ -248,7 +236,7 @@ class Norm(opt.OptAnalyticABC):
             price = self.price(strike, spot, texp, cp=cp)
             return bsm.Bsm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == "bsm-approx":
-            fwd, _, _ = self._fwd_factor(spot, texp)
+            fwd = self.forward(spot, texp)
             sigma_std = self.sigma / fwd
             kk = strike / fwd
             lnk = np.log(kk)
@@ -265,9 +253,7 @@ class Norm(opt.OptAnalyticABC):
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d2 = (fwd - strike2) / sigma_std
 
-        price = cp * (fwd - strike) * spst.norm.cdf(
-            cp * d2
-        ) + sigma_std * spst.norm.pdf(d2)
+        price = cp * (fwd - strike) * spst.norm.cdf(cp * d2) + sigma_std * spst.norm.pdf(d2)
         price *= df
         return price
 

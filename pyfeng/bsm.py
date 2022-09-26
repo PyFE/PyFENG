@@ -204,9 +204,7 @@ class Bsm(opt.OptAnalyticABC):
 
         # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (
-                p_max - price_std > Bsm.IMPVOL_TOL
-        )
+        ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (p_max - price_std > Bsm.IMPVOL_TOL)
 
         # initial guess = inflection point in sigma (volga=0)
         _sigma = np.ones_like(ind_solve)*np.sqrt(
@@ -287,21 +285,11 @@ class Bsm(opt.OptAnalyticABC):
             kk = strike/fwd
             lnk = np.log(kk)
             if model.lower() == "norm-approx":
-                return (
-                        self.sigma
-                        *fwd
-                        *np.sqrt(kk)
-                        *(1 + lnk**2/24)
-                        /(1 + self.sigma**2*texp/24)
-                )
+                return self.sigma * fwd * np.sqrt(kk) * (1 + lnk**2/24) / (1 + self.sigma**2*texp/24)
             else:
                 with np.errstate(divide="ignore", invalid="ignore"):
                     term1 = np.where(np.fabs(lnk) > 1e-8, (kk - 1)/lnk, 2/(3 - kk))
-                    term2 = np.where(
-                        np.fabs(lnk) > 1e-8,
-                        (np.log(term1) - lnk/2)/lnk**2,
-                        1/24,
-                    )
+                    term2 = np.where(np.fabs(lnk) > 1e-8, (np.log(term1) - lnk/2)/lnk**2, 1/24)
                 return self.sigma*fwd*term1*(1 - term2*self.sigma**2*texp)
         else:
             raise ValueError(f"Unknown model: {model}")
