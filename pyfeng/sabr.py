@@ -24,9 +24,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
     var_process = False
     _base_beta = None
 
-    def __init__(
-        self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False
-    ):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -327,9 +325,7 @@ class SabrHagan2002(SabrVolApproxABC):
         vol *= alpha * hh / pre1  # bsm vol
         return vol
 
-    def calibrate3(
-        self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True
-    ):
+    def calibrate3(self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True):
         """
         Given option prices or implied vols at 3 strikes, compute the sigma, vov, rho to fit the data using `scipy.optimize.root`.
         If prices are given (is_vol=False) convert the prices to vol first.
@@ -377,14 +373,14 @@ class SabrHagan2002(SabrVolApproxABC):
         return params
 
 
-class SabrNorm(SabrVolApproxABC):
+class SabrNormVolApprox(SabrVolApproxABC):
     """
     Noram SABR model (beta=0) with normal volatility approximation.
 
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.SabrNorm(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m = pf.SabrNormVolApprox(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
         >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
         array([0.21976016, 0.20922027, 0.200432  , 0.19311113, 0.18703486])
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)

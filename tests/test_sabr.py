@@ -20,7 +20,7 @@ class TestSabr(unittest.TestCase):
 
     def test_SabrNorm(self):
         for k in [22, 23]:
-            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            m, df, rv = pf.SabrNormVolApprox.init_benchmark(k)
             v1 = m.price(**rv["args_pricing"])
             m, df, rv = pf.SabrChoiWu2021H.init_benchmark(k)
             v2 = m.price(**rv["args_pricing"])
@@ -28,7 +28,7 @@ class TestSabr(unittest.TestCase):
 
     def test_SabrNormATM(self):
         for k in [22, 23]:
-            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            m, df, rv = pf.SabrNormVolApprox.init_benchmark(k)
             m.is_atmvol = True
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
