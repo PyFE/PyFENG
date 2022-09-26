@@ -150,12 +150,12 @@ class HestonFft(sv.SvABC, FftABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> strike = np.array([60, 100, 140])
-        >>> spot = 100
-        >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
+        >>> strike = np.array([60, 70, 100, 140])
+        >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
         >>> m = pf.HestonFft(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.price(strike, spot, texp)
-        array([44.32997493, 13.08467014,  0.29573228])
+        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+        array([44.32997507, 35.8497697 , 13.08467014,  0.29577444])
     """
 
     model_type = "Heston"

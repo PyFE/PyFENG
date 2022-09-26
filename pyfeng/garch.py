@@ -2,6 +2,8 @@ import numpy as np
 from . import sv_abc as sv
 from . import bsm
 
+#### Use of RN generation spawn:
+# 0: simulation of variance (gamma/ncx2/normal)
 
 class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
@@ -15,9 +17,10 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
 
     model_type = "GarchDiff"
+    var_process = True
     order = 2
 
-    def avgvar_mv(self, var0, texp):
+    def avgvar_mv(self, texp, var0):
         """
         Mean and variance of the average variance given V(0) = var0.
         Eqs. (12)-(13) in Barone-Adesi et al. (2005)
@@ -63,7 +66,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         if not np.isclose(self.rho, 0.0):
             print(f"Pricing ignores rho = {self.rho}.")
 
-        avgvar, var = self.avgvar_mv(self.sigma, texp)
+        avgvar, var = self.avgvar_mv(texp, self.sigma)
 
         m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
         price = m_bs.price(strike, spot, texp, cp)
@@ -103,7 +106,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         super().set_num_params(n_path, dt, rn_seed, antithetic)
         self.scheme = scheme
 
-    def var_step_euler(self, var_0, dt, milstein=True):
+    def vol_step_euler(self, dt, var_0, milstein=True):
         """
         Euler/Milstein Schemes:
         v_(t+dt) = v_t + mr * (theta - v_t) * dt + vov * v_t Z * sqrt(dt) + (vov^2/2) v_t (Z^2-1) dt
@@ -115,8 +118,7 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         Returns: Variance path (time, path) including the value at t=0
         """
 
-        zz = self.rv_normal()
-
+        zz = self.rv_normal(spawn=0)
         var_t = var_0 + self.mr*(self.theta - var_0)*dt + self.vov*var_0*np.sqrt(dt)*zz
         if milstein:
             var_t += (self.vov**2/2)*var_0*dt*(zz**2 - 1)
@@ -138,64 +140,69 @@ class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
         Returns: Variance path (time, path) including the value at t=0
         """
 
-        zz = self.rv_normal()
+        zz = self.rv_normal(spawn=0)
 
         log_var_t = log_var_0 + (self.mr*self.theta*np.exp(-log_var_0) - self.mr - self.vov**2/2)*dt \
                     + self.vov*np.sqrt(dt)*zz
 
         return log_var_t
 
-    def cond_states(self, var_0, texp):
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        dt = np.diff(tobs, prepend=0)
-
-        # precalculate the Simpson's rule weight
-        weight = np.ones(n_dt + 1)
-        weight[1:-1:2] = 4
-        weight[2:-1:2] = 2
-        weight /= weight.sum()
-
-        var_t = np.full(self.n_path, var_0)
-
-        mean_var = weight[0]*var_t
-        mean_vol = weight[0]*np.sqrt(var_t)
-        mean_inv_vol = weight[0]/np.sqrt(var_t)
+    def cond_states_step(self, dt, var_0):
 
         if self.scheme < 2:
             milstein = (self.scheme == 1)
+            var_t = self.vol_step_euler(dt, var_0, milstein=milstein)
 
-            for i in range(n_dt):
-                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-                mean_var += weight[i + 1]*var_t
-                vol_t = np.sqrt(var_t)
-                mean_vol += weight[i + 1]*vol_t
-                mean_inv_vol += weight[i + 1]/vol_t
+            mean_var = (var_0 + var_t)/2
+            vol_0 = np.sqrt(var_0)
+            vol_t = np.sqrt(var_t)
+            mean_vol = (vol_0 + vol_t)/2
+            mean_inv_vol = (1/vol_0 + 1/vol_t)/2
 
         elif self.scheme == 2:
-            log_var_t = np.full(self.n_path, np.log(var_0))
-            for i in range(n_dt):
-                # Euler scheme on Log(var)
-                log_var_t = self.var_step_log(log_var_t, dt[i])
-                vol_t = np.exp(log_var_t/2)
-                mean_var += weight[i + 1]*vol_t**2
-                mean_vol += weight[i + 1]*vol_t
-                mean_inv_vol += weight[i + 1]/vol_t
+
+            log_var_t = self.var_step_log(np.log(var_0), dt)
+
+            vol_0 = np.sqrt(var_0)
+            vol_t = np.exp(log_var_t/2)
+            var_t = vol_t**2
+
+            mean_var = (var_0 + var_t)/2
+            mean_vol = (vol_0 + vol_t)/2
+            mean_inv_vol = (1/vol_0 + 1/vol_t)/2
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
-        return vol_t, mean_var, mean_vol, mean_inv_vol
+        return var_t, mean_var, mean_vol, mean_inv_vol
 
-    def cond_spot_sigma(self, var_0, texp):
+    def cond_spot_sigma(self, texp, var_0):
+        tobs = self.tobs(texp)
+        dt = np.diff(tobs, prepend=0)
+        n_dt = len(dt)
 
-        vol_final, mean_var, mean_vol, mean_inv_vol = self.cond_states(var_0, texp)
+        var_t = np.full(self.n_path, var_0)
+        avgvar = np.zeros(self.n_path)
+        avgvol = np.zeros(self.n_path)
+        avgivol = np.zeros(self.n_path)
 
-        spot_cond = 2*(vol_final - np.sqrt(var_0))/self.vov \
-                    - self.mr*self.theta*mean_inv_vol*texp/self.vov \
-                    + (self.mr/self.vov + self.vov/4)*mean_vol*texp \
-                    - self.rho*mean_var*texp/2
+        for i in range(n_dt):
+            var_t, avgvar_inc, avgvol_inc, avgivol_inc = self.cond_states_step(dt[i], var_t)
+            avgvar += avgvar_inc * dt[i]
+            avgvol += avgvol_inc * dt[i]
+            avgivol += avgivol_inc * dt[i]
+
+        avgvar /= texp
+        avgvol /= texp
+        avgivol /= texp
+
+        spot_cond = 2 * (np.sqrt(var_t) - np.sqrt(var_0)) / self.vov + \
+            (-self.mr * self.theta * avgivol / self.vov \
+            + (self.mr/self.vov + self.vov/4) * avgvol - self.rho * avgvar / 2) * texp
         np.exp(self.rho*spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1.0 - self.rho**2)/var_0*mean_var)
+        cond_sigma = np.sqrt((1.0 - self.rho**2)/var_0*avgvar)
 
-        return spot_cond, sigma_cond
+        return spot_cond, cond_sigma
+
+    def return_var_realized(self, texp, cond):
+        return None

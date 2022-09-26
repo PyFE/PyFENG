@@ -9,13 +9,21 @@ from scipy.misc import derivative
 
 
 class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
-    var_process = True
     model_type = "3/2"
+    var_process = True
     scheme = None
     _m_heston = None
 
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True):
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
+
+        mr = self.mr * self.theta
+        theta = (self.mr + self.vov ** 2) / mr
+        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
+        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic)
+
     @abc.abstractmethod
-    def cond_states(self, var_0, dt):
+    def cond_states_step(self, var_0, dt):
         """
         Final variance and integrated variance over dt given var_0
         The int_var is normalized by dt
@@ -25,12 +33,22 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             dt: time step
 
         Returns:
-            (var_final, var_avg)
+            (var_t, avgvar)
         """
         return NotImplementedError
 
     @staticmethod
-    def ivc(nu, zz):
+    def iv_complex(nu, zz):
+        """
+        Modified Bessel function of the first kind with complex argument
+
+        Args:
+            nu: index
+            zz: value
+
+        Returns:
+
+        """
         p0 = np.power(0.5 * zz, nu) / spsp.gamma(nu + 1)
         iv = p0.copy()
         for kk in np.arange(1, 64):
@@ -38,17 +56,96 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             iv += p0
         return iv
 
-    def cond_spot_sigma(self, var_0, texp):
-        var_t, var_avg = self.cond_states(var_0, texp)
+    @staticmethod
+    def iv_d12(nu, zz):
+        """
+        The 1st and 2nd derivative of modified Bessel function of the first kind w.r.t. the index nu
 
-        spot_cond = (np.log(var_t/var_0) - texp * (self.mr * self.theta - (self.mr + self.vov**2/2)*var_avg)) / self.vov\
-            - self.rho * var_avg * texp / 2
+        Args:
+            nu: index
+            zz: value
+
+        Returns:
+
+        References:
+            * https://functions.wolfram.com/Bessel-TypeFunctions/BesselI/20/ShowAll.html
+        """
+
+        p0 = np.power(zz/2, nu) / spsp.gamma(nu + 1)
+        psi_1 = np.full_like(zz, spsp.polygamma(1, nu + 1), dtype=float)
+        log_m_psi0 = np.log(zz/2) - spsp.digamma(nu + 1)
+        iv1 = log_m_psi0 * p0
+        iv2 = (log_m_psi0**2 - psi_1) * p0
+
+        kk_max = max(64, int((np.mean(zz) + 2*np.std(zz)) * 20))
+        #print(f'kk: {kk_max}')
+        for kk in np.arange(1, kk_max):
+            p0 *= zz**2 / (4 * kk * (kk + nu))
+            log_m_psi0 -= 1/(nu + kk)
+            psi_1 -= 1/(nu + kk)**2
+            iv1 += log_m_psi0 * p0
+            iv2 += (log_m_psi0**2 - psi_1) * p0
+
+        return iv1, iv2
+
+    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None):
+        """
+        Mean and variance of the integrated variance conditional on initial var, final var, and eta
+
+        Args:
+            var_0: initial variance
+            var_t: final variance
+            eta: Poisson RV
+            dt: time step
+
+        Returns:
+            (integarted variance / dt)
+        """
+        phi, _ = self._m_heston.phi_exp(dt)
+        nu = self._m_heston.chi_dim()/2 - 1
+
+        d1_nu_bb = 4 / self.vov**2 / nu
+        d2_nu_bb = -(4 / self.vov**2)**2 / nu**3
+        zz = phi / np.sqrt(var_0 * var_t)
+
+        # print(f'phi: {phi}, nu: {nu}, zz: {zz.mean()}')
+        if eta is None:
+            iv = spsp.iv(nu, zz)
+            iv_d1, iv_d2 = self.iv_d12(nu, zz)
+            d1 = - (iv_d1 * d1_nu_bb) / iv
+            var = (iv_d1 * d2_nu_bb + iv_d2 * d1_nu_bb**2) / iv - d1**2
+        else:
+            d1 = - spsp.digamma(eta + nu + 1) + np.log(zz/2)
+            var = d2_nu_bb * d1 - d1_nu_bb**2 * spsp.polygamma(1, eta + nu + 1)
+            d1 *= -d1_nu_bb
+
+        # print(d1[m1<0], var[var<0], d1[var<0])
+        var[var < 0] = 1e-64
+        return d1/dt, var/dt**2
+
+    def cond_spot_sigma(self, texp, var_0):
+        tobs = self.tobs(texp)
+        dt = np.diff(tobs, prepend=0)
+        n_dt = len(dt)
+
+        var_t = np.full(self.n_path, var_0)
+        avgvar = np.zeros(self.n_path)
+
+        for i in range(n_dt):
+            var_t, avgvar_inc = self.cond_states_step(var_t, dt[i])
+            avgvar += avgvar_inc * dt[i]
+
+        avgvar /= texp
+        spot_cond = (np.log(var_t/var_0) - texp * (self.mr * self.theta - (self.mr + self.vov**2/2)*avgvar)) / self.vov\
+            - self.rho * avgvar * texp / 2
         np.exp(self.rho * spot_cond, out=spot_cond)
-        sigma_cond = np.sqrt((1.0 - self.rho**2) * var_avg / var_0)  # normalize by initial variance
+        sigma_cond = np.sqrt((1.0 - self.rho**2) * avgvar / var_0)  # normalize by initial variance
 
         # return normalized forward and volatility
         return spot_cond, sigma_cond
 
+    def return_var_realized(self, texp, cond):
+        return None
 
 class Sv32McTimeStep(Sv32McABC):
     """
@@ -56,28 +153,6 @@ class Sv32McTimeStep(Sv32McABC):
 
     """
     scheme = 1  # Milstein
-
-    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
-        """
-        Set MC parameters
-
-        Args:
-            n_path: number of paths
-            dt: time step for Euler/Milstein steps
-            rn_seed: random number seed
-            antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson
-
-        References:
-            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
-        """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-
-        self.scheme = scheme
-        mr = self.mr * self.theta
-        theta = (self.mr + self.vov**2)/mr
-        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
-        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
 
     def var_step_euler(self, var_0, dt, milstein=True):
         """
@@ -104,40 +179,27 @@ class Sv32McTimeStep(Sv32McABC):
 
         return var_t
 
-    def cond_states(self, var_0, texp):
-
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        dt = np.diff(tobs, prepend=0)
-
-        weight = np.ones(n_dt + 1)
-        weight[1:-1] = 2
-        weight /= weight.sum()
-
-        var_t = np.full(self.n_path, var_0)
-        var_avg = weight[0] * var_t
+    def cond_states_step(self, var_0, dt):
 
         if self.scheme < 2:
             milstein = (self.scheme == 1)
-            for i in range(n_dt):
-                # Euler (or Milstein) scheme
-                var_t = self.var_step_euler(var_t, dt[i], milstein=milstein)
-                var_avg += weight[i + 1] * var_t
+            # Euler (or Milstein) scheme
+            var_t = self.var_step_euler(var_0, dt, milstein=milstein)
         elif self.scheme == 2:
-            for i in range(n_dt):
-                # Euler (or Milstein) scheme
-                var_t = 1/self._m_heston.var_step_ncx2(1/var_t, dt[i])
-                var_avg += weight[i + 1] * var_t
+            # Euler (or Milstein) scheme
+            var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+            np.divide(1.0, var_t, out=var_t)
         elif self.scheme == 3:
-            for i in range(n_dt):
-                # Euler (or Milstein) scheme
-                var_t, _ = self._m_heston.var_step_ncx2_eta(1/var_t, dt[i])
-                var_t = 1/var_t
-                var_avg += weight[i + 1] * var_t
+            # Euler (or Milstein) scheme
+            var_t, _ = self._m_heston.var_step_pois_gamma(dt, 1 / var_0)
+            np.divide(1.0, var_t, out=var_t)
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
 
-        return var_t, var_avg  # * texp
+        # Trapezoidal rule
+        avgvar = (var_0 + var_t)/2
+
+        return var_t, avgvar
 
 
 class Sv32McExactBaldeaux2012(Sv32McABC):
@@ -155,50 +217,29 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         is_fwd: Bool, true if asset price is forward
     """
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, scheme=1):
-        """
-        Set MC parameters
-    
-        Args:
-            n_path: number of paths
-            dt: time step for Euler/Milstein steps
-            rn_seed: random number seed
-            antithetic: antithetic
-            scheme: 0 for Euler, 1 for Milstein, 2 for NCX2, 3 for NCX2 with Poisson
-    
-        References:
-            - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
-        """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-
-        self.scheme = scheme
-        mr = self.mr * self.theta
-        theta = (self.mr + self.vov**2)/mr
-        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
-        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic, scheme=scheme)
-
     def laplace(self, bb, var_0, var_t, dt):
         phi, _ = self._m_heston.phi_exp(dt)
         nu = self._m_heston.chi_dim()/2 - 1
         nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
         zz = phi / np.sqrt(var_0 * var_t)
-        ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+        ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
         return ret
 
-    def cond_states(self, var_0, texp):
+    def cond_states_step(self, var_0, dt):
         """
         Sample variance at maturity and conditional integrated variance
 
         Args:
-            texp: float, time to maturity
+            dt: float, time to maturity
         Returns:
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, _ = self._m_heston.var_step_ncx2_eta(1/var_0, texp)
+        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+        np.divide(1.0, var_t, out=var_t)
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, 1/x_t, texp)
+            return self.laplace(bb, var_0, var_t, dt)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -235,7 +276,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
 
         guess = m1 * np.exp(ln_sig*(zz - ln_sig/2))
         int_var = spop.newton(root, guess)
-        return 1/x_t, int_var/texp
+        return var_t, int_var/dt
 
 
 class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
@@ -249,37 +290,13 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         zz = phi / np.sqrt(var_0 * var_t)
 
         if eta is None:
-            ret = self.ivc(nu_bb, zz) / spsp.iv(nu, zz)
+            ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
         else:
             nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
             ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
 
         return ret
 
-    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None):
-        """
-        Mean and variance of the integrated variance conditional on initial var, final var, and eta
-
-        Args:
-            var_0: initial variance
-            var_t: final variance
-            eta: Poisson RV
-            dt: time step
-
-        Returns:
-            (integarted variance / dt)
-        """
-        phi, _ = self._m_heston.phi_exp(dt)
-        nu = self._m_heston.chi_dim()/2 - 1
-
-        d1_nu_bb = 4 / self.vov**2 / nu
-        d2_nu_bb = -(4 / self.vov**2)**2 / nu**3
-
-        zz = phi / np.sqrt(var_0 * var_t)
-        d1 = - spsp.digamma(eta + nu + 1) + np.log(zz/2)
-        var = d2_nu_bb * d1 - d1_nu_bb**2 * spsp.polygamma(1, eta + nu + 1)
-        d1 *= -d1_nu_bb
-        return d1, var
 
     def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
         """
@@ -301,11 +318,11 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         def cumgenfunc_cond(bb):
             return np.log(self.laplace(-bb, var_0, var_t, dt))
 
-        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-4)
-        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
+        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-3)
+        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-3)
         return m1/dt, var/dt**2
 
-    def cond_states_invlap(self, var_0, texp):
+    def cond_states_step_invlap(self, var_0, texp):
         """
         Sample variance at maturity and conditional integrated variance
 
@@ -315,11 +332,13 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        x_t, eta = self._m_heston.var_step_ncx2_eta(1/var_0, texp)
+        var_t, eta = self._m_heston.var_step_pois_gamma(texp, 1 / var_0)
+        # var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        np.divide(1.0, var_t, out=var_t)
         # print('eta', eta.min(), eta.mean(), eta.max())
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, 1/x_t, texp, eta)
+            return self.laplace(bb, var_0, var_t, texp, eta)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -348,38 +367,39 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             return rv
 
         int_var = spop.newton(root, m1)
-        return 1 / x_t, int_var/texp
+        return var_t, int_var/texp
 
-    def cond_states(self, inv_var_0, texp):
+    def cond_states_step(self, var_0, dt):
+        """
+        Final variance and integrated variance over dt given var_0
+        The int_var is normalized by dt
 
-        tobs = self.tobs(texp)
-        n_dt = len(tobs)
-        dt = np.diff(tobs, prepend=0)
+        Args:
+            var_0: initial variance
+            dt: time step
 
-        inv_var_0 = np.full(self.n_path, inv_var_0)
-        var_avg = np.zeros_like(inv_var_0)
+        Returns:
+            (var_t, avgvar)
+        """
 
-        for i in range(n_dt):
+        # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
+        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+        np.divide(1.0, var_t, out=var_t)
+        m1, var = self.cond_avgvar_mv(var_0, var_t, dt, eta=None)
 
-            inv_var_t, _ = self._m_heston.var_step_ncx2_eta(inv_var_0, dt[i])
-            m1, var = self.cond_avgvar_mv_numeric(1/inv_var_0, 1/inv_var_t, dt[i])
-            inv_var_0 = inv_var_t
+        if self.dist.lower() == 'ig':
+            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+            # RNG.wald takes the same parameters
+            lam = m1 ** 3 / var
+            avgvar = self.rng_spawn[1].wald(mean=m1, scale=lam)
+        elif self.dist.lower() == 'ga':
+            scale = var / m1
+            shape = m1 / scale
+            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+        elif self.dist.lower() == 'ln':
+            scale = np.sqrt(np.log(1 + var / m1 ** 2))
+            avgvar = m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
+        else:
+            raise ValueError(f"Incorrect distribution: {self.dist}.")
 
-            if self.dist.lower() == 'ig':
-                # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
-                # RNG.wald takes the same parameters
-                lam = m1**3 / var
-                var_avg += self.rng_spawn[1].wald(mean=m1, scale=lam)
-            elif self.dist.lower() == 'ga':
-                scale = var / m1
-                shape = m1 / scale
-                var_avg += scale * self.rng_spawn[1].standard_gamma(shape=shape)
-            elif self.dist.lower() == 'ln':
-                scale = np.sqrt(np.log(1 + var/m1**2))
-                var_avg += m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale/2))
-            else:
-                raise ValueError(f"Incorrect distribution: {self.dist}.")
-
-        var_avg /= n_dt
-
-        return 1/inv_var_t, var_avg
+        return var_t, avgvar

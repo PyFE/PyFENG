@@ -1,4 +1,5 @@
 import math
+import abc
 import numpy as np
 import scipy.optimize as spop
 import scipy.stats as spst
@@ -10,11 +11,116 @@ from . import sv_abc as sv
 from . import cev
 
 
-class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
+class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
+    var_process = False
+
+    def sigma_step(self, dt, sigma_0):
+        """
+        Final Sigma
+
+        Parameters
+        ----------
+        texp: time to expiry
+        Returns
+        -------
+        vol at maturity
+        """
+        vovn = self.vov * np.sqrt(dt)
+        zz = self.rv_normal(spawn=0)
+        sigma_t = sigma_0 * np.exp(vovn * (zz - vovn/2))
+
+        return sigma_t
+
+    @abc.abstractmethod
+    def cond_states_step(self, dt, sigma_0):
+        """
+        Final variance and integrated variance over dt given var_0
+        The int_var is normalized by dt
+
+        Args:
+            dt: time step
+            sigma_0: initial sigma
+
+        Returns:
+            (sigma_t, avgvar)
+        """
+        return NotImplementedError
+
+    def cond_spot_sigma(self, texp, fwd, mu=0):
+        """
+        Spot and sigma ratio.
+
+        Args:
+            texp: time to expiry
+            fwd: forward. Only used for calculating alpha
+            mu: BM shift (currently not used)
+
+        Returns:
+            (spot ratio, sigma ratio)
+        """
+
+        tobs = self.tobs(texp)
+        dt = np.diff(tobs, prepend=0)
+        n_dt = len(dt)
+
+        #### sigma is normalized to 1
+        sigma_t = np.full(self.n_path, 1.0)
+        avgvar = np.zeros(self.n_path)
+
+        for i in range(n_dt):
+            sigma_t, avgvar_inc = self.cond_states_step(dt[i], sigma_t)
+            avgvar += avgvar_inc * dt[i]
+
+        avgvar /= texp
+
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
+        vol_cond = rhoc * np.sqrt(avgvar)
+        rho_alpha = self.rho * alpha
+
+        if np.isclose(self.beta, 0):
+            spot_cond = 1 + rho_alpha / self.vov * (sigma_t - 1)
+        else:
+            spot_cond = 1.0 / self.vov * (sigma_t - 1) - 0.5 * rho_alpha * avgvar * texp
+            np.exp(rho_alpha * spot_cond, out=spot_cond)
+
+        return spot_cond, vol_cond
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
+        kk = strike / fwd
+
+        fwd_ratio, vol_ratio = self.cond_spot_sigma(texp, fwd)
+
+        if self.correct_fwd:
+            fwd_ratio /= np.mean(fwd_ratio)
+
+        if self.beta > 0:
+            ind = (fwd_ratio > 1e-16)
+        else:
+            ind = (fwd_ratio > -999)
+
+        fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
+        vol_ratio = np.expand_dims(vol_ratio[ind], -1)
+
+        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
+        price = fwd * np.sum(price_vec, axis=0) / self.n_path
+
+        return price
+
+
+class SabrMcTimeDisc(SabrMcABC):
     """
     Conditional MC for SABR model (beta=0,1 or rho=0) with conditional Monte-Carlo simulation
 
     """
+
+    def cond_states_step(self, dt, sigma_0):
+        sigma_t = self.sigma_step(dt, sigma_0)
+        avgvar = (sigma_0 ** 2 + sigma_t ** 2) / 2
+
+        return sigma_t, avgvar
 
     def vol_paths(self, tobs, mu=0):
         """
@@ -38,9 +144,20 @@ class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
         log_sig_s = np.insert(log_sig_s, 0, np.zeros(log_sig_s.shape[1]), axis=0)
         return np.exp(log_sig_s), log_rn_deriv
 
-    def cond_spot_sigma(self, texp, mu=0):
+    def cond_spot_sigma_volpath(self, texp, sigma_0, mu=0):
+        """
+        Kept for backward compatibility and rn_deriv
+
+        Args:
+            texp:
+            sigma_0:
+            mu:
+
+        Returns:
+
+        """
         rhoc = np.sqrt(1.0 - self.rho ** 2)
-        rho_sigma = self.rho * self.sigma
+        rho_sigma = self.rho * sigma_0
 
         tobs = self.tobs(texp)
         n_dt = len(tobs)
@@ -48,6 +165,7 @@ class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
         sigma_final = sigma_paths[-1, :]
         int_var = scint.simps(sigma_paths ** 2, dx=1, axis=0) / n_dt
         vol_cond = rhoc * np.sqrt(int_var)
+
         if np.isclose(self.beta, 0):
             spot_cond = rho_sigma / self.vov * (sigma_final - 1)
         else:
@@ -56,57 +174,46 @@ class SabrMcCond(sabr.SabrABC, sv.CondMcBsmABC):
 
         return spot_cond, vol_cond, log_rn_deriv
 
-    def price(self, strike, spot, texp, cp=1):
-        fwd = self.forward(spot, texp)
-        fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma(texp)
-        if np.isclose(self.beta, 0):
-            base_model = self._m_base(self.sigma * vol_cond, is_fwd=True)
-            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
-            price = np.mean(price_grid * np.exp(log_rn_deriv), axis=1)
-        else:
-            alpha = self.sigma / np.power(spot, 1.0 - self.beta)
-            kk = strike / fwd
-
-            base_model = self._m_base(alpha * vol_cond, is_fwd=True)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp, cp=cp)
-            price = fwd * np.mean(price_grid * np.exp(log_rn_deriv), axis=1)
-
-        return price
 
     def mass_zero(self, spot, texp, log=False, mu=0):
+
         assert 0 < self.beta < 1
-        assert self.rho == 0
+        assert np.isclose(self.rho, 0.0)
 
-        eta = (
-            self.vov
-            * np.power(spot, 1.0 - self.beta)
-            / (self.sigma * (1.0 - self.beta))
-        )
-        vovn = self.vov * np.sqrt(texp)
+        ### We calculate under normalization by fwd.
+        fwd = self.forward(spot, texp)
+        alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
+        ### mu is currently not used.
         if mu is None:
+            eta = self.vov * np.power(spot, betac) / (self.sigma * betac)
+            vovn = self.vov * np.sqrt(texp)
             mu = 0.5 * (vovn + np.log(1 + eta ** 2) / vovn)
             # print(f'mu = {mu}')
 
-        fwd_cond, vol_cond, log_rn_deriv = self.cond_spot_sigma(texp, mu=mu)
-        base_model = cev.Cev(sigma=self.sigma * vol_cond, beta=self.beta)
+        fwd_ratio, vol_ratio = self.cond_spot_sigma(texp, fwd)
+        assert np.isclose(fwd_ratio, 1.0).all()
+        log_rn_deriv = 0.0  ## currently not used
+
+        base_model = cev.Cev(sigma=alpha * vol_ratio, beta=self.beta)
         if log:
-            log_mass_grid = base_model.mass_zero(spot, texp, log=True) + log_rn_deriv
+            log_mass_grid = base_model.mass_zero(1.0, texp, log=True) + log_rn_deriv
             log_mass_max = np.amax(log_mass_grid)
             log_mass_grid -= log_mass_max
             log_mass = log_mass_max + np.log(np.mean(np.exp(log_mass_grid)))
             return log_mass
         else:
-            mass_grid = base_model.mass_zero(spot, texp, log=False) * np.exp(
-                log_rn_deriv
-            )
+            mass_grid = base_model.mass_zero(1.0, texp, log=False) * np.exp(log_rn_deriv)
             mass = np.mean(mass_grid)
             return mass
 
+    def return_var_realized(self, texp, cond):
+        return None
 
-class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
+
+class SabrMcCai2017Exact(SabrMcABC):
     """
-    Cai et al (2017)'s exact simulation of the SABR model
+    Cai et al. (2017)'s exact simulation of the SABR model
 
     References:
         - Cai N, Song Y, Chen N (2017) Exact Simulation of the SABR Model. Oper Res 65:931–951. https://doi.org/10.1287/opre.2017.1617
@@ -117,51 +224,27 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
     comb_coef = None
     nn = None
 
-    def set_num_params(self, n_path=10000, m_inv=20, m_euler=20, n_euler=35, rn_seed=None, antithetic=True):
+    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, m_inv=20, m_euler=20, n_euler=35):
         """
         Set MC parameters
 
         Args:
             n_path: number of paths
+            dt: time step
+            rn_seed: random number seed
+            antithetic: antithetic
             m_inv: parameter M in Laplace inversion, Eq. (16)
             m_euler: parameter m in Euler transformation E(m,n)
             n_euler: parameter n in Euler transformation E(m,n)
-            rn_seed: random number seed
-            antithetic: antithetic
         """
-        self.n_path = int(n_path)
         self.m_inv = m_inv
         self.m_euler = m_euler
         self.n_euler = n_euler
-        self.dt = None
-        self.rn_seed = rn_seed
-        self.antithetic = antithetic
-        self.rn_seed = rn_seed
-        self.rng = np.random.default_rng(rn_seed)
         self.comb_coef = spsp.comb(self.m_euler, np.arange(0, self.m_euler+0.1)) * np.power(0.5, self.m_euler)
         assert abs(self.comb_coef.sum()-1) < 1e-8
         self.nn = np.arange(0, self.m_euler + self.n_euler + 0.1)
+        super().set_num_params(n_path, dt, rn_seed, antithetic)
 
-    def sigma_final(self, vovn):
-        """
-        Final Sigma
-
-        Parameters
-        ----------
-        texp: time to expiry
-        Returns
-        -------
-        vol at maturity
-        """
-
-        if self.antithetic:
-            zz = self.rng.standard_normal(size=self.n_path // 2)
-            zz = np.hstack([zz, -zz])
-        else:
-            zz = self.rng.standarad_normal(size=self.n_path)
-
-        sigma_T = np.exp(vovn * (zz - vovn/2))
-        return sigma_T
 
     def cond_laplace(self, theta, vovn, sigma_T):
         """
@@ -209,24 +292,20 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
 
         return origin_L
 
-    def cond_int_var(self, vovn, sigma_final):
+    def cond_int_var(self, dt, sigma_0, sigma_final):
         """
         Normalized integraged variance samples.
 
         Args:
-            vovn: vov * sqrt(texp)
+            dt: time step
             sigma_final: final volatility
 
         Returns:
             (n_path, 1) array
         """
+        vovn = self.vov * np.sqrt(dt)
 
-        if self.antithetic:
-            u_rn = self.rng.uniform(size=self.n_path // 2)
-            u_rn = np.hstack([u_rn, 1 - u_rn])
-        else:
-            u_rn = self.rng.uniform(size=self.n_path)
-
+        u_rn = self.rv_uniform(spawn=2)
         int_var = np.zeros(self.n_path)
 
         for i in range(self.n_path):
@@ -237,43 +316,12 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
 
         return int_var
 
-    def cond_spot_sigma(self, texp):
+    def cond_states_step(self, dt, sigma_0):
 
-        rhoc = np.sqrt(1.0 - self.rho ** 2)
-        rho_sigma = self.rho * self.sigma
-        vovn = self.vov * np.sqrt(texp)
+        sigma_t = self.sigma_step(dt, sigma_0)
+        avgvar = self.cond_int_var(dt, sigma_0, sigma_t)
 
-        sigma_final = self.sigma_final(vovn)
-        int_var = self.cond_int_var(vovn, sigma_final)
-        #print(1/np.max(int_var), 1/np.min(int_var))
-
-        vol_cond = rhoc * np.sqrt(int_var)
-        if np.isclose(self.beta, 0):
-            fwd_cond = rho_sigma / self.vov * (sigma_final - 1)
-        else:
-            fwd_cond = np.exp(
-                rho_sigma * (1.0/self.vov * (sigma_final - 1) - 0.5 * rho_sigma * int_var * texp)
-            )
-        return fwd_cond, vol_cond
-
-    def price(self, strike, spot, texp, cp=1):
-        # The formula is exactly same as that of SabrCondMc except rn_deriv. Need to merge
-        fwd = self.forward(spot, texp)
-        fwd_cond, vol_cond = self.cond_spot_sigma(texp)
-        if np.isclose(self.beta, 0):
-            base_model = self._m_base(self.sigma * vol_cond, is_fwd=True)
-            price_grid = base_model.price(strike[:, None], fwd + fwd_cond, texp, cp=cp)
-            price = np.mean(price_grid, axis=1)
-        else:
-            alpha = self.sigma / np.power(spot, 1.0 - self.beta)
-            kk = strike / fwd
-
-            base_model = self._m_base(alpha * vol_cond, is_fwd=True)
-            price_grid = base_model.price(kk[:, None], fwd_cond, texp, cp=cp)
-            price = fwd * np.mean(price_grid, axis=1)
-
-        return price
-
+        return sigma_t, avgvar
 
     # The algorithem below is about pricing when 0<=beta<1
     def simu_ST(self, beta, VT, spot):
@@ -422,3 +470,6 @@ class SabrMcExactCai2017(sabr.SabrABC, sv.CondMcBsmABC):
                                   + 2 * theta_s(s) / sigma) ** 0.5
             cdf = spst.norm.cdf(z)
         return cdf
+
+    def return_var_realized(self, texp, cond):
+        return None

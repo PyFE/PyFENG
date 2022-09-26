@@ -20,7 +20,7 @@ class TestSabr(unittest.TestCase):
 
     def test_SabrNorm(self):
         for k in [22, 23]:
-            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            m, df, rv = pf.SabrNormVolApprox.init_benchmark(k)
             v1 = m.price(**rv["args_pricing"])
             m, df, rv = pf.SabrChoiWu2021H.init_benchmark(k)
             v2 = m.price(**rv["args_pricing"])
@@ -28,7 +28,7 @@ class TestSabr(unittest.TestCase):
 
     def test_SabrNormATM(self):
         for k in [22, 23]:
-            m, df, rv = pf.SabrNorm.init_benchmark(k)
+            m, df, rv = pf.SabrNormVolApprox.init_benchmark(k)
             m.is_atmvol = True
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
             np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
@@ -61,9 +61,9 @@ class TestSabr(unittest.TestCase):
         np.testing.assert_almost_equal(mass, mass2)
         np.testing.assert_almost_equal(p, p2)
 
-    def test_CondMc(self):
+    def test_McTimeDisc(self):
         for k in [19, 20]:  # can test 22 (Korn&Tang) also, but difficult to pass
-            m, df, rv = pf.SabrMcCond.init_benchmark(k)
+            m, df, rv = pf.SabrMcTimeDisc.init_benchmark(k)
             m.set_num_params(n_path=5e4, dt=0.05, rn_seed=1234)
             p = m.price(**rv["args_pricing"])
             np.testing.assert_almost_equal(p, rv["val"], decimal=4)

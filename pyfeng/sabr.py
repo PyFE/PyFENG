@@ -21,11 +21,10 @@ from . import cev
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
     model_type = "SABR"
+    var_process = False
     _base_beta = None
 
-    def __init__(
-        self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False
-    ):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -49,18 +48,19 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta
         alpha = self.sigma / np.power(fwd, betac)  # if self.beta > 0.0 else self.sigma
-        rho2 = self.rho * self.rho
+        rho2 = self.rho**2
         rhoc = np.sqrt(1.0 - rho2)
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def _m_base(self, vol, is_fwd=None):
+    def base_model(self, vol, is_fwd=None):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
 
         Args:
             vol: base model volatility
+            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns: model
         """
@@ -234,14 +234,14 @@ class SabrVolApproxABC(SabrABC):
 
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)
-        m_vol = self._m_base(vol)
+        m_vol = self.base_model(vol)
         price = m_vol.price(strike, spot, texp, cp=cp)
         return price
 
     def impvol(self, price, strike, spot, texp, cp=1, setval=False):
         model = copy.copy(self)
 
-        vol = self._m_base(None).impvol(price, strike, spot, texp, cp=cp)
+        vol = self.base_model(None).impvol(price, strike, spot, texp, cp=cp)
 
         def iv_func(_sigma):
             model.sigma = _sigma
@@ -325,9 +325,7 @@ class SabrHagan2002(SabrVolApproxABC):
         vol *= alpha * hh / pre1  # bsm vol
         return vol
 
-    def calibrate3(
-        self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True
-    ):
+    def calibrate3(self, price_or_vol3, strike3, spot, texp, cp=1, setval=False, is_vol=True):
         """
         Given option prices or implied vols at 3 strikes, compute the sigma, vov, rho to fit the data using `scipy.optimize.root`.
         If prices are given (is_vol=False) convert the prices to vol first.
@@ -349,7 +347,7 @@ class SabrHagan2002(SabrVolApproxABC):
         if is_vol:
             vol3 = price_or_vol3
         else:
-            vol3 = self._m_base(None).impvol(price_or_vol3, strike3, spot, texp, cp=cp)
+            vol3 = self.base_model(None).impvol(price_or_vol3, strike3, spot, texp, cp=cp)
 
         def iv_func(x):
             model.sigma = np.exp(x[0])
@@ -375,18 +373,18 @@ class SabrHagan2002(SabrVolApproxABC):
         return params
 
 
-class SabrNorm(SabrVolApproxABC):
+class SabrNormVolApprox(SabrVolApproxABC):
     """
     Noram SABR model (beta=0) with normal volatility approximation.
 
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.SabrNorm(sigma=2, vov=0.2, rho=-0.3, beta=0.5)
+        >>> m = pf.SabrNormVolApprox(sigma=20, vov=0.8, rho=-0.3)
         >>> m.vol_for_price(np.arange(80, 121, 10), 100, 1.2)
-        array([0.21976016, 0.20922027, 0.200432  , 0.19311113, 0.18703486])
+        array([24.97568842, 22.78062691, 21.1072    , 20.38569729, 20.78963436])
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
-        array([22.04862858, 14.56226187,  8.74170415,  4.72352155,  2.28891776])
+        array([23.70791426, 15.74437409,  9.22425529,  4.78754361,  2.38004685])
     """
 
     _base_beta = 0  # should not be changed
@@ -490,9 +488,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
         vov_over_alpha_safe = self.vov / np.maximum(alpha, np.finfo(float).eps)
         tmp = self._int_inv_locvol(kk, self.beta)
-        qq_ratio = (
-            1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
-        )
+        qq_ratio = 1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
 
         qq = tmp * (kk - 1.0)
         zz = vov_over_alpha_safe * qq  # zeta = (vov/sigma0) q
@@ -502,14 +498,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
 
         # term11: O(alpha*vov)
         # C(k)-C(1)/(k-1). Notice that 1/beta comes from int_inv_locvol
-        term11 = (
-            self.rho
-            * self.beta
-            / 4
-            * self.vov
-            * alpha
-            * self._int_inv_locvol(kk, betac)
-        )
+        term11 = self.rho * self.beta / 4 * self.vov * alpha * self._int_inv_locvol(kk, betac)
 
         # term20: O(alpha^2)
         if np.isclose(self.beta, vol_beta):
@@ -519,13 +508,8 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
                 ## Override ATM (qq=0)
                 term20 = np.where(
                     np.fabs(qq) < 1e-6,
-                    (np.square(betac) - np.square(vol_betac)) / 24 * np.square(alpha),
-                    (
-                        0.5 * (self.beta - self._base_beta) * np.log(kk)
-                        - np.log(qq_ratio)
-                    )
-                    * np.square(alpha)
-                    / qq,
+                    (betac**2 - vol_betac**2) / 24 * alpha**2,
+                    (0.5*(self.beta - self._base_beta) * np.log(kk) - np.log(qq_ratio)) * alpha**2 / qq,
                 )
         # else:
         #    raise ValueError('Cannot handle this vol_beta different from beta')
@@ -681,7 +665,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
 
             gg_diff = self.rho * self.beta / (rhoc * betac) * (gg2 - gg1)
 
-        zz2_safe = np.maximum(np.square(zz), np.finfo(float).eps)
+        zz2_safe = np.maximum(zz**2, np.finfo(float).eps)
 
         if np.isclose(self.beta, vol_beta):
             tmp = 0.0
@@ -697,19 +681,12 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
                 (0.5 * (self.beta - self._base_beta) * np.log(kk) - np.log(qq_ratio)) * np.square(alpha) / qq
             )
         """
-        order1 = (
-            np.square(self.vov * hh)
-            / zz2_safe
-            * (tmp + 0.5 * np.log(v_m / np.square(hh)) + gg_diff)
-        )
+        order1 = (self.vov * hh)**2 / zz2_safe * (tmp + 0.5 * np.log(v_m / np.square(hh)) + gg_diff)
 
         ## Override ATM (z=0)
         ind_atm = abs(zz) < 1e-6
-        order1[ind_atm] = (
-            np.square(betac) - np.square(vol_betac)
-        ) / 24 * alpha * alpha + (
-            (self.rho * self.beta / 4) * alpha + (2 - 3 * rho2) / 24 * self.vov
-        ) * self.vov  # RHS scalar
+        order1[ind_atm] = (betac**2 - vol_betac**2)/24 * alpha**2 \
+                          + ((self.rho * self.beta / 4) * alpha + (2 - 3 * rho2) / 24 * self.vov) * self.vov  # RHS scalar
 
         # return value
         if self.approx_order == 0:

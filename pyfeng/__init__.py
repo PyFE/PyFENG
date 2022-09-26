@@ -7,17 +7,21 @@ from .gamma import InvGam, InvGauss
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft
 from .sabr import (
     SabrHagan2002,
-    SabrNorm,
+    SabrNormVolApprox,
     SabrLorig2017,
     SabrChoiWu2021H,
     SabrChoiWu2021P,
 )
 from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
 from .heston import HestonUncorrBallRoma1994
+from .heston_mc import (
+    HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
+    HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd
+)
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
-from .sabr_mc import SabrMcCond
-from .nsvh import Nsvh1, NsvhMc
+from .sabr_mc import SabrMcTimeDisc
+from .nsvh import Nsvh1, NsvhMc, NsvhQuadInt
 from .multiasset import (
     BsmSpreadKirk,
     BsmSpreadBjerksund2014,
