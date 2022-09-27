@@ -289,7 +289,7 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         """
         rho_vov = self.rho / self.vov
         mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
-                  + (rho_vov*self.mr - 0.5)*dt*avgvar
+                  + (rho_vov*self.mr - 0.5)*dt*avgvar + (self.intr - self.divr)*dt
         sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
         return mean_ln**2 + sigma_ln2
 
@@ -309,7 +309,7 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         """
         rho_vov = self.rho / self.vov
         mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
-                  + (rho_vov*self.mr - 0.5)*dt*avgvar
+                  + (rho_vov*self.mr - 0.5)*dt*avgvar + (self.intr - self.divr)*dt
         sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
         zn = self.rv_normal(spawn=5)
         return mean_ln + sigma_ln * zn
@@ -577,6 +577,17 @@ class OusvMcChoi2023KL(OusvMcABC):
         return rv
 
     def cond_states_step(self, dt, vol_0, zn=None):
+        """
+        Final volatility (sigma), average variance and volatilityu over dt given vol_0
+
+        Args:
+            dt: time-to-expiry
+            vol_0: initial volatility
+            zn: normal RVs to specify in the (1+n_sin, n_path) format. None by default.
+
+        Returns:
+            (final vol, average var, average vol)
+        """
 
         mr, vov = self.mr, self.vov
 
@@ -695,21 +706,3 @@ class OusvMcChoi2023KL(OusvMcABC):
                      + self.vov * np.sqrt(dt) * (an*sin) @ zn[1:,:]
 
         return sigma_path
-
-    def price_var_option(self, strike, texp, cp=1):
-        """
-        Price of variance option
-
-        Args:
-            strike:
-            texp:
-            cp:
-
-        Returns:
-
-        """
-        df = np.exp(-self.intr * texp)
-        vol_t, vv_t, uu_t = self.cond_states(texp, self.sigma)
-        # vv_t is the average variance
-        price = df * np.fmax(np.sign(cp)*(vv_t[:, None] - strike), 0).mean(axis=0)
-        return price
