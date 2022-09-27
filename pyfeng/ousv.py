@@ -23,12 +23,58 @@ class OusvABC(sv.SvABC, abc.ABC):
             mean, variance(=None)
         """
 
-        mr_t = self.mr * texp
-        e_mr = np.exp(-mr_t)
+        mrt = self.mr * texp
+        e_mrt = np.exp(-mrt)
         x0 = vol_0 - self.theta
         vv = self.vov**2/2/self.mr + self.theta**2 + \
-             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mr) + 4*self.theta * x0)*(1 - e_mr)/(2*self.mr*texp)
+             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mrt) + 4*self.theta * x0)*(1 - e_mrt)/(2*mrt)
         return vv, None
+
+    def strike_var_swap_analytic(self, texp, dt):
+        """
+        Analytic fair strike of variance swap. Eq (17), (24), (25) in Bernard & Cui (2014)
+
+        Args:
+            texp: time to expiry
+            dt: observation time step. If zero, continuous monitoring
+
+        Returns:
+            Fair strike
+
+        References:
+            - Bernard C, Cui Z (2014) Prices and Asymptotics for Discrete Variance Swaps. Applied Mathematical Finance 21:140–173. https://doi.org/10.1080/1350486X.2013.820524
+        """
+
+        mrt = self.mr * texp
+        e_mrt = np.exp(-mrt)
+        x0 = self.sigma - self.theta
+        strike = self.vov**2/2/self.mr + self.theta**2 + \
+             ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mrt) + 4*self.theta * x0)*(1 - e_mrt)/(2*mrt)
+
+        if not np.all(np.isclose(dt, 0.0)):
+            mrt2 = mrt**2
+            vov2t = self.vov**2 * texp
+
+            sig = self.sigma
+            sig2 = sig**2
+            th = self.theta
+            th2 = th**2
+
+            D = (e_mrt - 1) / mrt  # D / T
+            E = 4*mrt2*(sig2**2 - th2**2) - 3*vov2t*(vov2t + 4*th2*mrt)  # E * T^2
+
+            d2 = (vov2t + 2*mrt*th2) + ((2*mrt*(th2-sig2) + vov2t) + mrt*(vov2t/2 - mrt*x0**2)*D)*D
+
+            # d1 / T
+            d1 = sig2**2/4 - E*(1 + D)/(16*mrt2)
+            d1 += ((3*vov2t/4 - mrt*sig*x0/2)*sig2 + E/(32*mrt)) * D**2
+            d1 += ((2*th*sig/3 - sig2/6 - th2/2)*sig2*mrt2 - E/48 + (-mrt*sig*th + 3/4*sig2*mrt - vov2t/4)*vov2t) * D**3
+            d1 += (E/(8*mrt) - 3*vov2t*x0*th + 3*sig2*vov2t/2 - mrt*sig*x0*(2*th2 - th*sig + sig2)) * D**4 * mrt2 / 8
+
+            correction = self.intr * (self.intr - strike) + d1 - self.vov/(2*self.mr)*self.rho * d2/texp
+            strike += correction * dt
+
+        return strike
 
 
 class OusvSchobelZhu1998(OusvABC):
@@ -256,7 +302,7 @@ class OusvMcTimeStep(OusvMcABC):
         return vol_t, avgvar, avgvol
 
 
-class OusvMcChoi2023(OusvMcABC):
+class OusvMcChoi2023KL(OusvMcABC):
 
     n_sin = 2
 
