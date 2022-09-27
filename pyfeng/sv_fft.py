@@ -6,7 +6,8 @@ import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
-
+from . import ousv
+from . import heston
 
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -140,7 +141,7 @@ class ExpNigFft(sv.SvABC, FftABC):
         return rv
 
 
-class HestonFft(sv.SvABC, FftABC):
+class HestonFft(heston.HestonABC, FftABC):
     """
     Heston model option pricing with FFT
 
@@ -183,7 +184,7 @@ class HestonFft(sv.SvABC, FftABC):
         return np.exp(mgf/vov2)
 
 
-class OusvFft(sv.SvABC, FftABC):
+class OusvFft(ousv.OusvABC, FftABC):
     """
     OUSV model option pricing with FFT
 
