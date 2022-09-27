@@ -5,7 +5,6 @@ import os
 
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
-import pyfeng.ex as pfex
 
 
 class TestHestonMc(unittest.TestCase):
