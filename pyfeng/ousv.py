@@ -10,22 +10,24 @@ class OusvABC(sv.SvABC, abc.ABC):
     model_type = "OUSV"
     var_process = False
 
-    def avgvar_mv(self, texp, vol_0):
+    def avgvar_mv(self, texp, vol0=None):
         """
         Mean and variance of the variance V(t+dt) given V(0) = var_0
         (variance is not implemented yet)
 
         Args:
             texp: time step
-            vol_0: initial variance
+            vol0: initial volatility
 
         Returns:
             mean, variance(=None)
         """
 
+        vol0 = vol0 or self.sigma
+
         mrt = self.mr * texp
         e_mrt = np.exp(-mrt)
-        x0 = vol_0 - self.theta
+        x0 = vol0 - self.theta
         vv = self.vov**2/2/self.mr + self.theta**2 + \
              ((x0**2 - self.vov**2/2/self.mr)*(1 + e_mrt) + 4*self.theta * x0)*(1 - e_mrt)/(2*mrt)
         return vv, None
@@ -36,15 +38,18 @@ class OusvABC(sv.SvABC, abc.ABC):
 
         Args:
             texp: time to expiry
-            dt: observation time step. If zero, continuous monitoring
+            dt: observation time step (e.g., dt=1/12 for monthly) For continuous monitoring, set dt=0
 
         Returns:
             Fair strike
 
         References:
             - Bernard C, Cui Z (2014) Prices and Asymptotics for Discrete Variance Swaps. Applied Mathematical Finance 21:140–173. https://doi.org/10.1080/1350486X.2013.820524
+
         """
 
+
+        ### continuously monitored fair strike (same as mean of avgvar_mv)
         mrt = self.mr * texp
         e_mrt = np.exp(-mrt)
         x0 = self.sigma - self.theta
@@ -207,15 +212,14 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
     @abc.abstractmethod
     def cond_states_step(self, dt, vol_0):
         """
-        Final variance and integrated variance over dt given var_0
-        The integrated variance is normalized by dt
+        Final volatility (sigma), average variance and volatilityu over dt given vol_0
 
         Args:
             dt: time-to-expiry
             vol_0: initial volatility
 
         Returns:
-            (var_final, var_mean, vol_mean)
+            (final vol, average var, average vol)
         """
         return NotImplementedError
 
@@ -263,8 +267,83 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         sigma_cond = np.sqrt((1 - self.rho**2) * avgvar) / vol_0
         return spot_cond, sigma_cond
 
-    def return_var_realized(self, texp, cond):
-        return None
+    def strike_var_swap_analytic(self, texp, dt=None):
+        if dt is None:
+            dt = self.dt
+        rv = super().strike_var_swap_analytic(texp, dt)
+        return rv
+
+    def cond_log_return_var(self, dt, vol_0, vol_t, avgvar, avgvol):
+        """
+        Conditional log return variance expectation
+
+            dt: time step
+            vol_0: initial variance
+            vol_t: final variance
+            avgvar: average variance
+            avgvol: average volatility
+
+        Returns:
+            expected log return
+
+        """
+        rho_vov = self.rho / self.vov
+        mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
+                  + (rho_vov*self.mr - 0.5)*dt*avgvar
+        sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
+        return mean_ln**2 + sigma_ln2
+
+    def draw_log_return(self, dt, vol_0, vol_t, avgvar, avgvol):
+        """
+        Samples log return, log(S_t/S_0)
+
+        Args:
+            dt: time step
+            vol_0: initial variance
+            vol_t: final variance
+            avgvar: average variance
+            avgvol: average volatility
+
+        Returns:
+            log return
+        """
+        rho_vov = self.rho / self.vov
+        mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
+                  + (rho_vov*self.mr - 0.5)*dt*avgvar
+        sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        zn = self.rv_normal(spawn=5)
+        return mean_ln + sigma_ln * zn
+
+    def return_var_realized(self, texp, cond=False):
+        """
+        Annualized realized return variance
+
+        Args:
+            texp: time to expiry
+            cond: use conditional expectation without simulating price
+
+        Returns:
+
+        """
+        tobs = self.tobs(texp)
+        n_dt = len(tobs)
+        dt = np.diff(tobs, prepend=0)
+
+        var_r = np.zeros(self.n_path)
+        vol_0 = np.full(self.n_path, self.sigma)
+
+        for i in range(n_dt):
+            vol_t, avgvar_inc, avgvol_inc = self.cond_states_step(dt[i], vol_0)
+
+            if cond:
+                var_r += self.cond_log_return_var(dt[i], vol_0, vol_t, avgvar_inc, avgvol_inc)
+            else:
+                var_r += self.draw_log_return(dt[i], vol_0, vol_t, avgvar_inc, avgvol_inc) ** 2
+
+            vol_0 = vol_t
+
+        return var_r / texp  # annualized
+
 
 class OusvMcTimeStep(OusvMcABC):
     """
@@ -498,17 +577,6 @@ class OusvMcChoi2023KL(OusvMcABC):
         return rv
 
     def cond_states_step(self, dt, vol_0, zn=None):
-        """
-        Incremental conditional states
-
-        Args:
-            dt: time step
-            vol_0: initial volatility
-            zn: specified normal rvs to use. (n_sin + 1, n_path)
-
-        Returns:
-            final volatility, average volatility, average variance. (n_path, ) each.
-        """
 
         mr, vov = self.mr, self.vov
 
