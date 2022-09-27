@@ -83,7 +83,7 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         Args:
             texp: time to expiry
-            dt: observation time step. If None, continuous monitoring
+            dt: observation time step. If zero, continuous monitoring
 
         Returns:
             Fair strike
@@ -100,7 +100,7 @@ class HestonABC(sv.SvABC, abc.ABC):
         x0 = var0 - self.theta
         strike = self.theta + x0*(1 - e_mr_t)/mr_t
 
-        if dt is not None:
+        if not np.all(np.isclose(dt, 0.0)):
             ### adjustment for discrete monitoring
             mr_h = self.mr * dt
             e_mr_h = np.exp(-mr_h)
