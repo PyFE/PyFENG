@@ -88,7 +88,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
         return iv1, iv2
 
-    def cond_avgvar_mv(self, var_0, var_t, dt, eta=None):
+    def cond_avgvar_mv(self, dt, var_0, var_t, eta=None):
         """
         Mean and variance of the integrated variance conditional on initial var, final var, and eta
 
@@ -104,8 +104,9 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         phi, _ = self._m_heston.phi_exp(dt)
         nu = self._m_heston.chi_dim()/2 - 1
 
-        d1_nu_bb = 4 / self.vov**2 / nu
-        d2_nu_bb = -(4 / self.vov**2)**2 / nu**3
+        vov2dt = self.vov**2 * dt
+        d1_nu_bb = 4 / vov2dt / nu
+        d2_nu_bb = -(4 / vov2dt)**2 / nu**3
         zz = phi / np.sqrt(var_0 * var_t)
 
         # print(f'phi: {phi}, nu: {nu}, zz: {zz.mean()}')
@@ -121,7 +122,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
 
         # print(d1[m1<0], var[var<0], d1[var<0])
         var[var < 0] = 1e-64
-        return d1/dt, var/dt**2
+        return d1, var
 
     def cond_spot_sigma(self, texp, var_0):
         tobs = self.tobs(texp)
@@ -217,13 +218,22 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         is_fwd: Bool, true if asset price is forward
     """
 
-    def laplace(self, bb, var_0, var_t, dt):
+    def cond_avgvar_laplace(self, bb, dt, var_0, var_t, eta=None):
+        vov2dt = self.vov**2 * dt
         phi, _ = self._m_heston.phi_exp(dt)
         nu = self._m_heston.chi_dim()/2 - 1
-        nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
+        nu_bb = np.sqrt(nu**2 + 8*bb/vov2dt)
         zz = phi / np.sqrt(var_0 * var_t)
-        ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
+
+        if eta is None:
+            ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
+        else:
+            nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
+            ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
+
         return ret
+
+
 
     def cond_states_step(self, var_0, dt):
         """
@@ -239,7 +249,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
         np.divide(1.0, var_t, out=var_t)
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, var_t, dt)
+            return self.cond_avgvar_laplace(bb, dt, var_0, var_t)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -283,22 +293,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
 
     dist = 'ig'
 
-    def laplace(self, bb, var_0, var_t, dt, eta=None):
-        phi, _ = self._m_heston.phi_exp(dt)
-        nu = self._m_heston.chi_dim()/2 - 1
-        nu_bb = np.sqrt(nu**2 + 8*bb/self.vov**2)
-        zz = phi / np.sqrt(var_0 * var_t)
-
-        if eta is None:
-            ret = self.iv_complex(nu_bb, zz) / spsp.iv(nu, zz)
-        else:
-            nu_diff = 8*bb / self.vov**2 / (nu_bb + nu)
-            ret = spsp.gamma(eta + nu + 1) / spsp.gamma(eta + nu_bb + 1) * np.power(zz/2, nu_diff)
-
-        return ret
-
-
-    def cond_avgvar_mv_numeric(self, var_0, var_t, dt):
+    def cond_avgvar_mv_numeric(self, dt, var_0, var_t):
         """
         Mean and variance of the average variance conditional on initial var, final var.
         It is computed from the numerical derivatives of the conditional Laplace transform.
@@ -316,11 +311,11 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(bb):
-            return np.log(self.laplace(-bb, var_0, var_t, dt))
+            return np.log(self.cond_avgvar_laplace(-bb, dt, var_0, var_t))
 
         m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-3)
         var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-3)
-        return m1/dt, var/dt**2
+        return m1, var
 
     def cond_states_step_invlap(self, var_0, texp):
         """
@@ -338,7 +333,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         # print('eta', eta.min(), eta.mean(), eta.max())
 
         def laplace_cond(bb):
-            return self.laplace(bb, var_0, var_t, texp, eta)
+            return self.cond_avgvar_laplace(bb, texp, var_0, var_t, eta)
 
         eps = 1e-5
         val_up = laplace_cond(eps)
@@ -385,7 +380,7 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
         var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
         np.divide(1.0, var_t, out=var_t)
-        m1, var = self.cond_avgvar_mv(var_0, var_t, dt, eta=None)
+        m1, var = self.cond_avgvar_mv(dt, var_0, var_t, eta=None)
 
         if self.dist.lower() == 'ig':
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
