@@ -23,7 +23,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic)
 
     @abc.abstractmethod
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
         """
         Final variance and integrated variance over dt given var_0
         The int_var is normalized by dt
@@ -133,7 +133,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         avgvar = np.zeros(self.n_path)
 
         for i in range(n_dt):
-            var_t, avgvar_inc = self.cond_states_step(var_t, dt[i])
+            var_t, avgvar_inc = self.cond_states_step(dt[i], var_t)
             avgvar += avgvar_inc * dt[i]
 
         avgvar /= texp
@@ -180,7 +180,7 @@ class Sv32McTimeStep(Sv32McABC):
 
         return var_t
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
 
         if self.scheme < 2:
             milstein = (self.scheme == 1)
@@ -203,7 +203,7 @@ class Sv32McTimeStep(Sv32McABC):
         return var_t, avgvar
 
 
-class Sv32McExactBaldeaux2012(Sv32McABC):
+class Sv32McBaldeaux2012Exact(Sv32McABC):
     """
     EXACT SIMULATION OF THE 3/2 MODEL
 
@@ -233,21 +233,7 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
 
         return ret
 
-
-
-    def cond_states_step(self, var_0, dt):
-        """
-        Sample variance at maturity and conditional integrated variance
-
-        Args:
-            dt: float, time to maturity
-        Returns:
-            tuple, variance at maturity and conditional integrated variance
-        """
-
-        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
-        np.divide(1.0, var_t, out=var_t)
-
+    def draw_avgvar(self, dt, var_0, var_t):
         def laplace_cond(bb):
             return self.cond_avgvar_laplace(bb, dt, var_0, var_t)
 
@@ -285,13 +271,59 @@ class Sv32McExactBaldeaux2012(Sv32McABC):
             return rv
 
         guess = m1 * np.exp(ln_sig*(zz - ln_sig/2))
-        int_var = spop.newton(root, guess)
-        return var_t, int_var/dt
+        avgvar = spop.newton(root, guess)
+
+        return avgvar
+
+    def cond_states_step(self, dt, var_0):
+        """
+        Sample variance at maturity and conditional integrated variance
+
+        Args:
+            dt: float, time to maturity
+        Returns:
+            tuple, variance at maturity and conditional integrated variance
+        """
+
+        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+        np.divide(1.0, var_t, out=var_t)
+
+        avgvar = self.draw_avgvar(dt, var_0, var_t)
+
+        return var_t, avgvar
 
 
-class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
+class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
 
     dist = 'ig'
+
+    def draw_from_mv(self, mean, var, dist):
+        """
+        Draw RNs from distributions with mean and variance matched
+        Args:
+            mean: mean
+            var: variance
+            dist: distribution. 'ig' for IG, 'ga' for Gamma, 'ln' for log-normal
+
+        Returns:
+            RNs with size of mean/variance
+        """
+        if dist.lower() == 'ig':
+            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
+            # RNG.wald takes the same parameters
+            lam = mean ** 3 / var
+            avgvar = self.rng_spawn[1].wald(mean=mean, scale=lam)
+        elif dist.lower() == 'ga':
+            scale = var / mean
+            shape = mean / scale
+            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+        elif dist.lower() == 'ln':
+            scale = np.sqrt(np.log(1 + var / mean ** 2))
+            avgvar = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
+        else:
+            raise ValueError(f"Incorrect distribution: {dist}.")
+
+        return avgvar
 
     def cond_avgvar_mv_numeric(self, dt, var_0, var_t):
         """
@@ -361,10 +393,10 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
             rv = h_xx + 2*(phimat * np.sin(h_xx * jj) / jj).sum(axis=0) - uu * np.pi
             return rv
 
-        int_var = spop.newton(root, m1)
-        return var_t, int_var/texp
+        avgvar = spop.newton(root, m1)
+        return var_t, avgvar
 
-    def cond_states_step(self, var_0, dt):
+    def cond_states_step(self, dt, var_0):
         """
         Final variance and integrated variance over dt given var_0
         The int_var is normalized by dt
@@ -378,23 +410,9 @@ class Sv32McExactChoiKwok2023(Sv32McExactBaldeaux2012):
         """
 
         # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
-        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+        var_t = self._m_heston.var_step_ncx2(dt, 1/var_0)
         np.divide(1.0, var_t, out=var_t)
         m1, var = self.cond_avgvar_mv(dt, var_0, var_t, eta=None)
-
-        if self.dist.lower() == 'ig':
-            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
-            # RNG.wald takes the same parameters
-            lam = m1 ** 3 / var
-            avgvar = self.rng_spawn[1].wald(mean=m1, scale=lam)
-        elif self.dist.lower() == 'ga':
-            scale = var / m1
-            shape = m1 / scale
-            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
-        elif self.dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + var / m1 ** 2))
-            avgvar = m1 * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
-        else:
-            raise ValueError(f"Incorrect distribution: {self.dist}.")
+        avgvar = self.draw_from_mv(m1, var, self.dist)
 
         return var_t, avgvar
