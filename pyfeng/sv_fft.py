@@ -1,6 +1,7 @@
 import numpy as np
 import abc
 import scipy.fft as spfft
+import scipy.special as scsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
@@ -159,8 +160,6 @@ class HestonFft(heston.HestonABC, FftABC):
         array([44.32997507, 35.8497697 , 13.08467014,  0.29577444])
     """
 
-    model_type = "Heston"
-
     def mgf_logprice(self, uu, texp):
         """
         Log price MGF under the Heston model.
@@ -189,8 +188,6 @@ class OusvFft(ousv.OusvABC, FftABC):
     OUSV model option pricing with FFT
 
     """
-
-    model_type = "OUSV"
 
     def mgf_logprice(self, uu, texp):
         """
@@ -285,3 +282,74 @@ class OusvFft(ousv.OusvABC, FftABC):
         res = -0.5*uu*rho*(self.sigma**2/vov + vov*texp)
         res += (D/2*self.sigma + B)*self.sigma + C
         return np.exp(res)
+
+
+class Sv32Fft(sv.SvABC, FftABC):
+    """
+    3/2 model option pricing with Fourier inversion
+
+    References:
+        - Lewis AL (2000) Option valuation under stochastic volatility: with Mathematica code. Finance Press
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> sigma, mr, theta, vov, rho = 0.06, 20.48, 0.218, 3.20, -0.99
+        >>> strike, spot, texp = np.array([95, 100, 105]), 100, 0.5
+        >>> m = pf.Sv32Fft(sigma, vov=vov, mr=mr, rho=rho, theta=theta)
+        >>> m.price(strike, spot, texp)
+        array([11.7235,  8.9978,  6.7091])
+    """
+
+    @staticmethod
+    def hyp1f1_complex(a, b, x):
+        """
+        Confluent hypergeometric function 1F1 (scipy.special.hyp1f1) taking complex values of a and b
+
+        Args:
+            a: parameter (real or complex)
+            b: parameter (real or complex)
+            x: argument (real or complex)
+
+        Returns:
+            function value
+
+        References:
+            - https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.hyp1f1.html#scipy.special.hyp1f1
+        """
+        inc = a / b * x
+        ret = 1 + inc
+
+        for kk in np.arange(1, 1024):
+            inc *= (a + kk) / (b + kk) / (kk + 1) * x
+            ret += inc
+
+        return ret
+
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the 3/2 SV model from Lewis (2000) or Carr & Sun (2007).
+
+        In the formula in Lewis (2000, p54), ik should be replaced by -ik.
+
+        References:
+            - Eq. (73)-(75) in Carr P, Sun J (2007) A new approach for option pricing under stochastic volatility. Rev Deriv Res 10:87–150. https://doi.org/10.1007/s11147-007-9014-6
+            - p 54 in Lewis AL (2000) Option valuation under stochastic volatility: With Mathematica code. Finance Press, Newport Beach, CA
+        """
+        vov2 = self.vov**2
+
+        mu = 0.5 + (self.mr - uu*self.rho*self.vov)/vov2
+        c_tilde = uu*(1 - uu)/vov2
+        delta = np.sqrt(mu**2 + c_tilde)
+        alpha = -mu + delta
+        beta = 1 + 2*delta
+
+        mr_new = self.mr * self.theta
+        XX = 2*mr_new/(self.vov**2 * self.sigma)/(np.exp(mr_new * texp) - 1)
+        ret = scsp.gamma(beta - alpha) * scsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
+
+        # log version
+        # when beta is too big, scsp.gamma(beta) goes to infty.
+        #ret = np.exp(scsp.loggamma(beta - alpha) - scsp.loggamma(beta) + alpha * np.log(XX)) * self.hyp1f1_complex(alpha, beta, -XX)
+
+        return ret
