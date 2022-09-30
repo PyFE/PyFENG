@@ -51,8 +51,9 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         """
         p0 = np.power(0.5 * zz, nu) / spsp.gamma(nu + 1)
         iv = p0.copy()
+        zzh2 = (zz/2)**2
         for kk in np.arange(1, 64):
-            p0 *= zz**2 / (4 * kk * (kk + nu))
+            p0 *= zzh2 / (kk * (kk + nu))
             iv += p0
         return iv
 
@@ -78,9 +79,10 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         iv2 = (log_m_psi0**2 - psi_1) * p0
 
         kk_max = max(64, int((np.mean(zz) + 2*np.std(zz)) * 20))
+        zzh2 = (zz/2)**2
         #print(f'kk: {kk_max}')
         for kk in np.arange(1, kk_max):
-            p0 *= zz**2 / (4 * kk * (kk + nu))
+            p0 *= zzh2 / (kk * (kk + nu))
             log_m_psi0 -= 1/(nu + kk)
             psi_1 -= 1/(nu + kk)**2
             iv1 += log_m_psi0 * p0
