@@ -72,19 +72,11 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         elif np.isclose(base_beta, 0):
             return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
         else:
-            return cev.Cev(
-                vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd
-            )
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
-            model = (
-                "norm"
-                if np.isclose(self.beta, 0)
-                else "bsm"
-                if self.beta > 0.0
-                else None
-            )
+            model = "norm" if np.isclose(self.beta, 0) else "bsm"
 
         return super().vol_smile(strike, spot, texp, cp=1, model=model)
 
@@ -138,6 +130,37 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
             return m, df_val, param_dict
 
+    @staticmethod
+    def _vv(zz, rho):
+        return np.sqrt(1 + zz * (zz + 2 * rho))
+
+    @staticmethod
+    def _hh(zz, rho):
+        """
+        H(z) in the paper
+
+        Args:
+            zz: array
+            rho: scalar
+
+        Returns: H(z)
+
+        """
+        rho2 = rho * rho
+        # initalization with expansion for small |zz|
+        xx_zz = 1 - (zz/2) * (rho - zz * (rho2 - 1/3 - (5*rho2 - 3)/4 * rho*zz))
+
+        yy = SabrVolApproxABC._vv(zz, rho)
+        eps = 1e-5
+
+        with np.errstate(divide="ignore", invalid="ignore"):  # suppress error for zz=0
+            # replace negative zz
+            xx_zz = np.where(zz > -eps, xx_zz, np.log((1 - rho) / (yy - (zz + rho))) / zz)
+            # replace positive zz
+            xx_zz = np.where(zz < eps, xx_zz, np.log((yy + (zz + rho)) / (1 + rho)) / zz)
+
+        return 1.0 / xx_zz
+
 
 class SabrVolApproxABC(SabrABC):
     """
@@ -145,10 +168,6 @@ class SabrVolApproxABC(SabrABC):
     """
 
     approx_order = 1  # order in texp: 0: leading order, 1: first order, -1: reserved for 2/(1+exp(-2*eps)) smoothing
-
-    @staticmethod
-    def _vv(zz, rho):
-        return np.sqrt(1 + zz * (zz + 2 * rho))
 
     @staticmethod
     def _int_inv_locvol(strike, beta, fwd=1.0):
@@ -183,39 +202,6 @@ class SabrVolApproxABC(SabrABC):
                 )
 
         return val
-
-    @staticmethod
-    def _hh(zz, rho):
-        """
-        H(z) in the paper
-
-        Args:
-            zz: array
-            rho: scalar
-
-        Returns: H(z)
-
-        """
-        rho2 = rho * rho
-        # initalization with expansion for for small |zz|
-        xx_zz = 1 - (zz / 2) * (
-            rho - zz * (rho2 - 1 / 3 - (5 * rho2 - 3) / 4 * rho * zz)
-        )
-
-        yy = SabrVolApproxABC._vv(zz, rho)
-        eps = 1e-5
-
-        with np.errstate(divide="ignore", invalid="ignore"):  # suppress error for zz=0
-            # replace negative zz
-            xx_zz = np.where(
-                zz > -eps, xx_zz, np.log((1 - rho) / (yy - (zz + rho))) / zz
-            )
-            # replace positive zz
-            xx_zz = np.where(
-                zz < eps, xx_zz, np.log((yy + (zz + rho)) / (1 + rho)) / zz
-            )
-
-        return 1.0 / xx_zz
 
     @abc.abstractmethod
     def vol_for_price(self, strike, spot, texp):
@@ -255,13 +241,7 @@ class SabrVolApproxABC(SabrABC):
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
-            model = (
-                "norm"
-                if np.isclose(self.beta, 0)
-                else "bsm"
-                if self.beta > 0.0
-                else None
-            )
+            model = "norm" if np.isclose(self.beta, 0) else "bsm"
 
         vol_beta = self._base_beta or self.beta
         if (model.lower() == "bsm" and np.isclose(vol_beta, 1)) or (
@@ -319,9 +299,7 @@ class SabrHagan2002(SabrVolApproxABC):
             vol = 1.0 + texp * (term02 + term11 + term20)
 
         zz = pow_kk * log_kk * self.vov / np.maximum(alpha, np.finfo(float).eps)
-        hh = self._hh(
-            -zz, self.rho
-        )  # note we pass -zz becaues hh(zz) definition is different
+        hh = self._hh(-zz, self.rho)  # note we pass -zz becaues hh(zz) definition is different
         vol *= alpha * hh / pre1  # bsm vol
         return vol
 
@@ -390,17 +368,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
     _base_beta = 0  # should not be changed
     is_atmvol = False
 
-    def __init__(
-        self,
-        sigma,
-        vov=0.0,
-        rho=0.0,
-        beta=None,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-        is_atmvol=False,
-    ):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -449,17 +417,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         array([22.04897988, 14.56240351,  8.74169054,  4.72340753,  2.28876105])
     """
 
-    def __init__(
-        self,
-        sigma,
-        vov=0.0,
-        rho=0.0,
-        beta=1.0,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-        vol_beta=None,
-    ):
+    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False, vol_beta=None):
         """
         Args:
             sigma: model volatility at t=0

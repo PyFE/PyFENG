@@ -343,7 +343,7 @@ class OptABC(abc.ABC):
 
     def pdf_numeric(self, strike, spot, texp, cp=-1, h=0.001):
         """
-        Probability density functin (PDF) at `strike`
+        Probability density function (PDF) at `strike`
 
         Args:
             strike: strike price
@@ -352,15 +352,36 @@ class OptABC(abc.ABC):
             cp: 1/-1 for call/put
 
         Returns:
-            probability densitiy
+            PDF values
         """
-        fwd = spot * (1.0 if self.is_fwd else np.exp(texp * (self.intr - self.divr)))
+        fwd = self.forward(spot, texp)
         kk = strike / fwd
         kk_arr = np.array([kk - h, kk, kk + h]).flatten()
-        price = self.price(kk_arr, 1, texp, cp=cp)
+        price = self.price(kk_arr, 1.0, texp, cp=cp)
         price = price.reshape(3, -1)
         pdf = (price[2] + price[0] - 2.0 * price[1]) / (h * h)
         return pdf
+
+    def cdf_numeric(self, strike, spot, texp, cp=-1, h=0.001):
+        """
+        Cumulative distribution function (CDF) at `strike`
+
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put
+
+        Returns:
+            CDF values
+        """
+        fwd = self.forward(spot, texp)
+        #kk = strike / fwd
+        strike_arr = np.array([strike - h, strike + h]).flatten()
+        price = self.price(strike_arr, fwd, texp, cp=cp)
+        price = price.reshape(2, -1)
+        cdf = np.sign(cp)*(price[0] - price[1]) / (2*h)
+        return cdf
 
     # create aliases
     delta = delta_numeric
