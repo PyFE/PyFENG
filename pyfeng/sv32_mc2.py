@@ -71,9 +71,10 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         References:
             * https://functions.wolfram.com/Bessel-TypeFunctions/BesselI/20/ShowAll.html
         """
-
+        print(nu, zz)
         p0 = np.power(zz/2, nu) / spsp.gamma(nu + 1)
-        psi_1 = np.full_like(zz, spsp.polygamma(1, nu + 1), dtype=float)
+        #psi_1 = np.full_like(zz, spsp.polygamma(1, nu + 1), dtype=float)
+        psi_1 = spsp.polygamma(1, nu + 1)
         log_m_psi0 = np.log(zz/2) - spsp.digamma(nu + 1)
         iv1 = log_m_psi0 * p0
         iv2 = (log_m_psi0**2 - psi_1) * p0
@@ -87,7 +88,6 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             psi_1 -= 1/(nu + kk)**2
             iv1 += log_m_psi0 * p0
             iv2 += (log_m_psi0**2 - psi_1) * p0
-
         return iv1, iv2
 
     def cond_avgvar_mv(self, dt, var_0, var_t, eta=None):
@@ -122,7 +122,6 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
             var = d2_nu_bb * d1 - d1_nu_bb**2 * spsp.polygamma(1, eta + nu + 1)
             d1 *= -d1_nu_bb
 
-        # print(d1[m1<0], var[var<0], d1[var<0])
         var[var < 0] = 1e-64
         return d1, var
 
@@ -303,25 +302,30 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
         """
         Draw RNs from distributions with mean and variance matched
         Args:
-            mean: mean
-            var: variance
+            mean: mean (1d array)
+            var: variance (1d array)
             dist: distribution. 'ig' for IG, 'ga' for Gamma, 'ln' for log-normal
 
         Returns:
             RNs with size of mean/variance
         """
+        idx = (mean > np.finfo(np.float).eps)
+        avgvar = np.zeros_like(mean)
+        mean = mean[idx]
+        var = var[idx]
+
         if dist.lower() == 'ig':
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
             lam = mean ** 3 / var
-            avgvar = self.rng_spawn[1].wald(mean=mean, scale=lam)
+            avgvar[idx] = self.rng_spawn[1].wald(mean=mean, scale=lam)
         elif dist.lower() == 'ga':
             scale = var / mean
             shape = mean / scale
-            avgvar = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            avgvar[idx] = scale * self.rng_spawn[1].standard_gamma(shape=shape)
         elif dist.lower() == 'ln':
             scale = np.sqrt(np.log(1 + var / mean ** 2))
-            avgvar = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
+            avgvar[idx] = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {dist}.")
 
