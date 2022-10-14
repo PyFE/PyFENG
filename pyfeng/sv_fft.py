@@ -1,12 +1,13 @@
 import numpy as np
 import abc
 import scipy.fft as spfft
-import scipy.special as scsp
+import scipy.special as spsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
+from . import opt_smile_abc as smile
 from . import ousv
 from . import heston
 
@@ -301,6 +302,8 @@ class Sv32Fft(sv.SvABC, FftABC):
         array([11.7235,  8.9978,  6.7091])
     """
 
+    expo_max = np.log(np.finfo(np.float32).max)
+
     @staticmethod
     def hyp1f1_complex(a, b, x):
         """
@@ -346,10 +349,36 @@ class Sv32Fft(sv.SvABC, FftABC):
 
         mr_new = self.mr * self.theta
         XX = 2*mr_new/(self.vov**2 * self.sigma)/(np.exp(mr_new * texp) - 1)
-        ret = scsp.gamma(beta - alpha) * scsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
 
-        # log version
-        # when beta is too big, scsp.gamma(beta) goes to infty.
-        #ret = np.exp(scsp.loggamma(beta - alpha) - scsp.loggamma(beta) + alpha * np.log(XX)) * self.hyp1f1_complex(alpha, beta, -XX)
+        #ret = spsp.gamma(beta - alpha) * spsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
+        # we use log version because of large argument of np.exp()
+        expo = np.clip(spsp.loggamma(beta - alpha) - spsp.loggamma(beta) + alpha*np.log(XX), -self.expo_max, self.expo_max)
+        ret = np.exp(expo) * self.hyp1f1_complex(alpha, beta, -XX)
 
         return ret
+
+
+class CgmyFft(smile.OptSmileABC, FftABC):
+
+    C = 1
+    G = 1
+    M = 1
+    Y = 0
+
+    def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
+        super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)
+        self.G, self.M, self.Y = G, M, Y
+
+    def mgf_logprice(self, xx, texp):
+
+        rv = self.C * spsp.gamma(-self.Y) * (
+            np.power(self.M - xx, self.Y) - np.power(self.M, self.Y)
+            + np.power(self.G - xx, self.Y) - np.power(self.G, self.Y)
+        )
+        mu = - self.sigma * spsp.gamma(-self.Y) * (
+            np.power(self.M - 1, self.Y) - np.power(self.M, self.Y)
+            + np.power(self.G - 1, self.Y) - np.power(self.G, self.Y)
+        )
+
+        np.exp(texp*(mu + rv), out=rv)
+        return rv
