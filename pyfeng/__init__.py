@@ -4,7 +4,7 @@ from .norm import (
 from .bsm import Bsm, BsmDisp
 from .cev import Cev
 from .gamma import InvGam, InvGauss
-from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft
+from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft, Sv32Fft
 from .sabr import (
     SabrHagan2002,
     SabrNormVolApprox,
@@ -21,7 +21,7 @@ from .heston_mc import (
 from .ousv import OusvUncorrBallRoma1994
 from .sabr_int import SabrUncorrChoiWu2021
 from .sabr_mc import SabrMcTimeDisc
-from .nsvh import Nsvh1, NsvhMc, NsvhQuadInt
+from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 from .multiasset import (
     BsmSpreadKirk,
     BsmSpreadBjerksund2014,

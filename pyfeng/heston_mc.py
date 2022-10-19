@@ -169,7 +169,8 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         return spot_cond, sigma_cond
 
     def strike_var_swap_analytic(self, texp, dt=None):
-        dt = dt or self.dt
+        if dt is None:
+            dt = self.dt
         rv = super().strike_var_swap_analytic(texp, dt)
         return rv
 
