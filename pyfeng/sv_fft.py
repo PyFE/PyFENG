@@ -192,13 +192,11 @@ class RoughHestonFft(sv.SvABC, FftABC):
         - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models
 
     Examples:
-        >>> import numpy as np
-        >>> import pyfeng as pf
-        >>> strike = np.array([60, 70, 100, 140])
-        >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100,0.62
-        >>> m = pf.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha)
-        >>> m.price(strike, spot, texp)
-        >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
+            strike = np.array([60, 70, 100, 140])
+            sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.1, 0.3156, -0.681, 1, 100, 0.3156, 0.62
+            # sigma, vov, mr, rho, texp, spot,alpha = 0.04, 0.1, 0.5, -0.9, 1, 100, 0.62
+            m = pf.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha)
+            m.price(strike, spot, texp)
     """
     
     model_type = "Heston"
@@ -213,7 +211,7 @@ class RoughHestonFft(sv.SvABC, FftABC):
             - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models https://doi.org/10.1111/mafi.12173
         """
         sigma = self.sigma
-        delta = 1/365
+        delta = 1/100
         mr = self.mr
         theta = self.theta
         vov = self.vov
@@ -246,7 +244,7 @@ class RoughHestonFft(sv.SvABC, FftABC):
 
         def F(a,x):
             return (1/2) * (pow(a,2) - a) + mr * (a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
-#             return (1/2) * (-pow(a,2) - (1j) * a) + mr * ((1j) * a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
+#            Characteristic function: (1/2) * (-pow(a,2) - (1j) * a) + mr * ((1j) * a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
 
 
         def Ih(r,t,a,funcA,hh):
@@ -261,7 +259,6 @@ class RoughHestonFft(sv.SvABC, FftABC):
         
         def L(aa,t):
             LL = aa
-            print(len(LL))
             for i in range(0,len(aa)):
                 k = int(texp/delta)
                 h_hat = np.zeros(int(k + 1),dtype = 'complex')
