@@ -11,6 +11,7 @@ from . import sv_abc as sv
 from . import opt_smile_abc as smile
 from . import ousv
 from . import heston
+from . import rheston
 
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -184,13 +185,14 @@ class HestonFft(heston.HestonABC, FftABC):
         mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
         print(self.theta)
         return np.exp(mgf/vov2)
-    
-class RoughHestonFft(sv.SvABC, FftABC):
+
+
+class RoughHestonFft(rheston.RoughHestonABC, FftABC):
     """
     Rough Heston model option pricing with FFT
 
     References:
-        - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models
+        - El Euch O, Rosenbaum M (2019) The characteristic function of rough Heston models. Mathematical Finance 29:3–38. https://doi.org/10.1111/mafi.12173
 
     Examples:
             strike = np.array([60, 70, 100, 140])
@@ -200,7 +202,6 @@ class RoughHestonFft(sv.SvABC, FftABC):
             m.price(strike, spot, texp)
     """
     
-    model_type = "Heston"
     x_lim = 200  # integratin limit
 
     def mgf_logprice(self, uu, texp):

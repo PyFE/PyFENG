@@ -19,7 +19,6 @@ class SvABC(smile.OptSmileABC, abc.ABC):
         rho=0.0,
         mr=0.01,
         theta=None,
-        alpha=1.0,
         intr=0.0,
         divr=0.0,
         is_fwd=False,
@@ -38,7 +37,6 @@ class SvABC(smile.OptSmileABC, abc.ABC):
 
         super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
 
-        self.alpha = alpha
         self.vov = vov
         self.rho = rho
         self.mr = mr
