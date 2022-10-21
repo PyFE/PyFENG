@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import scipy.optimize as spop
+from scipy import stats as spst
 
 from . import opt_smile_abc as smile
 from . import bsm
@@ -160,6 +161,56 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             xx_zz = np.where(zz < eps, xx_zz, np.log((yy + (zz + rho)) / (1 + rho)) / zz)
 
         return 1.0 / xx_zz
+
+    @staticmethod
+    def cond_avgvar_mv(vovn, z, remove_exp=False):
+        """
+        Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
+        int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
+        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively
+
+        Args:
+            vovn: vov * sqrt(T)
+            z: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
+            remove_exp: if True, return without multiplying exp(vovn * z). False by default.
+
+        Returns:
+            Mean, M2
+        """
+
+        def mean(vv):
+            ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
+            m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
+            return m
+
+        m1 = mean(vovn)
+        m2 = (mean(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
+
+        if not remove_exp:
+            exp = np.exp(vovn * z)
+            m1 *= exp
+            m2 *= exp**2
+
+        return m1, m2
+
+    @staticmethod
+    def avgvar_mv(vovn):
+        """
+        mean and variance of the normalized average variance:
+        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        where vovn = vov*sqrt(T)
+
+        Args:
+            vovn: vov * sqrt(texp)
+
+        Returns:
+            (mean, variance)
+        """
+        v2 = vovn**2
+        w = np.exp(v2)
+        m = np.where(v2 > 1e-6, (w - 1)/v2, 1 + v2/2 * (1 + v2/3))
+        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * v2
+        return m, v
 
 
 class SabrVolApproxABC(SabrABC):
