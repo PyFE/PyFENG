@@ -283,7 +283,6 @@ class SabrMcCai2017Exact(SabrMcABC):
         """
 
         ## index from 0 to m + n
-        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn) / (2*u), vovn, sigma_t).real
         ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn[:, None]) / (2*u), vovn, sigma_t).real
         term1 = 0.5 * ss_j[0, :]
         ss_j[1::2, :] *= -1
