@@ -1,5 +1,4 @@
 import numpy as np
-import math
 import abc
 import scipy.fft as spfft
 import scipy.special as spsp
@@ -204,6 +203,34 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
     
     x_lim = 200  # integratin limit
 
+    def a_j_kp1(self, k, delta, j):
+        alpha = self.alpha
+        if j == 0:
+            return pow(delta, alpha) * (pow(k, alpha + 1) - (k - alpha) * pow((k + 1), alpha)) / spsp.gamma(alpha + 2)
+        elif j == k + 1:
+            return pow(delta, alpha) / spsp.gamma(alpha + 2)
+        else:
+            return pow(delta, alpha) * (
+                        pow(k - j + 2, alpha + 1) + pow(k - j, alpha + 1) - 2 * pow(k - j + 1, alpha + 1)) / spsp.gamma(
+                alpha + 2)
+ 
+    def b_j_kp1(self, k, delta, j):
+        alpha = self.alpha
+        return pow(delta, alpha) * (pow(k - j + 1, alpha) - pow(k - j, alpha)) / spsp.gamma(alpha + 1)
+
+    def a_kp1(self, k, delta):
+        a = np.zeros(k + 1)
+        for i in range(0, k + 1):
+            a[i] = self.a_j_kp1(k, delta, i)
+        return a
+
+    def b_kp1(self, k, delta):
+        b = np.zeros(k + 1)
+        for i in range(0, k + 1):
+            b[i] = self.b_j_kp1(k, delta, i)
+        return b
+
+
     def mgf_logprice(self, uu, texp):
         """
         Log price MGF under the rough Heston model.
@@ -221,29 +248,6 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
         alpha = self.alpha
 
 
-        def a_j_kp1(k,alpha,delta,j):
-            if j == 0:
-                return pow(delta,alpha) * (pow(k,alpha + 1) - (k - alpha) * pow((k + 1),alpha)) / math.gamma(alpha + 2)
-            elif j == k + 1:
-                return pow(delta,alpha) / math.gamma(alpha + 2)
-            else:
-                return pow(delta,alpha) * (pow(k -j + 2,alpha + 1) + pow(k - j,alpha + 1) - 2 * pow(k - j + 1,alpha + 1)) / math.gamma(alpha + 2)
-
-        def b_j_kp1(k,alpha,delta,j):
-            return pow(delta,alpha) * (pow(k - j + 1, alpha) - pow(k - j, alpha)) / math.gamma(alpha + 1)
-
-        def a_kp1(k,alpha,delta):
-            a = np.zeros(k + 1)
-            for i in range(0,k + 1):
-                a[i] = a_j_kp1(k,alpha,delta,i)
-            return a
-
-        def b_kp1(k,alpha,delta):
-            b = np.zeros(k + 1)
-            for i in range(0,k + 1):
-                b[i] = b_j_kp1(k,alpha,delta,i)
-            return b
-
         def F(a,x):
             return (1/2) * (pow(a,2) - a) + mr * (a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
 #            Characteristic function: (1/2) * (-pow(a,2) - (1j) * a) + mr * ((1j) * a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
@@ -254,7 +258,7 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
             Ihrs = 0 + 0j
             for s in np.arange(0,t,delta):
                 Ihrs += pow(t - s,r - 1) * h(a,s,hh) * delta
-            return Ihrs / math.gamma(r)
+            return Ihrs / spsp.gamma(r)
 
         def h(a,s,hh):
             return hh[int(s//delta)]
@@ -269,8 +273,8 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
                 F_a_h_hat[0] = F(aa[i],0)
                 for j in range(1,k + 1):
                     F_a_h_hat[j] = F(aa[i],h_hat[j-1])
-                    h_hat_p[j] = np.dot(b_kp1(j-1,alpha,delta), F_a_h_hat[0:j])
-                    h_hat[j] = np.dot(a_kp1(j-1,alpha,delta),F_a_h_hat[0:j]) +  a_j_kp1(j,alpha,delta,j + 1) * F(aa[i],h_hat_p[j])
+                    h_hat_p[j] = np.dot(self.b_kp1(j-1,delta), F_a_h_hat[0:j])
+                    h_hat[j] = np.dot(self.a_kp1(j-1,delta),F_a_h_hat[0:j]) + self.a_j_kp1(j,j + 1) * F(aa[i],h_hat_p[j])
                 LL[i] = theta * mr * Ih(1,t,aa[i],h,h_hat) + sigma * Ih(1 - alpha,t,aa[i],h,h_hat)
             return LL
         
