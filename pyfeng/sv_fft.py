@@ -6,6 +6,7 @@ import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
+import math
 
 
 class FftABC(opt.OptABC, abc.ABC):
@@ -180,7 +181,99 @@ class HestonFft(sv.SvABC, FftABC):
         tmp1 = 1 - gg*exp
 
         mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
+        print(self.theta)
         return np.exp(mgf/vov2)
+    
+class RoughHestonFft(sv.SvABC, FftABC):
+    """
+    Rough Heston model option pricing with FFT
+
+    References:
+        - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models
+
+    Examples:
+            strike = np.array([60, 70, 100, 140])
+            sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.1, 0.3156, -0.681, 1, 100, 0.3156, 0.62
+            # sigma, vov, mr, rho, texp, spot,alpha = 0.04, 0.1, 0.5, -0.9, 1, 100, 0.62
+            m = pf.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha)
+            m.price(strike, spot, texp)
+    """
+    
+    model_type = "Heston"
+    x_lim = 200  # integratin limit
+
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the rough Heston model.
+        We use the characteristic function in Eq (4.5) of El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models
+
+        References:
+            - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models https://doi.org/10.1111/mafi.12173
+        """
+        sigma = self.sigma
+        delta = 1/100
+        mr = self.mr
+        theta = self.theta
+        vov = self.vov
+        rho = self.rho
+        alpha = self.alpha
+
+
+        def a_j_kp1(k,alpha,delta,j):
+            if j == 0:
+                return pow(delta,alpha) * (pow(k,alpha + 1) - (k - alpha) * pow((k + 1),alpha)) / math.gamma(alpha + 2)
+            elif j == k + 1:
+                return pow(delta,alpha) / math.gamma(alpha + 2)
+            else:
+                return pow(delta,alpha) * (pow(k -j + 2,alpha + 1) + pow(k - j,alpha + 1) - 2 * pow(k - j + 1,alpha + 1)) / math.gamma(alpha + 2)
+
+        def b_j_kp1(k,alpha,delta,j):
+            return pow(delta,alpha) * (pow(k - j + 1, alpha) - pow(k - j, alpha)) / math.gamma(alpha + 1)
+
+        def a_kp1(k,alpha,delta):
+            a = np.zeros(k + 1)
+            for i in range(0,k + 1):
+                a[i] = a_j_kp1(k,alpha,delta,i)
+            return a
+
+        def b_kp1(k,alpha,delta):
+            b = np.zeros(k + 1)
+            for i in range(0,k + 1):
+                b[i] = b_j_kp1(k,alpha,delta,i)
+            return b
+
+        def F(a,x):
+            return (1/2) * (pow(a,2) - a) + mr * (a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
+#            Characteristic function: (1/2) * (-pow(a,2) - (1j) * a) + mr * ((1j) * a * rho * vov - 1) * x + pow(mr * vov, 2) * pow(x,2) / 2
+
+
+        def Ih(r,t,a,funcA,hh):
+            grid = np.arange(0,t,delta)
+            Ihrs = 0 + 0j
+            for s in np.arange(0,t,delta):
+                Ihrs += pow(t - s,r - 1) * h(a,s,hh) * delta
+            return Ihrs / math.gamma(r)
+
+        def h(a,s,hh):
+            return hh[int(s//delta)]
+        
+        def L(aa,t):
+            LL = aa
+            for i in range(0,len(aa)):
+                k = int(texp/delta)
+                h_hat = np.zeros(int(k + 1),dtype = 'complex')
+                h_hat_p = np.zeros(int(k + 1),dtype = 'complex')
+                F_a_h_hat = np.zeros(int(k + 1),dtype = 'complex')
+                F_a_h_hat[0] = F(aa[i],0)
+                for j in range(1,k + 1):
+                    F_a_h_hat[j] = F(aa[i],h_hat[j-1])
+                    h_hat_p[j] = np.dot(b_kp1(j-1,alpha,delta), F_a_h_hat[0:j])
+                    h_hat[j] = np.dot(a_kp1(j-1,alpha,delta),F_a_h_hat[0:j]) +  a_j_kp1(j,alpha,delta,j + 1) * F(aa[i],h_hat_p[j])
+                LL[i] = theta * mr * Ih(1,t,aa[i],h,h_hat) + sigma * Ih(1 - alpha,t,aa[i],h,h_hat)
+            return LL
+        
+        CFunctionValue = L(uu, texp)
+        return np.exp(CFunctionValue)
 
 
 class OusvFft(sv.SvABC, FftABC):
