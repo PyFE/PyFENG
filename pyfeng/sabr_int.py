@@ -10,6 +10,77 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
 
     correct_fwd = False
 
+    @staticmethod
+    def avgvar_mv(vovn):
+        """
+        mean and variance of the normalized average variance:
+        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        where vovn = vov*sqrt(T)
+
+        Args:
+            vovn: vov * sqrt(texp)
+
+        Returns:
+            (mean, variance)
+        """
+        v2 = vovn**2
+        w = np.exp(v2)
+        m = np.where(v2 > 1e-6, (w - 1)/v2, 1 + v2/2 * (1 + v2/3))
+        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * v2
+        return m, v
+
+    @staticmethod
+    def avgvar_lndist(vovn):
+        """
+        Lognormal distribution parameters (mean, sigma) of the normalized average variance:
+        (1/T) \int_0^T e^{2*vov Z_t - vov^2 t} dt = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        where vovn = vov*sqrt(T)
+
+        Args:
+            vovn: vov * sqrt(texp)
+
+        Returns:
+            (m1, sig)
+            True distribution should be multiplied by sigma^2*t
+        """
+        v2 = vovn**2
+        w = np.exp(v2)
+        m1 = np.where(v2 > 1e-6, (w - 1) / v2, 1 + v2 / 2 * (1 + v2 / 3))
+        m2m1ratio = (5 + w * (4 + w * (3 + w * (2 + w)))) / 15
+        sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
+        return m1, sig
+
+    @staticmethod
+    def cond_avgvar_mv(vovn, z, remove_exp=False):
+        """
+        Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
+        int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
+        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively
+
+        Args:
+            vovn: vov * sqrt(T)
+            z: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
+            remove_exp: if True, return without multiplying exp(vovn * z). False by default.
+
+        Returns:
+            Mean, M2
+        """
+
+        def mean(vv):
+            ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
+            m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
+            return m
+
+        m1 = mean(vovn)
+        m2 = (mean(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
+
+        if not remove_exp:
+            exp = np.exp(vovn * z)
+            m1 *= exp
+            m2 *= exp**2
+
+        return m1, m2
+
     @abc.abstractmethod
     def cond_spot_sigma(self, texp, fwd):
         # return (fwd, vol, weight) each 1d array
@@ -95,30 +166,9 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
 
     n_quad = 10
 
-    @staticmethod
-    def avgvar_lndist(vovn):
-        """
-        Lognormal distribution parameters of the normalized average variance:
-        sigma^2 * texp * m1 * exp(sig*Z - 0.5*sig^2)
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            (m1, sig)
-            True distribution should be multiplied by sigma^2*t
-        """
-        v2 = vovn ** 2
-        w = np.exp(v2)
-        m1 = np.where(v2 > 1e-6, (w - 1) / v2, 1 + v2 / 2 * (1 + v2 / 3))
-        m2m1ratio = (5 + w * (4 + w * (3 + w * (2 + w)))) / 15
-        sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
-        return m1, sig
-
     def cond_spot_sigma(self, texp, _):
 
         assert np.isclose(self.rho, 0.0)
-        assert 0 < self.beta < 1
 
         m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
 
@@ -136,28 +186,6 @@ class SabrMixture(SabrMixtureABC):
 
     def n_quad_vovn(self, vovn):
         return self.n_quad or np.floor(3 + 4*vovn)
-
-    @staticmethod
-    def cond_avgvar_m1(z, vovn):
-        """
-        Calculate the conditional mean of the normalized integrated variance of SABR model
-        E{ int_0^1 exp{2 vov sqrt(T) Z_s - vov^2 T s^2} ds | Z_1 = z }
-        int_0^T exp{vov Z_t - vov^2/2 t^2} dt =
-        """
-        m1 = (spst.norm.cdf(z + vovn) - spst.norm.cdf(z - vovn))/(2*vovn*spst.norm.pdf(z))\
-             *np.exp(0.5*vovn**2)
-        return m1 #*np.exp(vovn*z)
-
-    @staticmethod
-    def cond_avgvar_m2(z, vovn):
-        """
-        Calculate the 2nd moment of the normalized integrated variance of SABR model
-        E{ int_0^1 exp{2 vov sqrt(T) Z_s - vov^2 T s^2} ds | Z_1 = z }
-        int_0^T exp{vov Z_t - vov^2/2 t^2} dt =
-        """
-        m2 = (SabrMixture.cond_avgvar_m1(z, 2 * vovn)
-              - SabrMixture.cond_avgvar_m1(z, vovn) * np.cosh(z * vovn)) / vovn ** 2
-        return m2 #*np.exp(2*vovn*z)
 
     def zhat_weight(self, vovn):
         """
@@ -179,10 +207,8 @@ class SabrMixture(SabrMixtureABC):
 
     def cond_avgvar(self, vovn, zhat):
 
-        m1 = self.cond_avgvar_m1(zhat, vovn)
-        m2 = self.cond_avgvar_m2(zhat, vovn)
+        m1, m2 = self.cond_avgvar_mv(vovn, zhat)
         m1m2_ratio = m2 / m1**2
-        m1 *= np.exp(zhat * vovn)
 
         w2 = np.ones_like(zhat)
 
@@ -196,7 +222,7 @@ class SabrMixture(SabrMixtureABC):
             lam = m1 / (m1m2_ratio - 1.0)
             r_var = 1 - 1 / (8 * lam) * (1 - 9 / (2 * 8 * lam) * (1 - 25 / (6 * 8 * lam)))
             r_var[lam < 100] = spsp.kv(0, lam[lam < 100]) / spsp.kv(-0.5, lam[lam < 100])
-            r_var = m1 * r_var ** 2
+            r_var = m1 * r_var**2
             r_vol = np.sqrt(r_var)
         else:
             pass

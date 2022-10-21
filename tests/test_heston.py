@@ -5,7 +5,6 @@ import os
 
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
-import pyfeng.ex as pfex
 
 
 class TestHestonMc(unittest.TestCase):
@@ -19,7 +18,7 @@ class TestHestonMc(unittest.TestCase):
 
         """
         for no in range(1, 5):
-            m = pfex.HestonMcGlassermanKim2011(sigma=0.01, mr=1, vov=1)
+            m = pf.HestonMcGlassermanKim2011(sigma=0.01, mr=1, vov=1)
             kk = 10000  # number of exact terms
             for dt in [1, 2, 4, 8, 16]:
                 mean, var = m.x1star_avgvar_mv(dt, 0)
@@ -42,7 +41,7 @@ class TestHestonMc(unittest.TestCase):
 
     def test_avgvar_mv(self):
         for no in [1, 2, 3]:
-            m, p, rv = pfex.HestonMcGlassermanKim2011.init_benchmark(no)
+            m, p, rv = pf.HestonMcGlassermanKim2011.init_benchmark(no)
             ratio = np.random.uniform(0.25, 4, 10)
             m1, v1 = m.cond_avgvar_mv_numeric(rv['args_pricing']['texp'], m.sigma, m.sigma * ratio)
             m2, v2 = m.cond_avgvar_mv(rv['args_pricing']['texp'], m.sigma, m.sigma * ratio)
@@ -54,7 +53,7 @@ class TestHestonMc(unittest.TestCase):
         Compare the implied vol of the benchmark cases
         """
         for no in [1, 2, 3]:
-            m, p, rv = pfex.HestonMcAndersen2008.init_benchmark(no)
+            m, p, rv = pf.HestonMcAndersen2008.init_benchmark(no)
             m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
             m.correct_fwd = False
 
@@ -64,21 +63,21 @@ class TestHestonMc(unittest.TestCase):
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
-            m, *_ = pfex.HestonMcGlassermanKim2011.init_benchmark(no)
+            m, *_ = pf.HestonMcGlassermanKim2011.init_benchmark(no)
             m.set_num_params(n_path=1e5, rn_seed=123456, kk=10)
             m.correct_fwd = False
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
-            m, *_ = pfex.HestonMcTseWan2013.init_benchmark(no)
+            m, *_ = pf.HestonMcTseWan2013.init_benchmark(no)
             m.set_num_params(n_path=1e5, rn_seed=123456, dt=1)
             m.correct_fwd = False
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
-            m, *_ = pfex.HestonMcChoiKwok2023.init_benchmark(no)
+            m, *_ = pf.HestonMcChoiKwok2023PoisGe.init_benchmark(no)
             m.correct_fwd = False
             m.set_num_params(n_path=1e5, rn_seed=123456, kk=10, dt=None)
             vol1 = m.vol_smile(**rv['args_pricing'])

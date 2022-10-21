@@ -269,7 +269,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         return p * np.exp(-self.intr * texp)
 
-    def strike_var_swap(self, texp):
+    def strike_var_swap(self, texp, cond=True):
         """
         Variance swap price (fair strike)
 
@@ -280,7 +280,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
             Variance swap fair strike
         """
 
-        var = self.return_var_realized(texp, cond=True)
+        var = self.return_var_realized(texp, cond=cond)
         return np.mean(var)
 
     def price_paths(self, tobs):

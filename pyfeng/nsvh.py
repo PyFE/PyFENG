@@ -309,7 +309,7 @@ class NsvhMc(sabr.SabrABC):
         return df * price
 
 
-class NsvhQuadInt(sabr.SabrABC):
+class NsvhGaussQuad(sabr.SabrABC):
     """
     Quadrature integration method of Hyperbolic Normal Stochastic Volatility (NSVh) model.
 
@@ -325,14 +325,14 @@ class NsvhQuadInt(sabr.SabrABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> #### Nsvh1: comparison with analytic pricing
-        >>> m1 = pf.NsvhQuadInt(sigma=20, vov=0.8, rho=-0.3, lam=1.0)
+        >>> m1 = pf.NsvhGaussQuad(sigma=20, vov=0.8, rho=-0.3, lam=1.0)
         >>> m2 = pf.Nsvh1(sigma=20, vov=0.8, rho=-0.3)
         >>> p1 = m1.price(np.arange(80, 121, 10), 100, 1.2)
         >>> p2 = m2.price(np.arange(80, 121, 10), 100, 1.2)
         >>> p1 - p2
         array([0.00345526, 0.00630649, 0.00966333, 0.00571175, 0.00017924])
         >>> #### Normal SABR: comparison with vol approximation
-        >>> m1 = pf.NsvhQuadInt(sigma=20, vov=0.8, rho=-0.3, lam=0.0)
+        >>> m1 = pf.NsvhGaussQuad(sigma=20, vov=0.8, rho=-0.3, lam=0.0)
         >>> m2 = pf.SabrNormVolApprox(sigma=20, vov=0.8, rho=-0.3)
         >>> p1 = m1.price(np.arange(80, 121, 10), 100, 1.2)
         >>> p2 = m2.price(np.arange(80, 121, 10), 100, 1.2)
@@ -340,7 +340,7 @@ class NsvhQuadInt(sabr.SabrABC):
         array([-0.17262802, -0.10160687, -0.00802731,  0.0338126 ,  0.01598512])
 
     References:
-        Choi J (2023), Unpublished Working Paper.
+        Choi J (2023), Option pricing under the normal SABR model with Gaussian quadratures. Unpublished Working Paper.
 
     """
 
@@ -372,16 +372,13 @@ class NsvhQuadInt(sabr.SabrABC):
         ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
         z_weight /= np.sqrt(2 * np.pi)
+        z_weight /= np.sum(np.exp(vovn/2*z_value)*z_weight) / np.exp(vovn**2/8)
+        #print(np.sum(np.exp(-vovn/2*z_value)*z_weight) - np.exp(vovn**2/8))
 
-        if self.n_quad[1] is not None:
-            # quadrature point & weight for exp(-v) derived from sqrt(v) * np.exp(-v/2)
-            v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
-            v_weight *= 2 / np.sqrt(v_value)
-            v_value *= 2.0
-        else:
-            # uniform grid from v=0 to 40 from np.exp(-20) ~ 2e-9
-            v_value = np.arange(1, 8001) / 200
-            v_weight = np.full_like(v_value, 1 / 200) * np.exp(-v_value/2)
+        # quadrature point & weight for exp(-v/2)/(2 pi) derived from sqrt(v) * np.exp(-v)
+        v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
+        v_weight /= np.pi * np.sqrt(v_value)
+        v_value *= 2.0
 
         ### axis 0: dependence on v
         v_value = v_value[:, None]
@@ -408,7 +405,8 @@ class NsvhQuadInt(sabr.SabrABC):
             theta_mat = np.arccos(np.abs(g_vec) / h_mat)
 
             int_z_v = np.sqrt(h_mat**2 - g_vec**2) - np.abs(g_vec) * theta_mat
-            int_z = np.sum(int_z_v * v_weight, axis=0) / (2*np.pi)  # integrating over v (column)
+
+            int_z = np.sum(int_z_v * v_weight, axis=0)  # integrating over v (column)
             int_z[:] = int_z * np.exp(-v_0/2) + np.fmax(cp[i] * g_vec, 0.0)  # in-place operation
 
             price[i] = np.sum(int_z * z_weight)
@@ -419,3 +417,52 @@ class NsvhQuadInt(sabr.SabrABC):
             price = price[0]
 
         return price
+
+    def cdf(self, strike, spot, texp, cp=-1):
+        fwd = self.forward(spot, texp)
+        _, _, rhoc, rho2, vovn = self._variables(1.0, texp)
+
+        ### axis 1: nodes of x,y,z , get the weight of z,v
+        z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
+        z_weight /= np.sqrt(2 * np.pi)
+        z_weight /= np.sum(np.exp(vovn/2*z_value)*z_weight) / np.exp(vovn**2/8)
+
+        # quadrature point & weight for exp(-v/2)/(2 pi) derived from np.exp(-v)
+        v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.0)
+        v_weight /= np.pi
+        v_value *= 2
+
+        ### axis 0: dependence on v
+        v_value = v_value[:, None]
+        v_weight = v_weight[:, None]
+
+        vov_var = np.exp(0.5 * self.lam * vovn ** 2)
+
+        #### effective strike
+        strike_eff = (self.vov / self.sigma) * (strike - fwd)
+        scalar_output = np.isscalar(strike_eff)
+
+        strike_eff, cp = np.broadcast_arrays(np.atleast_1d(strike_eff), cp)
+
+        u_hat = (z_value + 0.5 * self.lam * vovn)  # column (z direction)
+        exp_plus = np.exp(vovn * u_hat / 2)
+        z_star_cosh = (exp_plus ** 2 + 1 / exp_plus ** 2) / 2
+        cdf = np.zeros_like(strike, dtype=float)
+
+        for i, k_eff in enumerate(strike_eff):
+            g_vec = self.rho * exp_plus - (self.rho * vov_var + k_eff) / exp_plus
+            temp1 = z_star_cosh + 0.5 * g_vec ** 2 / (1 - rho2)
+            v_0 = (np.arccosh(temp1) / vovn) ** 2 - u_hat ** 2
+            h_mat = rhoc * np.sqrt(
+                2 * np.cosh(vovn * np.sqrt((u_hat ** 2 + v_0 + v_value))) - 2 * np.cosh(vovn * u_hat))
+            theta_mat = np.arccos(np.abs(g_vec) / h_mat)
+
+            int_z = np.sum(theta_mat * np.exp(-v_0/2) * v_weight, axis=0)  # integrating over v (column)
+            int_z[cp[i]*g_vec > 0] = 1.0 - int_z[cp[i]*g_vec > 0]
+            int_z *= np.exp(-z_value*vovn/2 - vovn**2/8)
+            cdf[i] = np.sum(int_z * z_weight)
+
+        if scalar_output:
+            cdf = cdf[0]
+
+        return cdf

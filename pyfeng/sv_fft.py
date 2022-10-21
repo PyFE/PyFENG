@@ -1,13 +1,16 @@
 import numpy as np
+import math
 import abc
 import scipy.fft as spfft
+import scipy.special as spsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
-import math
-
+from . import opt_smile_abc as smile
+from . import ousv
+from . import heston
 
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -141,7 +144,7 @@ class ExpNigFft(sv.SvABC, FftABC):
         return rv
 
 
-class HestonFft(sv.SvABC, FftABC):
+class HestonFft(heston.HestonABC, FftABC):
     """
     Heston model option pricing with FFT
 
@@ -158,8 +161,6 @@ class HestonFft(sv.SvABC, FftABC):
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.32997507, 35.8497697 , 13.08467014,  0.29577444])
     """
-
-    model_type = "Heston"
 
     def mgf_logprice(self, uu, texp):
         """
@@ -276,13 +277,11 @@ class RoughHestonFft(sv.SvABC, FftABC):
         return np.exp(CFunctionValue)
 
 
-class OusvFft(sv.SvABC, FftABC):
+class OusvFft(ousv.OusvABC, FftABC):
     """
     OUSV model option pricing with FFT
 
     """
-
-    model_type = "OUSV"
 
     def mgf_logprice(self, uu, texp):
         """
@@ -377,3 +376,102 @@ class OusvFft(sv.SvABC, FftABC):
         res = -0.5*uu*rho*(self.sigma**2/vov + vov*texp)
         res += (D/2*self.sigma + B)*self.sigma + C
         return np.exp(res)
+
+
+class Sv32Fft(sv.SvABC, FftABC):
+    """
+    3/2 model option pricing with Fourier inversion
+
+    References:
+        - Lewis AL (2000) Option valuation under stochastic volatility: with Mathematica code. Finance Press
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> sigma, mr, theta, vov, rho = 0.06, 20.48, 0.218, 3.20, -0.99
+        >>> strike, spot, texp = np.array([95, 100, 105]), 100, 0.5
+        >>> m = pf.Sv32Fft(sigma, vov=vov, mr=mr, rho=rho, theta=theta)
+        >>> m.price(strike, spot, texp)
+        array([11.7235,  8.9978,  6.7091])
+    """
+
+    expo_max = np.log(np.finfo(np.float32).max)
+
+    @staticmethod
+    def hyp1f1_complex(a, b, x):
+        """
+        Confluent hypergeometric function 1F1 (scipy.special.hyp1f1) taking complex values of a and b
+
+        Args:
+            a: parameter (real or complex)
+            b: parameter (real or complex)
+            x: argument (real or complex)
+
+        Returns:
+            function value
+
+        References:
+            - https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.hyp1f1.html#scipy.special.hyp1f1
+        """
+        inc = a / b * x
+        ret = 1 + inc
+
+        for kk in np.arange(1, 1024):
+            inc *= (a + kk) / (b + kk) / (kk + 1) * x
+            ret += inc
+
+        return ret
+
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the 3/2 SV model from Lewis (2000) or Carr & Sun (2007).
+
+        In the formula in Lewis (2000, p54), ik should be replaced by -ik.
+
+        References:
+            - Eq. (73)-(75) in Carr P, Sun J (2007) A new approach for option pricing under stochastic volatility. Rev Deriv Res 10:87–150. https://doi.org/10.1007/s11147-007-9014-6
+            - p 54 in Lewis AL (2000) Option valuation under stochastic volatility: With Mathematica code. Finance Press, Newport Beach, CA
+        """
+        vov2 = self.vov**2
+
+        mu = 0.5 + (self.mr - uu*self.rho*self.vov)/vov2
+        c_tilde = uu*(1 - uu)/vov2
+        delta = np.sqrt(mu**2 + c_tilde)
+        alpha = -mu + delta
+        beta = 1 + 2*delta
+
+        mr_new = self.mr * self.theta
+        XX = 2*mr_new/(self.vov**2 * self.sigma)/(np.exp(mr_new * texp) - 1)
+
+        #ret = spsp.gamma(beta - alpha) * spsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
+        # we use log version because of large argument of np.exp()
+        expo = np.clip(spsp.loggamma(beta - alpha) - spsp.loggamma(beta) + alpha*np.log(XX), -self.expo_max, self.expo_max)
+        ret = np.exp(expo) * self.hyp1f1_complex(alpha, beta, -XX)
+
+        return ret
+
+
+class CgmyFft(smile.OptSmileABC, FftABC):
+
+    C = 1
+    G = 1
+    M = 1
+    Y = 0
+
+    def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
+        super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)
+        self.G, self.M, self.Y = G, M, Y
+
+    def mgf_logprice(self, xx, texp):
+
+        rv = self.C * spsp.gamma(-self.Y) * (
+            np.power(self.M - xx, self.Y) - np.power(self.M, self.Y)
+            + np.power(self.G - xx, self.Y) - np.power(self.G, self.Y)
+        )
+        mu = - self.sigma * spsp.gamma(-self.Y) * (
+            np.power(self.M - 1, self.Y) - np.power(self.M, self.Y)
+            + np.power(self.G - 1, self.Y) - np.power(self.G, self.Y)
+        )
+
+        np.exp(texp*(mu + rv), out=rv)
+        return rv
