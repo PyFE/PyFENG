@@ -953,7 +953,9 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
             ratio
         """
 
-        dt = dt or self.dt
+        if dt is None:
+            dt = self.dt
+
         mean, var = self.avgvar_mv(texp)
 
         m_x, v_x = self.x1star_avgvar_mv(dt, kk=0)

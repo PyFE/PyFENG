@@ -187,7 +187,8 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         dt = np.diff(np.atleast_1d(tobs), prepend=0)
         n_dt = len(dt)
 
-        n_path = n_path or self.n_path
+        if n_path is None:
+            n_path = self.n_path
 
         if self.antithetic:
             # generate random number in the order of (path, time) first and transposed

@@ -67,7 +67,9 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         ### We take var0 as argument instead of using self.sigma
         ### because it is used in var_step_qe method in HestonMcAndersen2008
-        var0 = var0 or self.sigma
+
+        if var0 is None:
+            var0 = self.sigma
 
         mr_t = self.mr*texp
         e_mr_t = np.exp(-mr_t)
@@ -83,13 +85,14 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         Args:
             texp: time to expiry
-            dt: observation time step. If zero, continuous monitoring
+            dt: observation time step (e.g., dt=1/12 for monthly) For continuous monitoring, set dt=0
 
         Returns:
             Fair strike
 
         References:
             - Bernard C, Cui Z (2014) Prices and Asymptotics for Discrete Variance Swaps. Applied Mathematical Finance 21:140–173. https://doi.org/10.1080/1350486X.2013.820524
+
         """
 
         var0 = self.sigma
