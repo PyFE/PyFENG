@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 
 class BSM_model:
 
-    miu = 0.00
-    sigma = 0.1976
+    miu = 0.0273
+    sigma = 0.3347
 
     def stock_price(self,S_t:np.array,dt):
         """
@@ -33,7 +33,7 @@ class BSM_model:
         return S_tp1
 
 class Heston_model:
-    kar = 0.1
+    kar = 1
     theta = 0.1
     vov = 0.05
     miu = 0
@@ -59,10 +59,10 @@ class SnowBallOption:
     texp = 2
     nominal_amount = 1000000
     coupon_rate = 0.157
-    intr = 0.02746  # China 10y Government Bond annual yield
+    intr = 0.0273  # China 10y Government Bond annual yield
     bound = [0.75, 1.0]
     model = BSM_model
-    n_path = 30000
+    n_path = 50000
     n_time = texp * 365
     dt = 1/365
 
@@ -123,7 +123,7 @@ class SnowBallOption:
             df_res.loc[i,'expire date'] = first_knockout_date # expire date of the path
             df_res.loc[i,'stock price'] = S_path[i,first_knockout_date]
         net_return = df_res.loc[whether_knockout!=0,'expire date']/365 * self.coupon_rate
-        df_res.loc[whether_knockout != 0, 'discounted payoff'] = net_return * self.nominal_amount * np.exp((-self.intr * df_res.loc[whether_knockout!=0,'expire date']/365).astype(float))
+        df_res.loc[whether_knockout != 0, 'discounted payoff'] = (net_return+1) * self.nominal_amount * np.exp((-self.intr * df_res.loc[whether_knockout!=0,'expire date']/365).astype(float))
 
         # if not knock out and not knock in
         bool_knockin = (S_path<self.knock_in*spot_price) # whether the path knock in each day
@@ -132,20 +132,20 @@ class SnowBallOption:
         df_res.loc[whether_knockin!=0,'knock_in'] = True
         df_res.loc[(df_res.knock_in==False) & (df_res.knock_out==False),'expire date'] = check_knockout_id[-1] # not knock in and knock out
         df_res.loc[(df_res.knock_in==False) & (df_res.knock_out==False),'stock price'] = S_path[(whether_knockin==0) & (whether_knockout==0),-1]
-        df_res.loc[(df_res.knock_in == False) & (df_res.knock_out == False), 'discounted payoff'] = check_knockout_id[-1]/365 * self.coupon_rate  * self.nominal_amount * np.exp(-self.intr * check_knockout_id[-1]/365)
+        df_res.loc[(df_res.knock_in == False) & (df_res.knock_out == False), 'discounted payoff'] = (check_knockout_id[-1]/365 * self.coupon_rate+1) * self.nominal_amount * np.exp(-self.intr * check_knockout_id[-1]/365)
 
         # if knock in and final price is between spot price and knock level
 
-        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:,-1]>spot_price),'expire date'] = check_knockout_id[-1]
-        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1]>spot_price), 'stock price'] = S_path[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1]<spot_price), -1]
-        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] > spot_price), 'discounted payoff'] = self.nominal_amount * (np.exp(-self.intr * check_knockout_id[-1] / 365) - 1)
+        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:,-1] > spot_price),'expire date'] = check_knockout_id[-1]
+        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] > spot_price), 'stock price'] = S_path[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1]>spot_price), -1]
+        df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] > spot_price), 'discounted payoff'] = self.nominal_amount * (np.exp(-self.intr * check_knockout_id[-1] / 365))
 
         # if knock in and final price is smaller than spot price
         df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] < spot_price), 'expire date'] = check_knockout_id[-1]
         df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] < spot_price), 'stock price'] = S_path[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] < spot_price), -1]
         end_price = S_path[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] < spot_price), -1]
         df_res.loc[(df_res.knock_in == True) & (df_res.knock_out == False) & (S_path[:, -1] < spot_price), 'discounted payoff'] = \
-            (end_price/spot_price-1) * self.nominal_amount * np.exp(-self.intr * check_knockout_id[-1] / 365)
+            (end_price/spot_price) * self.nominal_amount * np.exp(-self.intr * check_knockout_id[-1] / 365)
 
         return df_res
 
@@ -197,22 +197,31 @@ def analysis_miu(snowball):
 
 if __name__ == '__main__':
     texp = 2
-    coupon_rate = 0.157
-    nominal_amount = 1000000
+    coupon_rate = 0.152
+    nominal_amount = 100
     bound = [0.75, 1.0]
     model = Heston_model
     n_path = 30000
     n_time = texp * 365
     dt = 1/365
-    start_date = datetime(2021,8,26)
-    check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
-                           datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
-                           datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
-                           datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
-                           datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
-                           datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
-                           datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
+    # start_date = datetime(2021,8,26)
+    # check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
+    #                        datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
+    #                        datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
+    #                        datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
+    #                        datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
+    #                        datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
+    #                        datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
+    start_date = datetime(2021, 9, 10)
+    check_knockout_date = [datetime(2021, 12, 10), datetime(2022, 1, 10), datetime(2022, 2, 10),
+                           datetime(2022, 3, 11), datetime(2022, 4, 11), datetime(2022, 5, 12),
+                           datetime(2022, 6, 10), datetime(2022, 7, 11), datetime(2022, 8, 11),
+                           datetime(2022, 9, 9), datetime(2022, 10, 10), datetime(2022, 11, 10),
+                           datetime(2022, 12, 9), datetime(2022, 1, 9), datetime(2023, 2, 9),
+                           datetime(2023, 3, 10), datetime(2023, 4, 10), datetime(2023, 5, 11),
+                           datetime(2023, 6, 9), datetime(2023, 7, 10), datetime(2023, 8, 10), datetime(2023, 9, 8)]
     snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path, n_time, start_date, check_knockout_date)
+    price = snowball.price(spot_price=1000)
     analysis_miu(snowball)
     analysis_sigma(snowball)
 
