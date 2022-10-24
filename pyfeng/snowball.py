@@ -55,10 +55,11 @@ class Heston_model:
         return S_tp1, sigma_tp1
 
 
+
 class SnowBallOption:
     texp = 2
     nominal_amount = 1000000
-    coupon_rate = 0.157
+    coupon_rate = 0.152
     intr = 0.0273  # China 10y Government Bond annual yield
     bound = [0.75, 1.0]
     model = BSM_model
@@ -204,22 +205,22 @@ if __name__ == '__main__':
     n_path = 30000
     n_time = texp * 365
     dt = 1/365
-    # start_date = datetime(2021,8,26)
-    # check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
-    #                        datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
-    #                        datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
-    #                        datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
-    #                        datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
-    #                        datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
-    #                        datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
-    start_date = datetime(2021, 9, 10)
-    check_knockout_date = [datetime(2021, 12, 10), datetime(2022, 1, 10), datetime(2022, 2, 10),
-                           datetime(2022, 3, 11), datetime(2022, 4, 11), datetime(2022, 5, 12),
-                           datetime(2022, 6, 10), datetime(2022, 7, 11), datetime(2022, 8, 11),
-                           datetime(2022, 9, 9), datetime(2022, 10, 10), datetime(2022, 11, 10),
-                           datetime(2022, 12, 9), datetime(2022, 1, 9), datetime(2023, 2, 9),
-                           datetime(2023, 3, 10), datetime(2023, 4, 10), datetime(2023, 5, 11),
-                           datetime(2023, 6, 9), datetime(2023, 7, 10), datetime(2023, 8, 10), datetime(2023, 9, 8)]
+    start_date = datetime(2021,8,26)
+    check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
+                           datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
+                           datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
+                           datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
+                           datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
+                           datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
+                           datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
+    # start_date = datetime(2021, 9, 10)
+    # check_knockout_date = [datetime(2021, 12, 10), datetime(2022, 1, 10), datetime(2022, 2, 10),
+    #                        datetime(2022, 3, 11), datetime(2022, 4, 11), datetime(2022, 5, 12),
+    #                        datetime(2022, 6, 10), datetime(2022, 7, 11), datetime(2022, 8, 11),
+    #                        datetime(2022, 9, 9), datetime(2022, 10, 10), datetime(2022, 11, 10),
+    #                        datetime(2022, 12, 9), datetime(2022, 1, 9), datetime(2023, 2, 9),
+    #                        datetime(2023, 3, 10), datetime(2023, 4, 10), datetime(2023, 5, 11),
+    #                        datetime(2023, 6, 9), datetime(2023, 7, 10), datetime(2023, 8, 10), datetime(2023, 9, 8)]
     snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path, n_time, start_date, check_knockout_date)
     price = snowball.price(spot_price=1000)
     analysis_miu(snowball)
