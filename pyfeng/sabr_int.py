@@ -61,7 +61,8 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         vol_ratio = np.expand_dims(vol_ratio[ind], -1)
         ww = np.expand_dims(ww[ind], -1)
 
-        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
         price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
         price = fwd * np.sum(price_vec * ww, axis=0)
         return price
@@ -76,16 +77,17 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
             fwd_ratio /= np.sum(fwd_ratio*ww)
         assert np.isclose(np.sum(ww), 1)
 
-        base_m = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
 
         if log:
-            log_mass = np.log(ww) + base_m.mass_zero(fwd_ratio, texp, log=True)
+            log_mass = np.log(ww) + base_model.mass_zero(fwd_ratio, texp, log=True)
             log_max = np.amax(log_mass)
             log_mass -= log_max
             log_mass = log_max + np.log(np.sum(np.exp(log_mass)))
             return log_mass
         else:
-            mass = base_m.mass_zero(fwd_ratio, texp, log=False)
+            mass = base_model.mass_zero(fwd_ratio, texp, log=False)
             mass = np.sum(mass * ww)
             return mass
 

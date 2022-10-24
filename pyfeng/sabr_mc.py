@@ -104,7 +104,8 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
         vol_ratio = np.expand_dims(vol_ratio[ind], -1)
 
-        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
         price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
         price = fwd * np.sum(price_vec, axis=0) / self.n_path
 
@@ -196,7 +197,9 @@ class SabrMcTimeDisc(SabrMcABC):
         assert np.isclose(fwd_ratio, 1.0).all()
         log_rn_deriv = 0.0  ## currently not used
 
-        base_model = cev.Cev(sigma=alpha * vol_ratio, beta=self.beta)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
+
         if log:
             log_mass_grid = base_model.mass_zero(1.0, texp, log=True) + log_rn_deriv
             log_mass_max = np.amax(log_mass_grid)

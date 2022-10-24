@@ -55,27 +55,24 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def base_model(self, vol, is_fwd=None):
+    def base_model(self, vol):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
 
         Args:
             vol: base model volatility
-            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns: model
         """
         base_beta = self.beta if self._base_beta is None else self._base_beta
 
-        if is_fwd is None:
-            is_fwd = self.is_fwd
         if np.isclose(base_beta, 1):
-            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         elif np.isclose(base_beta, 0):
-            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         else:
-            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
