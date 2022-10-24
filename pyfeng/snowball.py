@@ -67,7 +67,7 @@ class SnowBallOption:
     n_time = texp * 365
     dt = 1/365
 
-    def __init__(self, texp, nominal_amount, coupon_rate, bound, model, n_path, n_time, start_date, check_knockout_date):
+    def __init__(self, texp, nominal_amount, coupon_rate, bound, model, n_path):
         """
         :param texp: maturity
         :param coupon_rate: risk-free rate
@@ -88,9 +88,9 @@ class SnowBallOption:
         self.knock_out = bound[1]
         self.knock_in = bound[0]
         self.n_path = n_path
-        self.n_time = n_time
-        self.start_date = start_date
-        self.check_knockout_date = check_knockout_date
+        self.n_time = texp * 365
+        # self.start_date = start_date
+        # self.check_knockout_date = check_knockout_date
 
     def MC_res(self, spot_price):
 
@@ -111,7 +111,8 @@ class SnowBallOption:
                 sigma_t =  sigma_tp1
 
         # if knock out
-        check_knockout_id = [(i-self.start_date).days for i in self.check_knockout_date] # id of check knock out dates
+        check_knockout_id = [i for i in range(90,self.texp*365,30)]
+        # check_knockout_id = [(i-self.start_date).days for i in self.check_knockout_date] # id of check knock out dates
         check_knockout_price = S_path[:,check_knockout_id] # underlying price at observed knockout date
         bool_knockout = (check_knockout_price>self.knock_out*spot_price) # whether it knock out at each observed date
         whether_knockout = np.sum(bool_knockout,axis=1) # whether the path has knocked out
@@ -203,16 +204,16 @@ if __name__ == '__main__':
     bound = [0.75, 1.0]
     model = Heston_model
     n_path = 30000
-    n_time = texp * 365
+    # n_time = texp * 365
     dt = 1/365
-    start_date = datetime(2021,8,26)
-    check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
-                           datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
-                           datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
-                           datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
-                           datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
-                           datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
-                           datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
+    # start_date = datetime(2021,8,26)
+    # check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
+    #                        datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
+    #                        datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
+    #                        datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
+    #                        datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
+    #                        datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
+    #                        datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
     # start_date = datetime(2021, 9, 10)
     # check_knockout_date = [datetime(2021, 12, 10), datetime(2022, 1, 10), datetime(2022, 2, 10),
     #                        datetime(2022, 3, 11), datetime(2022, 4, 11), datetime(2022, 5, 12),
@@ -221,7 +222,7 @@ if __name__ == '__main__':
     #                        datetime(2022, 12, 9), datetime(2022, 1, 9), datetime(2023, 2, 9),
     #                        datetime(2023, 3, 10), datetime(2023, 4, 10), datetime(2023, 5, 11),
     #                        datetime(2023, 6, 9), datetime(2023, 7, 10), datetime(2023, 8, 10), datetime(2023, 9, 8)]
-    snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path, n_time, start_date, check_knockout_date)
+    snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path, n_time)
     price = snowball.price(spot_price=1000)
     analysis_miu(snowball)
     analysis_sigma(snowball)
