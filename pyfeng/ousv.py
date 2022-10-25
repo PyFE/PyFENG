@@ -4,6 +4,14 @@ import scipy.integrate as scint
 from . import sv_abc as sv
 from . import bsm
 
+#### Use of RN generation spawn:
+# 0: simulation of sigma: vol_step()
+# 1: truncated sine series: `z_gpqr`
+# 2: sine series: `z_sin`
+# 3: not used
+# 4: not used
+# 5: asset return
+
 
 class OusvABC(sv.SvABC, abc.ABC):
 
@@ -18,6 +26,7 @@ class OusvABC(sv.SvABC, abc.ABC):
         Args:
             texp: time step
             vol0: initial sigma
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             mean, variance(=None)
@@ -47,6 +56,7 @@ class OusvABC(sv.SvABC, abc.ABC):
         Args:
             texp: time step
             vol0: initial sigma
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             mean, variance(=None)
@@ -76,6 +86,7 @@ class OusvABC(sv.SvABC, abc.ABC):
             texp: time step
             vol_0: initial vol
             vol_t: final vol
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             avgvol mean, avgvar mean
@@ -88,14 +99,14 @@ class OusvABC(sv.SvABC, abc.ABC):
         cosh = np.cosh(mr_t)
 
         if nz_theta:
-            vol_0 = vol_0 - self.theta
+            vol_0 = vol_0 - self.theta  # Don't do `vol_0 -= self.theta`. Don't change `vol_0`
             vol_t = vol_t - self.theta
 
-        xt_hat = vol_t - vol_0*e_mr
+        volhat = vol_t - vol_0*e_mr
 
-        vol_m = (vol_0 + xt_hat/(1+e_mr))*phi
+        vol_m = (vol_0 + volhat/(1+e_mr))*phi
         var_m = vol_0**2 * phi2 + 0.5*(self.vov**2/self.mr) * (cosh/sinh - 1/mr_t)
-        var_m += xt_hat * (xt_hat * (sinh*cosh - mr_t)/(2*mr_t * sinh**2) + vol_0 * (1/sinh - e_mr/mr_t))
+        var_m += volhat * (volhat * (sinh*cosh - mr_t)/(2*mr_t * sinh**2) + vol_0 * (e_mr/mr_t) * (1/phi2 - 1))
 
         if nz_theta:
             var_m += self.theta*(self.theta + 2*vol_m)
@@ -278,13 +289,14 @@ class OusvUncorrBallRoma1994(OusvABC):
 class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
 
     @abc.abstractmethod
-    def cond_states_step(self, dt, vol_0):
+    def cond_states_step(self, dt, vol_0, nz_theta=True):
         """
         Final volatility (sigma), average variance and volatility over dt given vol_0
 
         Args:
             dt: time-to-expiry
             vol_0: initial volatility
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             (final vol, average var, average vol)
@@ -299,12 +311,13 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
             vol_0: initial volatility
             dt: time step
             zn: specified normal rv to use (n_path, )
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             volatility after dt
         """
         if nz_theta:
-            vol_0 = vol_0 - self.theta
+            vol_0 = vol_0 - self.theta  # Don't do `vol_0 -= self.theta`. Don't change `vol_0`
 
         e_mr = np.exp(-self.mr * dt)
         if zn is None:
@@ -322,24 +335,28 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
 
-        vol_t = np.full(self.n_path, vol_0)
+        vol_t = np.full(self.n_path, vol_0 - self.theta)
         avgvar = np.zeros(self.n_path)
         avgvol = np.zeros(self.n_path)
 
         for i in range(n_dt):
-            vol_t, avgvar_inc, avgvol_inc = self.cond_states_step(dt[i], vol_t)
+            vol_t, avgvar_inc, avgvol_inc = self.cond_states_step(dt[i], vol_t, nz_theta=False)
             avgvar += avgvar_inc * dt[i]
             avgvol += avgvol_inc * dt[i]
 
         avgvar /= texp
         avgvol /= texp
 
+        avgvar += self.theta * (self.theta + 2*avgvol)
+        avgvol += self.theta
+        vol_t += self.theta
+
         spot_cond = (vol_t**2 - vol_0**2) / (2*self.vov) - self.vov * texp / 2 \
-            - (self.mr * self.theta / self.vov) * texp * avgvol \
-            + (self.mr / self.vov - self.rho / 2) * texp * avgvar
+                    - (self.mr * self.theta / self.vov) * texp * avgvol \
+                    + (self.mr / self.vov - self.rho / 2) * texp * avgvar
         np.exp(self.rho * spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1 - self.rho**2) * avgvar) / vol_0
+        sigma_cond = np.sqrt((1 - self.rho**2) * np.fmax(avgvar, 1e-16)) / vol_0
         return spot_cond, sigma_cond
 
     def strike_var_swap_analytic(self, texp, dt=None):
@@ -413,7 +430,7 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
             if cond:
                 var_r += self.cond_log_return_var(dt[i], vol_0, vol_t, avgvar_inc, avgvol_inc)
             else:
-                var_r += self.draw_log_return(dt[i], vol_0, vol_t, avgvar_inc, avgvol_inc) ** 2
+                var_r += self.draw_log_return(dt[i], vol_0, vol_t, avgvar_inc, avgvol_inc)**2
 
             vol_0 = vol_t
 
@@ -425,6 +442,7 @@ class OusvMcTimeStep(OusvMcABC):
     OUSV model with conditional Monte-Carlo simulation
     The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T
     """
+    scheme = 0  ## 0 for trapezoidal, 1 for mean
 
     def vol_paths(self, tobs):
         # 2d array of (time, path) including t=0
@@ -447,11 +465,34 @@ class OusvMcTimeStep(OusvMcABC):
 
         return s_t, v_t_std, u_t_std
 
-    def cond_states_step(self, dt, vol_0):
+    def cond_states_step(self, dt, vol_0, nz_theta=True):
+        """
+        Final volatility (sigma), average variance and volatilityu over dt given vol_0
 
-        vol_t = self.vol_step(dt, vol_0)
-        avgvol = (vol_0 + vol_t)/2
-        avgvar = (vol_0**2 + vol_t**2)/2
+        Args:
+            dt: time-to-expiry
+            vol_0: initial volatility
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
+
+        Returns:
+            (final vol, average var, average vol)
+        """
+
+        if nz_theta:
+            vol_0 = vol_0 - self.theta  # Don't do `vol_0 -= self.theta`. Don't change `vol_0`
+
+        vol_t = self.vol_step(dt, vol_0, nz_theta=False)
+
+        if self.scheme == 0:
+            avgvol = (vol_0 + vol_t) / 2
+            avgvar = (vol_0**2 + vol_t**2) / 2
+        elif self.scheme == 1:
+            avgvol, avgvar = self.cond_avgvolvar_m(dt, vol_0, vol_t, nz_theta=False)
+
+        if nz_theta:
+            avgvar += self.theta * (self.theta + 2*avgvol)
+            avgvol += self.theta
+            vol_t += self.theta
 
         return vol_t, avgvar, avgvol
 
@@ -650,7 +691,7 @@ class OusvMcChoi2023KL(OusvMcABC):
             rv -= np.sum(a6n2)
         return rv
 
-    def cond_states_step(self, dt, vol_0, zn=None):
+    def cond_states_step(self, dt, vol_0, nz_theta=True, zn=None):
         """
         Final volatility (sigma), average variance and volatilityu over dt given vol_0
 
@@ -658,27 +699,22 @@ class OusvMcChoi2023KL(OusvMcABC):
             dt: time-to-expiry
             vol_0: initial volatility
             zn: normal RVs to specify in the (1+n_sin, n_path) format. None by default.
+            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
 
         Returns:
             (final vol, average var, average vol)
         """
 
-        mr, vov = self.mr, self.vov
-
-        mr_t = mr * dt
-        e_mr = np.exp(-mr_t)
-        phi = (1 - e_mr)/mr_t
-        phi2 = (1 + e_mr)/2 * phi
-        sinh = np.sinh(mr_t)
-        cosh = np.cosh(mr_t)
+        mr_t = self.mr * dt
         vovn = self.vov * np.sqrt(dt)  # normalized vov
 
-        x_0 = vol_0 - self.theta
+        if nz_theta:
+            vol_0 = vol_0 - self.theta  # Don't do `vol_0 -= self.theta`. Don't change `vol_0`
+
         if zn is None:
-            x_t = self.vol_step(dt, vol_0) - self.theta
+            vol_t = self.vol_step(dt, vol_0, nz_theta=False)
         else:
-            x_t = self.vol_step(dt, vol_0, zn=zn[0, :]) - self.theta
-        sighat = x_t - x_0 * e_mr
+            vol_t = self.vol_step(dt, vol_0, zn=zn[0, :], nz_theta=False)
 
         if zn is None:
             n_sin = self.n_sin
@@ -711,14 +747,14 @@ class OusvMcChoi2023KL(OusvMcABC):
             z_p *= p_std
             z_q *= q_std
 
-            r_m = self._a2sum(mr_t, ns=n_sin)
             r_var = self._a4sum(mr_t, ns=n_sin)
-            z_r[:] = np.sqrt(r_var)*(z_r**2 - 1) + r_m
-
+            z_r[:] = np.sqrt(r_var)*(z_r**2 - 1)
         else:
             n_sin = zn.shape[0] - 1
+            r_m = self._a2sum(mr_t, ns=n_sin)
             z_sin = zn[1:, :]
-            z_g, z_p, z_q, z_r = 0.0, 0.0, 0.0, 0.0
+            z_g, z_p, z_q, z_r = 0.0, 0.0, 0.0, -r_m
+            #### -r_m is the correction to include only `an2 @ z_sin**2`
 
         if n_sin > 0:
             n_pi = np.pi * np.arange(1, n_sin + 1)
@@ -729,35 +765,18 @@ class OusvMcChoi2023KL(OusvMcABC):
             z_g += (an[::2] / n_pi[::2]) @ z_sin[::2, :]  # odd terms
             z_p += an3_n_pi[::2] @ z_sin[::2, :]  # odd terms
             z_q += an3_n_pi[1::2] @ z_sin[1::2, :]  # even terms
-            z_r += an2 @ z_sin**2
+            z_r += an2 @ (z_sin**2 - 1)
 
-        uu_t = x_0 * phi + (cosh - 1)/(mr_t * sinh) * sighat + 2 * vovn * z_g  # * dt
+        uu_t, vv_t = self.cond_avgvolvar_m(dt, vol_0, vol_t, nz_theta=False)
+        uu_t += 2 * vovn * z_g  # * dt
+        vv_t += vovn * ((vol_0*(z_p + z_q) + vol_t*(z_p - z_q)) + 0.5*vovn*z_r)
 
-        vv_t = phi2 * x_0**2 + (sinh * cosh - mr_t) / (2*mr_t * sinh**2) * sighat**2
-        vv_t += sighat * x_0 * (1/sinh - e_mr/mr_t) + vovn * (x_0*(z_p + z_q) + x_t*(z_p - z_q))
-        vv_t += 0.5 * vovn**2 * z_r
+        if nz_theta:
+            vv_t += (2*uu_t + self.theta) * self.theta
+            uu_t += self.theta
+            vol_t += self.theta
 
-        ### sigma_t = x_t + theta
-        vv_t += (2*uu_t + self.theta) * self.theta
-        uu_t += self.theta
-        x_t += self.theta
-
-        return x_t, vv_t, uu_t
-
-        """
-        uu_t = x_0 * phi + (cosh - 1)/(mr_t * sinh) * sighat + 2 * vovn * z_g  # * dt
-
-        vv_t = phi2 * x_0**2 + (sinh * cosh - mr_t) / (2*mr_t * sinh**2) * sighat**2
-        vv_t += sighat * x_0 * (1/sinh - e_mr/mr_t) + vovn * (x_0*(z_p + z_q) + x_t*(z_p - z_q))
-        vv_t += 0.5 * vovn**2 * z_r
-
-        ### sigma_t = x_t + theta
-        vv_t += (2*uu_t + self.theta) * self.theta
-        uu_t += self.theta
-        x_t += self.theta
-
-        return x_t, vv_t, uu_t
-        """
+        return vol_t, vv_t, uu_t
 
     def unexplained_var_ratio(self, mr_t, ns=None):
 
@@ -770,7 +789,6 @@ class OusvMcChoi2023KL(OusvMcABC):
         """
         vol path composed of sin terms
         Args:
-            vol_t: terminal volatility (n_path, )
             tobs: observation time (n_time, )
             zn: specified normal rvs to use (n_sin + 1, n_path). None by default
 
@@ -782,23 +800,23 @@ class OusvMcChoi2023KL(OusvMcABC):
         e_mr = np.exp(-mr_t)
         e_mr_tobs = np.exp(-self.mr*tobs[:, None])
 
-        x_0 = self.sigma - self.theta
+        vol_0 = self.sigma - self.theta
 
         if zn is None:
-            vol_t = self.vol_step(dt, self.sigma)
-            zn = self.rng_spawn[1].standard_normal(size=(self.n_sin, self.n_path))
+            vol_t = self.vol_step(dt, vol_0, nz_theta=False)
+            zn = self.rng_spawn[2].standard_normal(size=(self.n_sin, self.n_path))
             n_sin, n_path = self.n_sin, self.n_path
         else:
-            vol_t = self.vol_step(dt, self.sigma, zn[0, :])
+            vol_t = self.vol_step(dt, vol_0, zn[0, :], nz_theta=False)
             n_sin = zn.shape[0] - 1
 
-        sighat = vol_t - self.theta - x_0 * e_mr
+        volhat = vol_t - vol_0 * e_mr
 
         n_pi = np.pi*np.arange(1, n_sin + 1)
         an = np.sqrt(2/(mr_t**2 + n_pi**2))
         sin = np.sin(n_pi*tobs[:, None]/dt)
-        sigma_path = self.theta + x_0 * e_mr_tobs \
-                     + 0.5*(1/e_mr_tobs - e_mr_tobs)/np.sinh(mr_t) * sighat \
-                     + self.vov * np.sqrt(dt) * (an*sin) @ zn[1:,:]
+        sigma_path = self.theta + vol_0 * e_mr_tobs \
+                     + 0.5*(1/e_mr_tobs - e_mr_tobs)/np.sinh(mr_t) * volhat \
+                     + self.vov * np.sqrt(dt) * (an*sin) @ zn[1:, :]
 
         return sigma_path
