@@ -8,7 +8,6 @@ from functools import partial
 import scipy.integrate as scint
 from . import sabr
 from . import sv_abc as sv
-from . import cev
 
 
 class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
@@ -20,9 +19,9 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
 
         Args:
             dt: time step
-
+            log: if True, return log(sigma). False by default.
         Returns:
-            sigma after dt
+            sigma_dt
         """
         vovn = self.vov * np.sqrt(dt)
         zz = self.rv_normal(spawn=0)
@@ -35,17 +34,37 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
     @abc.abstractmethod
     def cond_states_step(self, dt, sigma_0):
         """
-        Final variance and integrated variance over dt given var_0
-        The int_var is normalized by dt
+        Final variance after dt and average variance over (0, dt) given sigma_0.
+        `sigma_0` should be an array of (self.n_path, )
 
         Args:
             dt: time step
-            sigma_0: initial sigma
+            sigma_0: initial volatility
 
         Returns:
-            (sigma_t, avgvar)
+            (sigma after dt, average variance during dt)
         """
         return NotImplementedError
+
+    def draw_log_return(self, dt, sigma_0, sigma_t, avgvar):
+        """
+        Samples log return, log(S_t/S_0). Currently implemented only for beta=1
+
+        Args:
+            dt: time step
+            sigma_0: initial variance
+            sigma_t: final variance
+            avgvar: average variance
+
+        Returns:
+            log return (self.n_path, )
+        """
+
+        assert np.isclose(self.beta, 1.0)
+        ln_m = (self.intr - self.divr)*dt + self.rho/self.vov*(sigma_t - sigma_0) - 0.5*avgvar*dt
+        ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        zn = self.rv_normal(spawn=5)
+        return ln_m + ln_sig * zn
 
     def cond_spot_sigma(self, texp, fwd, mu=0):
         """
@@ -59,7 +78,6 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (spot ratio, sigma ratio)
         """
-
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)

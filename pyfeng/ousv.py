@@ -351,12 +351,11 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         avgvol += self.theta
         vol_t += self.theta
 
-        spot_cond = (vol_t**2 - vol_0**2) / (2*self.vov) - self.vov * texp / 2 \
-                    - (self.mr * self.theta / self.vov) * texp * avgvol \
-                    + (self.mr / self.vov - self.rho / 2) * texp * avgvar
-        np.exp(self.rho * spot_cond, out=spot_cond)
+        spot_cond = (vol_t**2 - vol_0**2 - self.vov**2*texp) +\
+            texp*(-2*(self.mr * self.theta) * avgvol + (2*self.mr - self.rho*self.vov) * avgvar)
+        np.exp(0.5*self.rho/self.vov * spot_cond, out=spot_cond)
 
-        sigma_cond = np.sqrt((1 - self.rho**2) * np.fmax(avgvar, 1e-16)) / vol_0
+        sigma_cond = np.sqrt((1 - self.rho**2) * np.fmax(avgvar, 1e-64)) / vol_0
         return spot_cond, sigma_cond
 
     def strike_var_swap_analytic(self, texp, dt=None):
@@ -380,10 +379,11 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
 
         """
         rho_vov = self.rho / self.vov
-        mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
-                  + (rho_vov*self.mr - 0.5)*dt*avgvar + (self.intr - self.divr)*dt
-        sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
-        return mean_ln**2 + sigma_ln2
+        ln_m = (self.intr - self.divr - self.rho*self.vov/2)*dt \
+               + rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) \
+               + (rho_vov*self.mr - 0.5)*dt*avgvar
+        ln_sig2 = (1.0 - self.rho**2) * dt * avgvar
+        return ln_m**2 + ln_sig2
 
     def draw_log_return(self, dt, vol_0, vol_t, avgvar, avgvol):
         """
@@ -400,11 +400,12 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
             log return
         """
         rho_vov = self.rho / self.vov
-        mean_ln = rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol) - self.rho*self.vov*dt/2 \
-                  + (rho_vov*self.mr - 0.5)*dt*avgvar + (self.intr - self.divr)*dt
-        sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        ln_m = (self.intr - self.divr - self.rho*self.vov/2)*dt\
+               + rho_vov * ((vol_t**2 - vol_0**2)/2 - self.mr*self.theta*dt*avgvol)\
+               + (rho_vov*self.mr - 0.5)*dt*avgvar
+        ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
         zn = self.rv_normal(spawn=5)
-        return mean_ln + sigma_ln * zn
+        return ln_m + ln_sig * zn
 
     def return_var_realized(self, texp, cond=False):
         """
