@@ -786,6 +786,12 @@ class OusvMcChoi2023KL(OusvMcABC):
         rv = self._a4sum(mr_t, ns=ns) / self._a4sum(mr_t)
         return rv
 
+    def strike_var_swap_analytic(self, texp, dt=None):
+        if dt is None:
+            dt = self.dt
+        rv = super().strike_var_swap_analytic(texp, dt)
+        return rv
+
     def vol_path_sin(self, tobs, zn=None):
         """
         vol path composed of sin terms
