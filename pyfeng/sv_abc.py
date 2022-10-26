@@ -112,8 +112,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
     rng = np.random.default_rng(None)
     rng_spawn = []
     antithetic = True
-
-    correct_fwd = True
+    correct_fwd = False
     result = {}
 
     def set_num_params(self, n_path=10000, dt=0.25, rn_seed=None, antithetic=True):
