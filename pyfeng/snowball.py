@@ -11,6 +11,7 @@ import pandas as pd
 import scipy.stats as st
 from datetime import datetime
 import matplotlib.pyplot as plt
+import pyfeng as pf
 
 class BSM_model:
 
@@ -33,26 +34,41 @@ class BSM_model:
         return S_tp1
 
 class Heston_model:
-    kar = 1
-    theta = 0.1
-    vov = 0.05
-    miu = 0
-    sigma0 = 0.2
+    sigma = 0.06
+    vov = 0.10
+    rho = 0.0
+    mr = 0.15
+    theta = 0.01
+    intr = 0.03
 
-
-    def stock_price(self,S_t:np.array,sigma_t,dt):
+    def stock_price(self, m1, S_t: np.array, sigma_t, dt):
         """
-        dv(t) = kar(theta-v(t))dt + vov*np.sqrt(v(t))dZ_t
-        dS_t/S_t = miu dt + sigma dB_t
-        :param S_t: stock price in t
-        :param dt: discrete time interval
-        :return: S_t+1
+        @param m1: pf.HestonMcAndersen2008()
+        @param S_t: stock price in t
+        @param sigma_t: sigma in t
+        @param dt: discrete time interval
+        @return:
         """
-        Z_t = st.norm.rvs(loc=0, scale=1, size=(len(sigma_t)))  # normal random number array
-        sigma_tp1 = sigma_t + (4*self.kar*(self.theta-sigma_t**2) - self.vov**2) / (8*sigma_t**2) * dt + self.vov/2 * np.sqrt(dt) * Z_t
-        S_tp1 = S_t*np.exp((self.miu-0.5*sigma_t**2)*dt+sigma_t*np.sqrt(dt)*Z_t) # S_t+1
+        sigma_tp1, avgvar, *_ = m1.cond_states_step(dt, sigma_t)
+        log_rt = m1.draw_log_return(dt, sigma_t, sigma_tp1, avgvar)
+        S_tp1 = S_t * np.exp(log_rt)
 
         return S_tp1, sigma_tp1
+
+
+    # def stock_price(self,S_t:np.array,sigma_t,dt):
+    #     """
+    #     dv(t) = kar(theta-v(t))dt + vov*np.sqrt(v(t))dZ_t
+    #     dS_t/S_t = miu dt + sigma dB_t
+    #     :param S_t: stock price in t
+    #     :param dt: discrete time interval
+    #     :return: S_t+1
+    #     """
+    #     Z_t = st.norm.rvs(loc=0, scale=1, size=(len(sigma_t)))  # normal random number array
+    #     sigma_tp1 = sigma_t + (4*self.kar*(self.theta-sigma_t**2) - self.vov**2) / (8*sigma_t**2) * dt + self.vov/2 * np.sqrt(dt) * Z_t
+    #     S_tp1 = S_t*np.exp((self.miu-0.5*sigma_t**2)*dt+sigma_t*np.sqrt(dt)*Z_t) # S_t+1
+    #
+    #     return S_tp1, sigma_tp1
 
 
 
@@ -104,10 +120,13 @@ class SnowBallOption:
         if self.model == BSM_model:
             for i in range(self.n_time-1):
                 S_path[:,i+1] = self.model().stock_price(S_path[:,i], self.dt)
+
         elif self.model == Heston_model:
-            sigma_t = np.ones(self.n_path) * Heston_model.sigma0
+            m1 = pf.HestonMcAndersen2008(sigma=Heston_model.sigma, vov=Heston_model.vov, rho=Heston_model.rho, mr=Heston_model.mr, theta=Heston_model.theta, intr=Heston_model.intr)
+            m1.set_num_params(n_path=self.n_path, dt=self.dt, rn_seed=12345)
+            sigma_t = np.ones(self.n_path) * Heston_model.sigma
             for i in range(self.n_time-1):
-                S_path[:,i+1], sigma_tp1 = self.model().stock_price(S_path[:,i], sigma_t, self.dt)
+                S_path[:,i+1], sigma_tp1 = self.model().stock_price(m1, S_path[:,i], sigma_t, self.dt)
                 sigma_t =  sigma_tp1
 
         # if knock out
@@ -204,25 +223,9 @@ if __name__ == '__main__':
     bound = [0.75, 1.0]
     model = Heston_model
     n_path = 30000
-    # n_time = texp * 365
     dt = 1/365
-    # start_date = datetime(2021,8,26)
-    # check_knockout_date = [datetime(2021,11,26),datetime(2021,12,24),datetime(2022,1,26),
-    #                        datetime(2022,2,25),datetime(2022,3,25),datetime(2022,4,26),
-    #                        datetime(2022,5,26),datetime(2022,6,24),datetime(2022,7,26),
-    #                        datetime(2022,8,26),datetime(2022,9,26),datetime(2022,10,26),
-    #                        datetime(2022,11,25),datetime(2022,12,26),datetime(2023,1,30),
-    #                        datetime(2023,2,24),datetime(2023,3,24),datetime(2023,4,26),
-    #                        datetime(2023,5,26),datetime(2023,6,26),datetime(2023,7,26),datetime(2023,8,25)]
-    # start_date = datetime(2021, 9, 10)
-    # check_knockout_date = [datetime(2021, 12, 10), datetime(2022, 1, 10), datetime(2022, 2, 10),
-    #                        datetime(2022, 3, 11), datetime(2022, 4, 11), datetime(2022, 5, 12),
-    #                        datetime(2022, 6, 10), datetime(2022, 7, 11), datetime(2022, 8, 11),
-    #                        datetime(2022, 9, 9), datetime(2022, 10, 10), datetime(2022, 11, 10),
-    #                        datetime(2022, 12, 9), datetime(2022, 1, 9), datetime(2023, 2, 9),
-    #                        datetime(2023, 3, 10), datetime(2023, 4, 10), datetime(2023, 5, 11),
-    #                        datetime(2023, 6, 9), datetime(2023, 7, 10), datetime(2023, 8, 10), datetime(2023, 9, 8)]
-    snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path, n_time)
+
+    snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path)
     price = snowball.price(spot_price=1000)
     analysis_miu(snowball)
     analysis_sigma(snowball)
