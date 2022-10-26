@@ -4,9 +4,9 @@ import pyfeng as pf
 
 class BaseModel:
     def __init__(self):
-        self.intr = 0.0273
+        self.intr = 0.019155   # 1y CDB bond rate. we don't use the
         self.divr = 0
-        self.sigma = 0.22
+        self.sigma = 0.04
         self.texp = 2
 
     @abstractmethod
@@ -53,9 +53,9 @@ class BSMC(BaseModel):
         return impvol
 
 class HestonMC(BaseModel):
-    vov = 0.09
-    rho = 0.1
-    kappa = 0.2
+    vov = 0.2
+    rho = -0.2
+    kappa = 0.5
     theta = 0.1
 
     def __init__(self):
@@ -69,7 +69,6 @@ class HestonMC(BaseModel):
         dW(t)dZ(t) = rho * dt
         or, dWt = rho * dZt + (1-rho**2)**0.5 * dXt, where Zt and Xt are independent
         """
-
         # get RV with relation rho, the number of RV is n_path * n_days
         X1 = np.random.normal(size=(n_path, n_days))
         Z1 = np.random.normal(size=(n_path, n_days))
@@ -85,6 +84,19 @@ class HestonMC(BaseModel):
         for i in range(n_days-1):
             v[:, i+1] = v[:, i] + self.kappa * (self.theta - v[:, i]) * dt + self.vov * np.sqrt(v[:, i] * dt) * Z1[:, i]
             st_path[:, i+1] = st_path[:, i] * np.exp((self.intr - 0.5 * v[:, i])**2 * dt + W1[:, i] * np.sqrt(dt * v[:, i]))
+        return st_path
+
+    def stock_price_Andersen(self, spot, dt, n_path, n_days):
+        model = pf.HestonMcAndersen2008(sigma=self.sigma, vov=self.vov, rho=self.rho, mr=self.kappa, theta=self.theta, intr=self.intr)  # should use this
+        model.set_num_params(n_path=n_path, dt=dt, rn_seed=12345)
+        var_t1 = np.full(n_path, self.sigma)
+        st_path = np.zeros((n_path, n_days))
+        st_path[:, 0] = spot
+        for i in range(n_days-1):
+            var_t2, avgvar, *_ = model.cond_states_step(dt, var_t1)
+            log_rt = model.draw_log_return(dt, var_t1, var_t2, avgvar)
+            st_path[:, i+1] = st_path[:,i] * np.exp(log_rt)
+            var_t1 = var_t2
         return st_path
 
 class Snowball:
@@ -122,7 +134,7 @@ class Snowball:
         else:
             self.ki_observ_dates = np.linspace(90, self.n_days, 1, dtype='int')    # roughly approximate
 
-    def price(self, spot):
+    def price(self, spot, Andersen=False):
         """
         calculate the price of snowball option
         :spot: is the S0 of the underlying asset
@@ -131,8 +143,10 @@ class Snowball:
         knock_in_price = spot * self.knock_in_bound
         if self.model == BSMC:
             st_path = self.model().stock_price(spot, self.dt, self.n_path, self.n_days)
-        elif self.model == HestonMC:
+        elif (self.model == HestonMC) & (Andersen==False):
             st_path = self.model().stock_price(spot, self.dt, self.n_path, self.n_days)
+        elif (self.model == HestonMC) & (Andersen==True):
+            st_path = self.model().stock_price_Andersen(spot, self.dt, self.n_path, self.n_days)
         else:
             raise ValueError('Only support BSMC & HestonMC currently...')
 
@@ -143,8 +157,6 @@ class Snowball:
         for i in range(self.n_path):
             ki = 0      # knock in
             ko = 0      # knock out
-            # last_ki_t = 0
-            # last_ki_t = 0
             for j in range(1, self.n_days):
                 # knock out
                 if (j in self.ko_observ_dates) & (st_path[i, j] > knock_out_price):
@@ -168,18 +180,6 @@ class Snowball:
             if (ki == 0) & (ko == 0):
                 payout[i] = self.coupon_rate * self.n_days / 365
                 payout_t[i] = self.n_days
-            # price_list[i] = self.notional * (payout + 1) * np.exp(-payout_t / 365 * self.model().intr)
-
-        # knock_in_flag = np.zeros((n_path, len(self.ko_observ_dates)))
-        # knock_out_flag = np.zeros((n_path, len(self.ki_observ_dates)))
-        # st_path = self.model.stock_price(strike, spot, dt, cp)
-        # = =||did't figure out a elegant way..maybe try it later, first just use for.. for...
-        # knock_out_flag[st_path[:, self.ko_observ_dates[0]:] > self.knock_out_bound] = 1
-        # knock_in_flag[st_path[:, self.ki_observ_dates[0]:] < self.knock_in_bound] =1
-        # # record the first ko time id of each st path, if never reached ko barrier then the return -1 (ko: knock out)
-        # ko_mask = knock_out_flag != 0
-        # ko_date_id = np.where(ko_mask.any(axis=1), knock_out_flag.argmax(axis=1), -1*np.ones(np.shape(knock_out_flag.argmax(axis=1))))
-        # # record the first ki time of each st path
         price = np.mean(self.notional * (payout + 1) * np.exp(-payout_t / 365 * self.model().intr))
         return price
 
@@ -188,6 +188,6 @@ if __name__ == '__main__':
     coupon_rate = 0.3
     bound = [0.75, 1]
     notional = 10000
-    snowball = Snowball(HestonMC, texp, coupon_rate, bound, n_path=50000)
-    price = snowball.price(5955.52)
+    snowball = Snowball(HestonMC, texp, coupon_rate, bound, n_path=10000)
+    price = snowball.price(5955.52, Andersen=False)
     print(price)
