@@ -20,7 +20,7 @@ class TestSabr(unittest.TestCase):
             # print(f'Sheet {k:02d}: {ref}')
             v1 = np.round(m.vol_for_price(**rv["args_pricing"]), 4)
             v2 = df["IV Hagan"].values
-            np.testing.assert_almost_equal(v1, v2)
+            np.testing.assert_allclose(v1, v2)
 
     def test_SabrNorm(self):
         """
@@ -31,7 +31,7 @@ class TestSabr(unittest.TestCase):
             v1 = m.price(**rv["args_pricing"])
             m, df, rv = pf.SabrChoiWu2021H.init_benchmark(k)
             v2 = m.price(**rv["args_pricing"])
-            np.testing.assert_almost_equal(v1, v2)
+            np.testing.assert_allclose(v1, v2)
 
     def test_SabrNormATM(self):
         """
@@ -40,13 +40,13 @@ class TestSabr(unittest.TestCase):
         for k in [22, 23]:
             m, df, rv = pf.SabrNormVolApprox.init_benchmark(k)
             m.is_atmvol = True
-            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
-            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
+            np.testing.assert_allclose(m.vol_smile(0, 0, texp=0.1), m.sigma)
+            np.testing.assert_allclose(m.vol_smile(0, 0, texp=10), m.sigma)
 
             m, df, rv = pf.Nsvh1.init_benchmark(k)
             m.is_atmvol = True
-            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=0.1), m.sigma)
-            np.testing.assert_almost_equal(m.vol_smile(0, 0, texp=10), m.sigma)
+            np.testing.assert_allclose(m.vol_smile(0, 0, texp=0.1), m.sigma)
+            np.testing.assert_allclose(m.vol_smile(0, 0, texp=10), m.sigma)
 
     def test_PaulotBsm(self):
         """
@@ -58,7 +58,7 @@ class TestSabr(unittest.TestCase):
             # print(f'Sheet {k:02d}: {ref}')
             v1 = np.round(m.vol_for_price(**rv["args_pricing"]), 4)
             v2 = df["IV HL-P"].values
-            np.testing.assert_almost_equal(v1, v2)
+            np.testing.assert_allclose(v1, v2)
 
     def test_UnCorrChoiWu2021(self):
         """
@@ -72,8 +72,8 @@ class TestSabr(unittest.TestCase):
         mass2 = 0.7623543217183134
         p2 = np.array([0.04533777, 0.04095806, 0.03889591, 0.03692339, 0.03324944, 0.02992918])
 
-        np.testing.assert_almost_equal(mass, mass2)
-        np.testing.assert_almost_equal(p, p2)
+        np.testing.assert_allclose(mass, mass2, atol=1e-8)
+        np.testing.assert_allclose(p, p2, atol=1e-8)
 
     def test_McTimeDisc(self):
         """
@@ -83,7 +83,7 @@ class TestSabr(unittest.TestCase):
             m, df, rv = pf.SabrMcTimeDisc.init_benchmark(k)
             m.set_num_params(n_path=5e4, dt=0.05, rn_seed=1234)
             p = m.price(**rv["args_pricing"])
-            np.testing.assert_almost_equal(p, rv["val"], decimal=4)
+            np.testing.assert_allclose(p, rv["val"], rtol=5e-4)
 
     def test_MomentsIntVariance(self):
         """
@@ -98,8 +98,8 @@ class TestSabr(unittest.TestCase):
             m1, v = m.avgvar_mv(vovn)
             cond_m1, cond_m2 = m.cond_avgvar_mv(vovn, zhat, False)
 
-            np.testing.assert_almost_equal(np.sum(cond_m1 * ww)/m1, 1.0)
-            np.testing.assert_almost_equal(np.sum(cond_m2 * ww)/(m1**2 + v), 1.0)
+            np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
+            np.testing.assert_allclose(np.sum(cond_m2 * ww), (m1**2 + v))
 
 
 if __name__ == "__main__":

@@ -97,8 +97,8 @@ class TestOusvKL(unittest.TestCase):
                 sig_t = m.vol_step(texp, sigma0, zz)
                 cvol, cvar = m.cond_avgvolvar_m(texp, sigma0, sig_t)
 
-                assert np.isclose(mvol, np.sum(cvol * ww))
-                assert np.isclose(mvar, np.sum(cvar * ww))
+                np.testing.assert_allclose(mvol, np.sum(cvol * ww))
+                np.testing.assert_allclose(mvar, np.sum(cvar * ww))
 
                 mvol, _ = m.avgvol_mv(texp, sigma0 - m.theta, nz_theta=True)
                 mvar, _ = m.avgvar_mv(texp, sigma0 - m.theta, nz_theta=True)
@@ -106,8 +106,8 @@ class TestOusvKL(unittest.TestCase):
                 sig_t = m.vol_step(texp, sigma0 - m.theta, zz, nz_theta=True)
                 cvol, cvar = m.cond_avgvolvar_m(texp, sigma0 - m.theta, sig_t, nz_theta=True)
 
-                assert np.isclose(mvol, np.sum(cvol * ww))
-                assert np.isclose(mvar, np.sum(cvar * ww))
+                np.testing.assert_allclose(mvol, np.sum(cvol * ww))
+                np.testing.assert_allclose(mvar, np.sum(cvar * ww))
 
 
 if __name__ == "__main__":
