@@ -805,7 +805,7 @@ class HestonMcAndersen2008(HestonMcABC):
            variance after dt
         """
 
-        m, psi = self.var_mv(var_0, dt)  # put variance into psi
+        m, psi = self.var_mv(dt, var_0)  # put variance into psi
         psi /= m**2
 
         zz = self.rv_normal(spawn=0)
