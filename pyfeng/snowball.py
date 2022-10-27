@@ -87,7 +87,7 @@ class HestonMC(BaseModel):
         return st_path
 
     def stock_price_Andersen(self, spot, dt, n_path, n_days):
-        model = pf.HestonMcAndersen2008(sigma=self.sigma, vov=self.vov, rho=self.rho, mr=self.kappa, theta=self.theta, intr=self.intr)  # should use this
+        model = pf.HestonMcAndersen2008(sigma=self.sigma, vov=self.vov, rho=self.rho, mr=self.kappa, theta=self.theta, intr=self.intr)
         model.set_num_params(n_path=n_path, dt=dt, rn_seed=12345)
         var_t1 = np.full(n_path, self.sigma)
         st_path = np.zeros((n_path, n_days))
@@ -114,9 +114,10 @@ class Snowball:
     dt = 1 / 365
     n_days = texp * 365
     notional = 10000
-    close_peroid = 90
+    closure_dates = 90
+    knock_out_gap = 30
 
-    def __init__(self, model, texp, coupon_rate, bound, n_path=n_path, notional=notional, ko_ovserv_dates=None, ki_ovserv_dates=None):
+    def __init__(self, model, texp, coupon_rate, bound, n_path=n_path, notional=notional, closure_dates=closure_dates, knock_out_gap=knock_out_gap, ko_ovserv_dates=None, ki_ovserv_dates=None):
         self.texp = texp
         self.coupon_rate = coupon_rate
         self.knock_out_bound = bound[1]
@@ -125,14 +126,16 @@ class Snowball:
         self.n_path = n_path
         self.model.texp = self.texp
         self.notional = notional
+        self.knock_out_gap = knock_out_gap
+        self.closure_dates = closure_dates
         if ko_ovserv_dates != None:
             self.ko_observ_dates = ko_ovserv_dates   # knock out observation dates ... should be a list of integers <= texp * 365
         else:
-            self.ko_observ_dates = np.linspace(90, self.n_days, 30, dtype='int')   # roughly approximate
+            self.ko_observ_dates = np.linspace(self.closure_dates, self.n_days, 30, dtype='int')   # roughly approximate
         if ki_ovserv_dates != None:
             self.ki_observ_dates = ki_ovserv_dates   # knock in observation dates ... should be a list of integers <= texp * 365
         else:
-            self.ki_observ_dates = np.linspace(90, self.n_days, 1, dtype='int')    # roughly approximate
+            self.ki_observ_dates = np.linspace(self.closure_dates, self.n_days, 1, dtype='int')    # roughly approximate
 
     def set_model_param(self, sigma=0.04, vov=0.5, rho=-0.3, mr=0.5, theta=0.1, intr=0.019155):
         """
