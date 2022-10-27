@@ -166,7 +166,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         """
         Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
         int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
-        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively
+        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively.
+        See Appendix B in Choi et al. (2019), Eqs. (B5) and (B6) in Kennedy et al. (2012)
 
         Args:
             vovn: vov * sqrt(T)
@@ -175,6 +176,10 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         Returns:
             Mean, M2
+
+        References:
+            - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+            - Kennedy JE, Mitra S, Pham D (2012) On the Approximation of the SABR Model: A Probabilistic Approach. Applied Mathematical Finance 19:553–586. https://doi.org/10.1080/1350486X.2011.646523
         """
 
         def mean(vv):
@@ -197,18 +202,21 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         """
         mean and variance of the normalized average variance:
         (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T)
+        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
 
         Args:
             vovn: vov * sqrt(texp)
 
         Returns:
             (mean, variance)
+
+        References
+            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
-        v2 = vovn**2
-        w = np.exp(v2)
-        m = np.where(v2 > 1e-6, (w - 1)/v2, 1 + v2/2 * (1 + v2/3))
-        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * v2
+        vovn2 = vovn**2
+        w = np.exp(vovn2)
+        m = np.where(vovn2 > 1e-6, (w - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
+        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * vovn2
         return m, v
 
 
@@ -425,6 +433,29 @@ class SabrNormVolApprox(SabrVolApproxABC):
             print(f"Ignoring beta = {beta}...")
         self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def price_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis of forward price. Eq. (21) in Choi et al. (2019)
+        It is a special case (lambda=0) of NsvhABC.price_vsk()
+
+        Args:
+            texp: time to expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+
+        References:
+            - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+        """
+        vovn = self.vov * np.sqrt(texp)
+        ww = np.exp(vovn**2)
+
+        m2 = ww - 1
+        skew = self.rho * (ww+2) * np.sqrt(m2)
+        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww**3 + 3*ww**2 + 6*ww + 5) + 1)
+
+        return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
