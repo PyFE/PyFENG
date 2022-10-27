@@ -87,8 +87,10 @@ class TestSabr(unittest.TestCase):
 
     def test_MomentsIntVariance(self):
         """
-        Unconditional mean/var == E(conditional)
+        Various test on momoents of SABR/NSVh
         """
+
+        #### Unconditional mean/var == E(conditional)
         m = pf.SabrNormVolApprox(1)
         for vovn in [1.1, 1.2, 1.4, 1.6]:
             zhat, ww = spsp.roots_hermitenorm(31)
@@ -100,6 +102,27 @@ class TestSabr(unittest.TestCase):
 
             np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
             np.testing.assert_allclose(np.sum(cond_m2 * ww), (m1**2 + v))
+
+        #### Generic Nsvh (lambda = 0) == Normal SABR
+        #### Generic Nsvh (lambda = 1) == Nsvh1
+        for (rho, vov) in zip((-0.2, 0, 0.5), (0.1, 0.2, 0.5)):
+            m = pf.NsvhGaussQuad(1, rho=rho, vov=vov, lam=0)
+            m0 = pf.SabrNormVolApprox(1, rho=rho, vov=vov)
+            np.testing.assert_allclose(m0.price_vsk(texp=1.5), m.price_vsk(texp=1.5))
+
+            m = pf.NsvhGaussQuad(1, rho=rho, vov=vov, lam=1)
+            m1 = pf.Nsvh1(1, rho=rho, vov=vov)
+            np.testing.assert_allclose(m1.price_vsk(texp=1.5), m.price_vsk(texp=1.5))
+
+        for vovn in (0.1, 0.2, 0.5, 1.2):
+            m0 = pf.SabrNormVolApprox(sigma=vovn, rho=0, vov=vovn)
+            p_var, skew, kurt = m0.price_vsk(texp=1)
+            i_m, i_var = m0.avgvar_mv(vovn)
+
+            ### E(X^2_IntVar) = vovn^2 * E(I)
+            np.testing.assert_allclose(p_var, i_m*vovn**2)
+            ### E(X^4_IntVar) = 3 * vovn^4 * E(I^2)
+            np.testing.assert_allclose((kurt + 3)*p_var**2, 3*(i_var + i_m**2)*vovn**4)
 
 
 if __name__ == "__main__":
