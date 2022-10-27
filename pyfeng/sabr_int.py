@@ -14,14 +14,17 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         """
         Lognormal distribution parameters (mean, sigma) of the normalized average variance:
         (1/T) \int_0^T e^{2*vov Z_t - vov^2 t} dt = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T)
+        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
 
         Args:
             vovn: vov * sqrt(texp)
 
         Returns:
             (m1, sig)
-            True distribution should be multiplied by sigma^2*t
+            True distribution should be multiplied by sigma^2 * texp
+
+        References
+            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
         v2 = vovn**2
         w = np.exp(v2)
