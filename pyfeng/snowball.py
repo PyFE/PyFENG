@@ -134,6 +134,18 @@ class Snowball:
         else:
             self.ki_observ_dates = np.linspace(90, self.n_days, 1, dtype='int')    # roughly approximate
 
+    def set_model_param(self, sigma=0.04, vov=0.5, rho=-0.3, mr=0.5, theta=0.1, intr=0.019155):
+        """
+        set the parameter for Heston model / BSM model
+        """
+        self.model.intr = intr
+        self.model.sigma = sigma
+        if self.model == HestonMC:
+            self.model.vov = vov
+            self.model.rho = rho
+            self.model.kappa = mr
+            self.model.theta = theta
+
     def price(self, spot, Andersen=False):
         """
         calculate the price of snowball option
