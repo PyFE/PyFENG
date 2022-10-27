@@ -406,7 +406,7 @@ class Bsm(opt.OptAnalyticABC):
 
 class BsmDisp(smile.OptSmileABC, Bsm):
     """
-    Displaced Black-Scholes-Merton model for option pricing. Displace price,
+    Displaced Black-Scholes-Merton model for option pricing. Displaced price,
 
         D(F_t) = beta*F_t + (1-beta)*A
 
@@ -449,7 +449,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
 
     @property
     def sigma(self):
-        return self.sigma_disp*self.beta
+        return self.sigma_disp * self.beta
 
     @sigma.setter
     def sigma(self, sigma):
@@ -463,7 +463,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             spot: spot (or forward) price
 
         Returns:
-            Displaces spot
+            Displaced spot
         """
         return self.beta*spot + (1 - self.beta)*self.pivot
 
@@ -476,7 +476,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             texp: time to expiry
 
         Returns:
-            Displace strike
+            Displaced strike
         """
         return self.beta*strike + (1 - self.beta)*self.forward(self.pivot, texp)
 
@@ -540,13 +540,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             kkd = self.disp_strike(strike, texp)/fwdd
             lnkd = np.log(kkd)
             # self.sigma actually means self.beta * self._sigma
-            vol = (
-                    self.sigma_disp
-                    *fwdd
-                    *np.sqrt(kkd)
-                    *(1 + lnkd**2/24)
-                    /(1 + self.sigma**2*texp/24)
-            )
+            vol = self.sigma_disp * fwdd * np.sqrt(kkd) * (1 + lnkd**2/24) / (1 + self.sigma**2*texp/24)
         elif model.lower() == "bsm-approx":
             fwd = self.forward(spot, texp)
             kk = strike/fwd
@@ -558,12 +552,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
 
             # self.sigma actually means self.beta * self.sigma_disp
             vol = self.sigma_disp*(fwdd/fwd)*np.sqrt(kkd/kk)
-            vol *= (
-                    (1 + lnkd**2/24)
-                    /(1 + lnk**2/24)
-                    *(1 + vol**2*texp/24)
-                    /(1 + self.sigma**2*texp/24)
-            )
+            vol *= (1 + lnkd**2/24) / (1 + lnk**2/24) * (1 + vol**2*texp/24) / (1 + self.sigma**2*texp/24)
         else:
             vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
 
