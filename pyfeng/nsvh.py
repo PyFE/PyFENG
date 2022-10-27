@@ -1,11 +1,132 @@
+import abc
+import os
+import pandas as pd
 import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
 import scipy.optimize as spop
-from . import sabr
+
+from . import opt_smile_abc as smile
+
+class NsvhABC(smile.OptSmileABC, abc.ABC):
+    beta = 0.0  ## should be fixed as 0
+    vov, rho, lam = 0.0, 0.0, 0.0
+    model_type = "Nsvh"
+    var_process = False
+
+    def __init__(self, sigma, vov=0.1, rho=0.0, lam=0.0, intr=0.0, divr=0.0, is_fwd=False, beta=None):
+        """
+        Args:
+            sigma: model volatility at t=0
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            lam: lambda. Normal SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
+            beta: elasticity parameter. should be 0 or None.
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+        """
+        # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f"Ignoring beta = {beta}...")
+        self.lam = lam
+        self.vov = vov
+        self.rho = rho
+        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def params_kw(self):
+        params = super().params_kw()
+        extra = {"vov": self.vov, "lam": self.lam, "rho": self.rho}
+        return {**params, **extra}  # Py 3.9, params | extra
+
+    def vol_smile(self, strike, spot, texp, cp=1, model=None):
+        return super().vol_smile(strike, spot, texp, cp=cp, model="norm")
+
+    @classmethod
+    def init_benchmark(cls, set_no=None):
+        """
+        Initiate a SABR model with stored benchmark parameter sets
+
+        Args:
+            set_no: set number
+
+        Returns:
+            Dataframe of all test cases if set_no = None
+            (model, Dataframe of result, params) if set_no is specified
+
+        References:
+            - Antonov, Alexander, Konikov, M., & Spector, M. (2013). SABR spreads its wings. Risk, 2013(Aug), 58–63.
+            - Antonov, Alexandre, Konikov, M., & Spector, M. (2019). Modern SABR Analytics. Springer International Publishing. https://doi.org/10.1007/978-3-030-10656-0
+            - Antonov, Alexandre, & Spector, M. (2012). Advanced analytics for the SABR model. Available at SSRN. https://ssrn.com/abstract=2026350
+            - Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model. Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
+            - Korn, R., & Tang, S. (2013). Exact analytical solution for the normal SABR model. Wilmott Magazine, 2013(7), 64–69. https://doi.org/10.1002/wilm.10235
+            - Lewis, A. L. (2016). Option valuation under stochastic volatility II: With Mathematica code. Finance Press.
+            - von Sydow, L., ..., Haentjens, T., & Waldén, J. (2018). BENCHOP - SLV: The BENCHmarking project in Option Pricing – Stochastic and Local Volatility problems. International Journal of Computer Mathematics, 1–14. https://doi.org/10.1080/00207160.2018.1544368
+        """
+        this_dir, _ = os.path.split(__file__)
+        file = os.path.join(this_dir, "data/sabr_benchmark.xlsx")
+        df_param = pd.read_excel(file, sheet_name="Param", index_col="Sheet")
+
+        if set_no is None:
+            return df_param
+        else:
+            df_val = pd.read_excel(file, sheet_name=str(set_no))
+            param = df_param.loc[set_no]
+            args_model = {k: param[k] for k in ("sigma", "vov", "rho", "beta")}
+            args_pricing = {k: param[k] for k in ("texp", "spot")}
+
+            assert df_val.columns[0] == "Strike"
+            args_pricing["strike"] = df_val.values[:, 0]
+
+            val = df_val[param["col_name"]].values
+            is_iv = param["col_name"].startswith("IV")
+
+            m = cls(**args_model)
+
+            param_dict = {
+                "args_pricing": args_pricing,
+                "ref": param["Reference"],
+                "val": val,
+                "is_iv": is_iv,
+            }
+
+            return m, df_val, param_dict
+
+    def price_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis. Corollary 5 (Appendix B) in Choi et al. (2019)
+
+        Args:
+            texp: time to expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+
+        References:
+            - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+        """
+        vovn = self.vov * np.sqrt(texp)
+        ww = np.exp(vovn**2)
+        wlam = np.exp(self.lam * vovn**2)
+        rho2 = self.rho**2
+        rhoc2 = 1 - rho2
+
+        wf1 = (wlam * ww - 1) / (1 + self.lam)
+        wf3 = (wlam * ww**3 - 1) / (3 + self.lam)
+        wf5 = (wlam * ww**5 - 1) / (5 + self.lam)
+
+        m2 = rho2 * wlam*(ww-1) + rhoc2 * wf1
+        m3 = self.rho*np.sqrt(wlam) * (rho2*wlam*(ww-1)**2*(ww+2) + 3*rhoc2*(wf3 - wf1))
+        m4 = (rho2*wlam*(ww-1))**2 * (ww**2*(ww**2 + 2*ww + 3) - 3) + 6*rho2*rhoc2*wlam*(ww*wf5 - 2*wf3 + wf1) +\
+             1.5*rhoc2**2 * (-wlam*ww*wf5 + (wlam*ww**3 + 1)*wf3 - wf1)
+
+        skew = m3 / np.sqrt(m2**3)
+        exkurt = m4 / m2**2 - 3
+
+        return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
 
-class Nsvh1(sabr.SabrABC):
+class Nsvh1(NsvhABC):
     """
     Hyperbolic Normal Stochastic Volatility (NSVh) model with lambda=1 by Choi et al. (2019)
 
@@ -20,8 +141,7 @@ class Nsvh1(sabr.SabrABC):
         array([25.51200027, 17.87539874, 11.47308947,  6.75128331,  3.79464422])
     """
 
-    model_type = "Nsvh"
-    beta = 0.0  # beta is already defined in the parent class, but the default value set as 0
+    lam = 1.0
     is_atmvol = False
 
     def _sig0_from_atmvol(self, texp):
@@ -38,7 +158,7 @@ class Nsvh1(sabr.SabrABC):
         sig0 = self.sigma * np.sqrt(texp/2/np.pi) / price
         return sig0
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
+    def __init__(self, sigma, vov=0.1, rho=0.0, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False, beta=None):
         """
         Args:
             sigma: model volatility at t=0
@@ -50,11 +170,8 @@ class Nsvh1(sabr.SabrABC):
             is_fwd: if True, treat `spot` as forward price. False by default.
             is_atmvol: If True, use `sigma` as the ATM normal vol. False by default.
         """
-        # Make sure beta = 0
-        if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
         self.is_atmvol = is_atmvol
-        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+        super().__init__(sigma, vov, rho, lam=1.0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
@@ -88,12 +205,13 @@ class Nsvh1(sabr.SabrABC):
         d = (np.arctanh(self.rho) + np.arcsinh(((fwd - strike)*vovn/sig_sqrt - self.rho*vov_var) / rhoc)) / vovn
         return spst.norm.cdf(cp * d)
 
-    def moments_vsk(self, texp=1):
+    def price_vsk(self, texp=1):
         """
-        Variance, skewness, and ex-kurtosis
+        Variance, skewness, and ex-kurtosis of forward price.
+        It is a special case (lambda=1) of NsvhABC.price_vsk()
 
         Args:
-            texp: time-to-expiry
+            texp: time to expiry
 
         Returns:
             (variance, skewness, and ex-kurtosis)
@@ -116,27 +234,23 @@ class Nsvh1(sabr.SabrABC):
         # M3 = (1 / 4)*np.sqrt(ww)*(ww - 1)**2*(self.rho*C_31 + rho3*C_33)
         # M4 = (1 / 8)*(ww - 1)**2*(C_40 + rho2*C_42 + rho4*C_44)
 
-        m2 = (1 / 2) * (ww - 1) * (c20 + rho2 * c22)
+        m2 = 0.5 * (ww - 1) * (c20 + rho2 * c22)
 
         k0 = (ww + 1)**3 * (ww**2 + 3)
         k2 = 6 * (ww + 1)**2 * (ww**3 + ww**2 + 3 * ww - 1)
         k4 = (ww - 1) * (ww**4 + 4 * ww**3 + 10 * ww**2 + 12 * ww - 3)
 
-        skew = (
-            np.sqrt(ww * (ww - 1) / 2)
-            * (self.rho * c31 + rho3 * c33)
-            / np.power(c20 + rho2 * c22, 1.5)
-        )
+        skew = np.sqrt(ww * (ww - 1) / 2) * (self.rho * c31 + rho3 * c33) / np.power(c20 + rho2 * c22, 1.5)
         exkurt = 0.5 * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22)**2
 
-        return m2 * (self.sigma / self.vov)**2, skew, exkurt
+        return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
     def calibrate_vsk(self, var, skew, exkurt, texp=1, setval=False):
         """
         Calibrate parameters to the moments: variance, skewness, ex-kurtosis.
 
         Args:
-            texp: time-to-expiry
+            texp: time to expiry
             var: variance
             skew: skewness
             exkurt: ex-kurtosis. should be > 0.
@@ -186,7 +300,7 @@ class Nsvh1(sabr.SabrABC):
         return sig0, vov, rho
 
 
-class NsvhMc(sabr.SabrABC):
+class NsvhMc(NsvhABC):
     """
     Monte-Carlo model of Hyperbolic Normal Stochastic Volatility (NSVh) model.
 
@@ -212,29 +326,10 @@ class NsvhMc(sabr.SabrABC):
         array([-0.00328887,  0.00523714,  0.00808885,  0.0069694 ,  0.00205566])
     """
 
-    lam = 0
     n_path = int(16e4)
     rn_seed = None
     rng = np.random.default_rng(None)
     antithetic = True
-
-    def __init__(self, sigma, vov=0.0, rho=0.0, lam=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            lam: lambda. Normal SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
-            beta: elasticity parameter. should be 0 or None.
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        # Make sure beta = 0
-        if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
-        self.lam = lam
-        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def set_num_params(self, n_path=1e6, rn_seed=None, antithetic=True):
         self.n_path = int(n_path)
@@ -248,7 +343,7 @@ class NsvhMc(sabr.SabrABC):
         Simulate volatility and price pair
 
         Args:
-            texp: time-to-expiry
+            texp: time to expiry
 
         Returns: (vol, price). vol: (n_path, ), price: (n_path, 2)
 
@@ -275,11 +370,7 @@ class NsvhMc(sabr.SabrABC):
 
         path = (
             df_z,
-            (self.sigma / self.vov)
-            * (
-                self.rho * (df_z[:, None] - np.exp(0.5 * self.lam * vol_var))
-                + rhoc * df_w
-            ),
+            (self.sigma/self.vov) * (self.rho * (df_z[:, None] - np.exp(0.5*self.lam*vol_var)) + rhoc * df_w),
         )
         return path
 
@@ -290,7 +381,7 @@ class NsvhMc(sabr.SabrABC):
         Args:
             strike: strike price
             spot: spot price
-            texp: time to np.expiry
+            texp: time to expiry
             cp: 1/-1 for call/put
 
         Returns:
@@ -309,7 +400,7 @@ class NsvhMc(sabr.SabrABC):
         return df * price
 
 
-class NsvhGaussQuad(sabr.SabrABC):
+class NsvhGaussQuad(NsvhABC):
     """
     Quadrature integration method of Hyperbolic Normal Stochastic Volatility (NSVh) model.
 
@@ -346,28 +437,12 @@ class NsvhGaussQuad(sabr.SabrABC):
 
     n_quad = (7, 7)
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, lam=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            lam: lambda. Normal SABR if 0, Johnson's SU if 1 (same as `Nsvh1`)
-            beta: elasticity parameter. should be 0 or None.
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        # Make sure beta = 0
-        if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
-        self.lam = lam
-        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
-
     def price(self, strike, spot, texp, cp=1):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
-        _, _, rhoc, rho2, vovn = self._variables(1.0, texp)
+        rho2 = self.rho**2
+        rhoc = np.sqrt(1.0 - rho2)
+        vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
 
         ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
@@ -420,7 +495,9 @@ class NsvhGaussQuad(sabr.SabrABC):
 
     def cdf(self, strike, spot, texp, cp=-1):
         fwd = self.forward(spot, texp)
-        _, _, rhoc, rho2, vovn = self._variables(1.0, texp)
+        rho2 = self.rho**2
+        rhoc = np.sqrt(1.0 - rho2)
+        vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
 
         ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
