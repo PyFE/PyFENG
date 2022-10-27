@@ -26,7 +26,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
     #### vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
     _base_beta = None
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -416,7 +416,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
     _base_beta = 0  # should not be changed
     is_atmvol = False
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
