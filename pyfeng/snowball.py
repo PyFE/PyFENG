@@ -96,7 +96,7 @@ class SnowBallOption:
     n_time = texp * 365
     dt = 1/365
 
-    def __init__(self, texp, nominal_amount, coupon_rate, bound, model, n_path):
+    def __init__(self, texp, nominal_amount, coupon_rate, bound, model, model_type, n_path):
         """
         :param texp: maturity
         :param coupon_rate: risk-free rate
@@ -118,6 +118,7 @@ class SnowBallOption:
         self.knock_in = bound[0]
         self.n_path = n_path
         self.n_time = texp * 365
+        self.model_type = model_type # BSM & Heston
         # self.start_date = start_date
         # self.check_knockout_date = check_knockout_date
 
@@ -132,18 +133,23 @@ class SnowBallOption:
         S_path = np.zeros(shape=(self.n_path,self.n_time)) # record every path's stock price at each time point
         S_path[:,0] = S_0
 
-        if self.model == BSM_model:
+        if self.model_type == 'BSM':
             for i in range(self.n_time-1):
-                S_path[:,i+1] = self.model(miu=self.kwargs['miu'], sigma=self.kwargs['sigma']).stock_price(S_path[:,i], self.dt)
+                S_path[:,i+1] = self.model.stock_price(S_path[:,i], self.dt)
 
-        elif self.model == Heston_model:
-            m1 = pf.HestonMcAndersen2008(sigma=self.kwargs['sigma'], vov=self.kwargs['vov'], rho=self.kwargs['rho'], mr=self.kwargs['mr'], theta=self.kwargs['theta'], intr=self.kwargs['intr'])
+        elif self.model_type == 'Heston':
+            m1 = pf.HestonMcAndersen2008(sigma=self.model.sigma,
+                                         vov=self.model.vov,
+                                         rho=self.model.rho,
+                                         mr=self.model.mr,
+                                         theta=self.model.theta,
+                                         intr=self.model.intr)
             m1.set_num_params(n_path=self.n_path, dt=self.dt, rn_seed=12345)
             sigma_t = np.ones(self.n_path) * Heston_model.sigma
             for i in range(self.n_time-1):
+                S_path[:,i+1], sigma_tp1 = self.model.stock_price(m1, S_path[:,i], sigma_t, self.dt)
+                sigma_t = sigma_tp1
 
-                S_path[:,i+1], sigma_tp1 = self.model(sigma=self.kwargs['sigma'], vov=self.kwargs['vov'], rho=self.kwargs['rho'], mr=self.kwargs['mr'], theta=self.kwargs['theta'], intr=self.kwargs['intr']).stock_price(m1, S_path[:,i], sigma_t, self.dt)
-                sigma_t =  sigma_tp1
         self.stock_path = S_path
         # if knock out
         check_knockout_id = [i for i in range(90,self.texp*365,30)]
@@ -253,11 +259,12 @@ if __name__ == '__main__':
     coupon_rate = 0.152
     nominal_amount = 100
     bound = [0.75, 1.0]
-    model = BSM_model
+    model = BSM_model(miu = 0.0273, sigma = 0.3347)
+    model_type = 'BSM'
     n_path = 30000
     dt = 1/365
     strike = [600, 800, 900, 950, 975, 1000, 1025, 1050, 1100, 1200, 1300]
-    snowball = SnowBallOption(texp,nominal_amount, coupon_rate, bound, model, n_path)
+    snowball = SnowBallOption(texp, nominal_amount, coupon_rate, bound, model, model_type, n_path)
     snowball.set_model_params(miu = 0.0273, sigma = 0.3347)
     # iv = snowball.vol_smile(strike,spot_price=1000)
     price = snowball.price(spot_price=1000)
