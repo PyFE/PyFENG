@@ -214,9 +214,9 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
         vovn2 = vovn**2
-        w = np.exp(vovn2)
-        m = np.where(vovn2 > 1e-6, (w - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
-        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * vovn2
+        ww = np.exp(vovn2)
+        m = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
+        v = (10 + ww*(6 + ww*(3 + ww))) / 15 * m**3 * vovn2
         return m, v
 
 
