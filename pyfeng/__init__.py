@@ -2,7 +2,7 @@ from .norm import (
     Norm,
 )  # the order is sensitive because of `price_barrier` method. Put it before .bsm
 from .bsm import Bsm, BsmDisp
-from .cev import Cev
+from .cev import Cev, CevMc
 from .gamma import InvGam, InvGauss
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft, Sv32Fft
 from .sabr import (
