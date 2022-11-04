@@ -234,7 +234,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
 
         return ret
 
-    def draw_avgvar(self, dt, var_0, var_t):
+    def draw_cond_avgvar(self, dt, var_0, var_t):
         def laplace_cond(bb):
             return self.cond_avgvar_laplace(bb, dt, var_0, var_t)
 
@@ -263,7 +263,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
         phimat = laplace_cond(-1j * jj * h).real
 
         # Sample the conditional integrated variance by inverse transform sampling
-        zz = self.rv_normal()
+        zz = self.rv_normal(spawn=0)
         uu = spst.norm.cdf(zz)
 
         def root(xx):
@@ -289,7 +289,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
         var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
         np.divide(1.0, var_t, out=var_t)
 
-        avgvar = self.draw_avgvar(dt, var_0, var_t)
+        avgvar = self.draw_cond_avgvar(dt, var_0, var_t)
 
         return var_t, avgvar
 

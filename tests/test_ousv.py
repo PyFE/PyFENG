@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import scipy.integrate as scin
+import scipy.special as spsp
 import sys
 import os
 
@@ -51,6 +51,7 @@ class TestOusvKL(unittest.TestCase):
             assert np.isclose(1, sum(An6n2[ns::2])/m._a6n2sum(mrt, ns=ns, odd=1))
             assert np.isclose(1, sum(An6n2[ns+1::2])/m._a6n2sum(mrt, ns=ns, odd=2))
 
+
     def test_integarl_sin_path(self):
         """
         Vol/var integrated with Simpson method should equal to the analytic integral
@@ -70,13 +71,43 @@ class TestOusvKL(unittest.TestCase):
             zn = np.random.normal(size=(n_sin + 1, n_path))
             vol_path = m.vol_path_sin(t_grid * texp, zn)
 
-            avgvol_simp = scin.simps(vol_path, dx=1, axis=0) / n_step
-            avgvar_simp = scin.simps(vol_path**2, dx=1, axis=0) / n_step
+            avgvol_simp = np.trapz(vol_path, dx=1, axis=0) / n_step
+            avgvar_simp = np.trapz(vol_path**2, dx=1, axis=0) / n_step
             sig_t, avgvar, avgvol = m.cond_states_step(texp, m.sigma, zn=zn)
 
             assert np.all(np.isclose(1, vol_path[-1, :]/sig_t))
             assert np.all(np.isclose(1, avgvol_simp/avgvol))
             assert np.all(np.isclose(1, avgvar_simp/avgvar))
+
+    def test_MomentsIntVariance(self):
+        """
+        Unconditional mean/var == E(conditional)
+        """
+        m = pfex.OusvMcChoi2023KL(sigma=1, vov=0.75, mr=2.5)
+        zz, ww = spsp.roots_hermitenorm(31)
+        ww /= np.sqrt(2 * np.pi)
+
+        for texp in (1.0, 3.0, 5.0):
+            for sigma0 in m.sigma * np.array([0.5, 1, 2]):
+                ### Unconditional mean of avgvol and avgvar
+                mvol, _ = m.avgvol_mv(texp, sigma0)
+                mvar, _ = m.avgvar_mv(texp, sigma0)
+
+                ### Weighted average of conditional mean of avgvol and avgvar
+                sig_t = m.vol_step(texp, sigma0, zz)
+                cvol, cvar = m.cond_avgvolvar_m(texp, sigma0, sig_t)
+
+                np.testing.assert_allclose(mvol, np.sum(cvol * ww))
+                np.testing.assert_allclose(mvar, np.sum(cvar * ww))
+
+                mvol, _ = m.avgvol_mv(texp, sigma0 - m.theta, nz_theta=True)
+                mvar, _ = m.avgvar_mv(texp, sigma0 - m.theta, nz_theta=True)
+
+                sig_t = m.vol_step(texp, sigma0 - m.theta, zz, nz_theta=True)
+                cvol, cvar = m.cond_avgvolvar_m(texp, sigma0 - m.theta, sig_t, nz_theta=True)
+
+                np.testing.assert_allclose(mvol, np.sum(cvol * ww))
+                np.testing.assert_allclose(mvar, np.sum(cvar * ww))
 
 
 if __name__ == "__main__":

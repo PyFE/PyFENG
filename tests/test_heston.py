@@ -89,6 +89,28 @@ class TestHestonMc(unittest.TestCase):
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
+    def test_avgvar_mv(self):
+        """
+        mean and variance of var_t and average variance
+        """
+        #sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
+        m, *_ = pf.HestonMcChoiKwok2023PoisGe.init_benchmark(1)
+        m.set_num_params(n_path=32e4, rn_seed=123456, kk=8)
+
+        for texp in (1.0, 3.0, 5.0):
+            # analytic mean and variance
+            var_m, var_v = m.var_mv(texp)
+            # analytic mean and average variance
+            avgvar_m, avgvar_v = m.avgvar_mv(texp)
+            # MC samples of variance and avgvar
+            var_t, avgvar, *_ = m.cond_states_step(texp, m.sigma)
+
+            np.testing.assert_allclose(np.mean(var_t), var_m, rtol=0.02)
+            np.testing.assert_allclose(np.var(var_t), var_v, rtol=0.02)
+
+            np.testing.assert_allclose(np.mean(avgvar), avgvar_m, rtol=0.02)
+            np.testing.assert_allclose(np.var(avgvar), avgvar_v, rtol=0.02)
+
 
 if __name__ == "__main__":
     print(f"Pyfeng loaded from {pf.__path__}")

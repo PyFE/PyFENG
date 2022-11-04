@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import scipy.optimize as spop
+from scipy import stats as spst
 
 from . import opt_smile_abc as smile
 from . import bsm
@@ -22,9 +23,10 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
     model_type = "SABR"
     var_process = False
+    #### vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
     _base_beta = None
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -53,26 +55,24 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
         return alpha, betac, rhoc, rho2, vovn
 
-    def base_model(self, vol, is_fwd=None):
+    def base_model(self, vol):
         """
         Create base model based on _base_beta value: `Norm` for 0, Cev for (0,1), and `Bsm` for 1
         If `_base_beta` is None, use `base` instead.
 
         Args:
             vol: base model volatility
-            is_fwd: if True, treat `spot` as forward price. False by default.
 
         Returns: model
         """
-        base_beta = self._base_beta or self.beta
-        if is_fwd is None:
-            is_fwd = self.is_fwd
+        base_beta = self.beta if self._base_beta is None else self._base_beta
+
         if np.isclose(base_beta, 1):
-            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         elif np.isclose(base_beta, 0):
-            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         else:
-            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+            return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
 
     def vol_smile(self, strike, spot, texp, cp=1, model=None):
         if model is None:
@@ -161,6 +161,64 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         return 1.0 / xx_zz
 
+    @staticmethod
+    def cond_avgvar_mv(vovn, z, remove_exp=False):
+        """
+        Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
+        int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
+        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively.
+        See Appendix B in Choi et al. (2019), Eqs. (B5) and (B6) in Kennedy et al. (2012)
+
+        Args:
+            vovn: vov * sqrt(T)
+            z: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
+            remove_exp: if True, return without multiplying exp(vovn * z). False by default.
+
+        Returns:
+            Mean, M2
+
+        References:
+            - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+            - Kennedy JE, Mitra S, Pham D (2012) On the Approximation of the SABR Model: A Probabilistic Approach. Applied Mathematical Finance 19:553–586. https://doi.org/10.1080/1350486X.2011.646523
+        """
+
+        def mean(vv):
+            ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
+            m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
+            return m
+
+        m1 = mean(vovn)
+        m2 = (mean(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
+
+        if not remove_exp:
+            exp = np.exp(vovn * z)
+            m1 *= exp
+            m2 *= exp**2
+
+        return m1, m2
+
+    @staticmethod
+    def avgvar_mv(vovn):
+        """
+        mean and variance of the normalized average variance:
+        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
+
+        Args:
+            vovn: vov * sqrt(texp)
+
+        Returns:
+            (mean, variance)
+
+        References
+            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
+        """
+        vovn2 = vovn**2
+        ww = np.exp(vovn2)
+        m = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
+        v = (10 + ww*(6 + ww*(3 + ww))) / 15 * m**3 * vovn2
+        return m, v
+
 
 class SabrVolApproxABC(SabrABC):
     """
@@ -177,12 +235,12 @@ class SabrVolApproxABC(SabrABC):
             = F^(-beta)/(1-beta) * (k^(1-beta) - 1)/(k-1) where k = K/F
 
         Args:
-            strike:
-            beta:
-            fwd:
+            strike: strike price
+            beta: beta
+            fwd: forward price
 
         Returns:
-
+            integrated inv local vol
         """
 
         assert np.isscalar(beta)
@@ -192,14 +250,12 @@ class SabrVolApproxABC(SabrABC):
 
         # fall-back indices and values first
         ind_atm = np.fabs(kk - 1.0) < 1e-6
-        val = 1 - beta / 2 * (kk - 1) * (1 - (1 + beta) / 3 * (kk - 1))
+        val = 1 - beta/2 * (kk - 1) * (1 - (1 + beta)/3 * (kk - 1))
         with np.errstate(divide="ignore", invalid="ignore"):
             if abs(betac) < 1e-4:
                 val = np.where(ind_atm, val, np.log(kk) / (kk - 1))
             else:
-                val = np.where(
-                    ind_atm, val, (np.power(kk, betac) - 1) / betac / (kk - 1)
-                )
+                val = np.where(ind_atm, val, (np.power(kk, betac) - 1) / betac / (kk - 1))
 
         return val
 
@@ -243,10 +299,10 @@ class SabrVolApproxABC(SabrABC):
         if model is None:
             model = "norm" if np.isclose(self.beta, 0) else "bsm"
 
-        vol_beta = self._base_beta or self.beta
-        if (model.lower() == "bsm" and np.isclose(vol_beta, 1)) or (
-            model.lower() == "norm" and np.isclose(vol_beta, 0)
-        ):
+        vol_beta = self.beta if self._base_beta is None else self._base_beta
+
+        if (model.lower() == "bsm" and np.isclose(vol_beta, 1)) \
+                or (model.lower() == "norm" and np.isclose(vol_beta, 0)):
             vol = self.vol_for_price(strike, spot, texp)
         else:
             vol = super().vol_smile(strike, spot, texp, cp=cp, model=model)
@@ -335,18 +391,10 @@ class SabrHagan2002(SabrVolApproxABC):
             return err
 
         sol = spop.root(iv_func, np.array([np.log(vol3[1]), -1, 0.0]))
-        params = {
-            "sigma": np.exp(sol.x[0]),
-            "vov": np.exp(sol.x[1]),
-            "rho": np.tanh(sol.x[2]),
-        }
+        params = {"sigma": np.exp(sol.x[0]), "vov": np.exp(sol.x[1]), "rho": np.tanh(sol.x[2])}
 
         if setval:
-            self.sigma, self.vov, self.rho = (
-                params["sigma"],
-                params["vov"],
-                params["rho"],
-            )
+            self.sigma, self.vov, self.rho = params["sigma"], params["vov"], params["rho"]
 
         return params
 
@@ -368,7 +416,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
     _base_beta = 0  # should not be changed
     is_atmvol = False
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
         Args:
             sigma: model volatility at t=0
@@ -385,6 +433,29 @@ class SabrNormVolApprox(SabrVolApproxABC):
             print(f"Ignoring beta = {beta}...")
         self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def price_vsk(self, texp=1):
+        """
+        Variance, skewness, and ex-kurtosis of forward price. Eq. (21) in Choi et al. (2019)
+        It is a special case (lambda=0) of NsvhABC.price_vsk()
+
+        Args:
+            texp: time to expiry
+
+        Returns:
+            (variance, skewness, and ex-kurtosis)
+
+        References:
+            - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
+        """
+        vovn = self.vov * np.sqrt(texp)
+        ww = np.exp(vovn**2)
+
+        m2 = ww - 1
+        skew = self.rho * (ww+2) * np.sqrt(m2)
+        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww**3 + 3*ww**2 + 6*ww + 5) + 1)
+
+        return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
@@ -417,26 +488,11 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         array([22.04897988, 14.56240351,  8.74169054,  4.72340753,  2.28876105])
     """
 
-    def __init__(self, sigma, vov=0.0, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False, vol_beta=None):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            beta: elasticity parameter. 1.0 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-            vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
-        """
-        self._base_beta = vol_beta
-        super().__init__(sigma, vov, rho, beta, intr, divr, is_fwd)
-
     def vol_for_price(self, strike, spot, texp):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        vol_beta = self._base_beta or self.beta
+        vol_beta = self.beta if self._base_beta is None else self._base_beta
         vol_betac = 1.0 - vol_beta
 
         fwd, _, _ = self._fwd_factor(spot, texp)
@@ -528,7 +584,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        vol_beta = self._base_beta or self.beta
+        vol_beta = self.beta if self._base_beta is None else self._base_beta
         vol_betac = 1.0 - vol_beta
 
         fwd, _, _ = self._fwd_factor(spot, texp)
@@ -545,18 +601,14 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
 
         # qq_ratio = qq_vol_beta / qq_beta
         tmp = self._int_inv_locvol(kk, self.beta)
-        qq_ratio = (
-            1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
-        )
+        qq_ratio = 1.0 if self._base_beta is None else self._int_inv_locvol(kk, vol_beta) / tmp
 
         zz = vov_over_alpha_safe * tmp * (kk - 1.0)  # zeta = (vov/sigma0) q
         hh = self._hh(zz, self.rho)
         v_m = self._vv(zz, self.rho)
 
         if abs(betac) < 0.001:
-            gg_diff = (
-                0.5 * self.beta * self.rho / (1.0 - rho2) * (v_m - 1.0 - self.rho * zz)
-            )
+            gg_diff = 0.5 * self.beta * self.rho / (1.0 - rho2) * (v_m - 1.0 - self.rho * zz)
         else:
             t1 = (v_m + self.rho + zz) / rhoc  # array
             t2 = (1 + self.rho) / rhoc  # scalar

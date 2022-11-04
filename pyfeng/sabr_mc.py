@@ -8,42 +8,63 @@ from functools import partial
 import scipy.integrate as scint
 from . import sabr
 from . import sv_abc as sv
-from . import cev
 
 
 class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
 
-    def vol_step(self, dt, sigma_0):
+    def vol_step(self, dt, log=False):
         """
-        Stepping volatility according to OU process dynamics
+        SABR sigma after dt according to the volatility dynamics (GBM).
+        Because of the multiplicative property of sigma, we assume sigma_0 = 1
+
+        Args:
+            dt: time step
+            log: if True, return log(sigma). False by default.
+        Returns:
+            sigma_dt
+        """
+        vovn = self.vov * np.sqrt(dt)
+        zz = self.rv_normal(spawn=0)
+
+        if log:
+            return vovn * (zz - vovn/2)
+        else:
+            return np.exp(vovn * (zz - vovn/2))
+
+    @abc.abstractmethod
+    def cond_states_step(self, dt, sigma_0):
+        """
+        Final variance after dt and average variance over (0, dt) given sigma_0.
+        `sigma_0` should be an array of (self.n_path, )
 
         Args:
             dt: time step
             sigma_0: initial volatility
 
         Returns:
-            sigma after dt
+            (sigma after dt, average variance during dt)
         """
-        vovn = self.vov * np.sqrt(dt)
-        zz = self.rv_normal(spawn=0)
-        sigma_t = sigma_0 * np.exp(vovn * (zz - vovn/2))
+        return NotImplementedError
 
-        return sigma_t
-
-    @abc.abstractmethod
-    def cond_states_step(self, dt, sigma_0):
+    def draw_log_return(self, dt, sigma_0, sigma_t, avgvar):
         """
-        Final variance and integrated variance over dt given var_0
-        The int_var is normalized by dt
+        Samples log return, log(S_t/S_0). Currently implemented only for beta=1
 
         Args:
             dt: time step
-            sigma_0: initial sigma
+            sigma_0: initial variance
+            sigma_t: final variance
+            avgvar: average variance
 
         Returns:
-            (sigma_t, avgvar)
+            log return (self.n_path, )
         """
-        return NotImplementedError
+
+        assert np.isclose(self.beta, 1.0)
+        ln_m = (self.intr - self.divr)*dt + self.rho/self.vov*(sigma_t - sigma_0) - 0.5*avgvar*dt
+        ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        zn = self.rv_normal(spawn=5)
+        return ln_m + ln_sig * zn
 
     def cond_spot_sigma(self, texp, fwd, mu=0):
         """
@@ -57,7 +78,6 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (spot ratio, sigma ratio)
         """
-
         tobs = self.tobs(texp)
         dt = np.diff(tobs, prepend=0)
         n_dt = len(dt)
@@ -102,7 +122,8 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
         vol_ratio = np.expand_dims(vol_ratio[ind], -1)
 
-        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
         price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
         price = fwd * np.sum(price_vec, axis=0) / self.n_path
 
@@ -116,8 +137,9 @@ class SabrMcTimeDisc(SabrMcABC):
     """
 
     def cond_states_step(self, dt, sigma_0):
-        sigma_t = self.vol_step(dt, sigma_0)
-        avgvar = (sigma_0**2 + sigma_t**2) / 2
+        sigma_t = self.vol_step(dt)
+        avgvar = sigma_0**2 * (1.0 + sigma_t**2) / 2
+        sigma_t *= sigma_0
 
         return sigma_t, avgvar
 
@@ -173,7 +195,6 @@ class SabrMcTimeDisc(SabrMcABC):
 
         return spot_cond, vol_cond, log_rn_deriv
 
-
     def mass_zero(self, spot, texp, log=False, mu=0):
 
         assert 0 < self.beta < 1
@@ -194,7 +215,9 @@ class SabrMcTimeDisc(SabrMcABC):
         assert np.isclose(fwd_ratio, 1.0).all()
         log_rn_deriv = 0.0  ## currently not used
 
-        base_model = cev.Cev(sigma=alpha * vol_ratio, beta=self.beta)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
+
         if log:
             log_mass_grid = base_model.mass_zero(1.0, texp, log=True) + log_rn_deriv
             log_mass_max = np.amax(log_mass_grid)
@@ -272,7 +295,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         Return the original function from transform function
 
         Args:
-            u: original variable
+            u: dummy variable
             vovn: vov * sqrt(texp)
             sigma_t: final volatility
 
@@ -281,44 +304,63 @@ class SabrMcCai2017Exact(SabrMcABC):
         """
 
         ## index from 0 to m + n
-        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn) / (2*u), vovn, sigma_t).real
-        term1 = 0.5 * ss_j[0]
-        ss_j[1::2] *= -1
-        np.cumsum(ss_j, out=ss_j)
-        term2 = np.sum(self.comb_coef * ss_j[self.n_euler:])
+        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn[:, None]) / (2*u), vovn, sigma_t).real
+        term1 = 0.5 * ss_j[0, :]
+        ss_j[1::2, :] *= -1
+        np.cumsum(ss_j, axis=0, out=ss_j)
+        term2 = np.sum(self.comb_coef[:, None] * ss_j[self.n_euler:, :], axis=0)
 
         origin_L = np.exp(self.m_inv/2) / u * (-term1 + term2)
 
+        if np.isscalar(u):
+            origin_L = origin_L[0]
+
         return origin_L
 
-    def draw_cond_avgvar(self, dt, sigma_0, sigma_final):
+    def draw_cond_avgvar(self, dt, sigma_t):
         """
-        Normalized integraged variance samples.
+        Draw normalized average variance given sigma_t (and sigma_0 = 1)
+
+        int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | exp(Z_1 - vovn/2) = sigma_t
 
         Args:
             dt: time step
-            sigma_final: final volatility
+            sigma_t: final sigma given sigma_0=1
 
         Returns:
-            (n_path, 1) array
+            (n_path, ) array
         """
         vovn = self.vov * np.sqrt(dt)
+        uu = self.rv_uniform(spawn=2)
+        avgvar = np.zeros_like(sigma_t)
 
-        u_rn = self.rv_uniform(spawn=2)
-        int_var = np.zeros(self.n_path)
+        for i in range(len(sigma_t)):
+            obj_func = lambda x: self.inv_laplace(x, vovn, sigma_t[i]) - uu[i]
+            sol = spop.brentq(obj_func, 1e-7, 1e5)
+            avgvar[i] = 1 / sol
 
-        for i in range(self.n_path):
-            obj_func = lambda x: self.inv_laplace(x, vovn, sigma_final[i]) - u_rn[i]
+        """
+        ## Vectorized newton method, but doesn't work well
+        
+        zz = self.rv_normal(spawn=2)
+        uu = spst.norm.cdf(zz)
+        ln_m, m2 = self.cond_avgvar_mv(vovn, np.log(sigma_t) / vovn)
+        ln_sig = np.sqrt(np.log(m2 / ln_m ** 2))
+        print(sigma_t, '\n', ln_sig, '\n', uu)
 
-            sol = spop.brentq(obj_func, 0.000001, 100)
-            int_var[i] = 1 / sol
+        def obj_func(z):
+            x = ln_m * np.exp(ln_sig * (z - ln_sig / 2))
+            return self.inv_laplace(x, vovn, sigma_t) - uu
 
-        return int_var
+        avgvar = 1 / spop.newton(obj_func, zz)
+        """
+        return avgvar
 
     def cond_states_step(self, dt, sigma_0):
 
-        sigma_t = self.vol_step(dt, sigma_0)
-        avgvar = self.draw_cond_avgvar(dt, sigma_0, sigma_t)
+        sigma_t = self.vol_step(dt)  ## ratio
+        avgvar = sigma_0**2 * self.draw_cond_avgvar(dt, sigma_t)
+        sigma_t *= sigma_0
 
         return sigma_t, avgvar
 
