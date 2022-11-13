@@ -8,7 +8,6 @@ from .subord_bm import VarGammaQuad, ExpNigQuad
 # SABR / OUSV models for research
 from .sabr_int import SabrMixture
 from .sabr_mc import SabrMcCai2017Exact
-from .ousv import OusvSchobelZhu1998, OusvMcTimeStep, OusvMcChoi2023KL
 
 # Basket-Asian from ASP 2021
 from .multiasset_Ju2002 import BsmBasketAsianJu2002, BsmContinuousAsianJu2002

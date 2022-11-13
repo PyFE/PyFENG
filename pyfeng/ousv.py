@@ -438,7 +438,7 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         return var_r / texp  # annualized
 
 
-class OusvMcTimeStep(OusvMcABC):
+class OusvMcTimeDisc(OusvMcABC):
     """
     OUSV model with conditional Monte-Carlo simulation
     The SDE of SV is: d sigma_t = mr (theta - sigma_t) dt + vov dB_T

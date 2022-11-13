@@ -6,7 +6,6 @@ import os
 
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
-import pyfeng.ex as pfex
 
 
 class TestOusvKL(unittest.TestCase):
@@ -29,7 +28,7 @@ class TestOusvKL(unittest.TestCase):
             An2n2 = An2 / n_pi_2
             An6n2 = n_pi_2 * An6
 
-            m = pfex.OusvMcChoi2023KL(1, 1, 0, 1, theta=mrt)
+            m = pf.OusvMcChoi2023KL(1, 1, 0, 1, theta=mrt)
 
             assert np.isclose(1, sum(An2[ns:])/m._a2sum(mrt, ns=ns), atol=1e-4)
             assert np.isclose(1, sum(An2[ns::2])/m._a2sum(mrt, ns=ns, odd=1), atol=1e-4)
@@ -60,7 +59,7 @@ class TestOusvKL(unittest.TestCase):
 
         """
         sheet_no = 1
-        m, p, rv = pfex.OusvMcChoi2023KL.init_benchmark(sheet_no)
+        m, p, rv = pf.OusvMcChoi2023KL.init_benchmark(sheet_no)
         n_sin = 6
         n_path = 50
         m.set_num_params(n_path=n_path, rn_seed=123456, n_sin=4, dt=None)
@@ -83,7 +82,7 @@ class TestOusvKL(unittest.TestCase):
         """
         Unconditional mean/var == E(conditional)
         """
-        m = pfex.OusvMcChoi2023KL(sigma=1, vov=0.75, mr=2.5)
+        m = pf.OusvMcChoi2023KL(sigma=1, vov=0.75, mr=2.5)
         zz, ww = spsp.roots_hermitenorm(31)
         ww /= np.sqrt(2 * np.pi)
 
