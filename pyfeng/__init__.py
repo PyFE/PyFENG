@@ -4,7 +4,6 @@ from .norm import Norm
 from .bsm import Bsm, BsmDisp
 from .cev import Cev, CevMc
 from .gamma import InvGam, InvGauss
-<<<<<<< HEAD
 
 # FFT related models
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft, Sv32Fft
@@ -17,17 +16,7 @@ from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 
 # Other SV models
 from .garch import GarchMcTimeDisc, GarchUncorrBaroneAdesi2004
-=======
-from .sv_fft import HestonFft,RoughHestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft, Sv32Fft
-from .sabr import (
-    SabrHagan2002,
-    SabrNormVolApprox,
-    SabrLorig2017,
-    SabrChoiWu2021H,
-    SabrChoiWu2021P,
-)
-from .garch import GarchMcTimeStep, GarchUncorrBaroneAdesi2004
->>>>>>> origin/rheston_sunan
+
 from .heston import HestonUncorrBallRoma1994
 from .heston_mc import (
     HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
