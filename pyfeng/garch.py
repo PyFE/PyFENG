@@ -7,7 +7,7 @@ from . import bsm
 
 class GarchUncorrBaroneAdesi2004(sv.SvABC):
     """
-    Barone-Adesi et al (2004)'s approximation pricing formula for European options under uncorrelated (rho=0) GARCH diffusion model.
+    Barone-Adesi et al. (2004)'s approximation pricing formula for European options under uncorrelated (rho=0) GARCH diffusion model.
     Up to 2nd order is implemented.
 
     References:
@@ -26,8 +26,8 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         Eqs. (12)-(13) in Barone-Adesi et al. (2005)
 
         Args:
-            var0: initial variance
             texp: time step
+            var0: initial variance
 
         Returns:
             mean, variance
@@ -53,8 +53,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         M2c_3 = -vov2*(theta2*(4*mr*(3 - mr_t) + (2*mr_t - 5)*vov2) + term2*var0*(2*theta + var0))
 
         M2c_4 = 2*e_mr*vov2
-        M2c_4 *= 2*theta2*(mr_t*mr - (1 + mr_t)*vov2) \
-                 + var0*(2*mr*theta*(1 + texp*term1) + term1*var0)
+        M2c_4 *= 2*theta2*(mr_t*mr - (1 + mr_t)*vov2) + var0*(2*mr*theta*(1 + texp*term1) + term1*var0)
 
         M2c = M2c_1/mr2 + M2c_2/(term1*term2)**2 + M2c_3/mr2/term2**2 + M2c_4/mr2/term1**2
         M2c /= texp**2
@@ -79,7 +78,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         return price
 
 
-class GarchMcTimeStep(sv.SvABC, sv.CondMcBsmABC):
+class GarchMcTimeDisc(sv.SvABC, sv.CondMcBsmABC):
     """
     Garch model with conditional Monte-Carlo simulation
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T

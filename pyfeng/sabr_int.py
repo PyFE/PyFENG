@@ -2,7 +2,6 @@ import abc
 import numpy as np
 from . import sabr
 import scipy.special as spsp
-import scipy.stats as spst
 from . import opt_smile_abc as smile
 
 
@@ -11,37 +10,21 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
     correct_fwd = False
 
     @staticmethod
-    def avgvar_mv(vovn):
-        """
-        mean and variance of the normalized average variance:
-        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T)
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            (mean, variance)
-        """
-        v2 = vovn**2
-        w = np.exp(v2)
-        m = np.where(v2 > 1e-6, (w - 1)/v2, 1 + v2/2 * (1 + v2/3))
-        v = (10 + w*(6 + w*(3 + w))) / 15 * m**3 * v2
-        return m, v
-
-    @staticmethod
     def avgvar_lndist(vovn):
         """
         Lognormal distribution parameters (mean, sigma) of the normalized average variance:
         (1/T) \int_0^T e^{2*vov Z_t - vov^2 t} dt = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T)
+        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
 
         Args:
             vovn: vov * sqrt(texp)
 
         Returns:
             (m1, sig)
-            True distribution should be multiplied by sigma^2*t
+            True distribution should be multiplied by sigma^2 * texp
+
+        References
+            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
         v2 = vovn**2
         w = np.exp(v2)
@@ -49,37 +32,6 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         m2m1ratio = (5 + w * (4 + w * (3 + w * (2 + w)))) / 15
         sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
         return m1, sig
-
-    @staticmethod
-    def cond_avgvar_mv(vovn, z, remove_exp=False):
-        """
-        Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
-        int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
-        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively
-
-        Args:
-            vovn: vov * sqrt(T)
-            z: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
-            remove_exp: if True, return without multiplying exp(vovn * z). False by default.
-
-        Returns:
-            Mean, M2
-        """
-
-        def mean(vv):
-            ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
-            m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
-            return m
-
-        m1 = mean(vovn)
-        m2 = (mean(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
-
-        if not remove_exp:
-            exp = np.exp(vovn * z)
-            m1 *= exp
-            m2 *= exp**2
-
-        return m1, m2
 
     @abc.abstractmethod
     def cond_spot_sigma(self, texp, fwd):
@@ -112,7 +64,8 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         vol_ratio = np.expand_dims(vol_ratio[ind], -1)
         ww = np.expand_dims(ww[ind], -1)
 
-        base_model = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
         price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
         price = fwd * np.sum(price_vec * ww, axis=0)
         return price
@@ -127,16 +80,17 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
             fwd_ratio /= np.sum(fwd_ratio*ww)
         assert np.isclose(np.sum(ww), 1)
 
-        base_m = self.base_model(alpha * vol_ratio, is_fwd=True)
+        base_model = self.base_model(alpha * vol_ratio)
+        base_model.is_fwd = True
 
         if log:
-            log_mass = np.log(ww) + base_m.mass_zero(fwd_ratio, texp, log=True)
+            log_mass = np.log(ww) + base_model.mass_zero(fwd_ratio, texp, log=True)
             log_max = np.amax(log_mass)
             log_mass -= log_max
             log_mass = log_max + np.log(np.sum(np.exp(log_mass)))
             return log_mass
         else:
-            mass = base_m.mass_zero(fwd_ratio, texp, log=False)
+            mass = base_model.mass_zero(fwd_ratio, texp, log=False)
             mass = np.sum(mass * ww)
             return mass
 

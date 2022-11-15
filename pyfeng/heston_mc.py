@@ -114,15 +114,15 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
     @abc.abstractmethod
     def cond_states_step(self, dt, var_0):
         """
-        Final variance and integrated variance over dt given var_0
-        The int_var is normalized by dt
+        Final variance after dt and average variance over (0, dt) given var_0.
+        `var_0` should be an array of (self.n_path, )
 
         Args:
             dt: time step
             var_0: initial variance
 
         Returns:
-            (var_t, avgvar)
+            (variance after dt, average variance during dt)
         """
         return NotImplementedError
 
@@ -194,11 +194,11 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             log return
         """
-        mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
-                  + (self.intr - self.divr - 0.5 * avgvar) * dt
-        sigma_ln = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        ln_m = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
+            + (self.intr - self.divr - 0.5 * avgvar) * dt
+        ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
         zn = self.rv_normal(spawn=5)
-        return mean_ln + sigma_ln * zn
+        return ln_m + ln_sig * zn
 
     def return_var_realized(self, texp, cond=False):
         """
@@ -805,7 +805,7 @@ class HestonMcAndersen2008(HestonMcABC):
            variance after dt
         """
 
-        m, psi = self.var_mv(var_0, dt)  # put variance into psi
+        m, psi = self.var_mv(dt, var_0)  # put variance into psi
         psi /= m**2
 
         zz = self.rv_normal(spawn=0)
@@ -953,7 +953,9 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
             ratio
         """
 
-        dt = dt or self.dt
+        if dt is None:
+            dt = self.dt
+
         mean, var = self.avgvar_mv(texp)
 
         m_x, v_x = self.x1star_avgvar_mv(dt, kk=0)

@@ -12,6 +12,7 @@ from . import ousv
 from . import heston
 from . import rheston
 
+
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
     x_lim = 200  # integratin limit
@@ -365,9 +366,7 @@ class OusvFft(ousv.OusvABC, FftABC):
         s2g3 = vov**2*gamma1**3
 
         D = (mr - gamma1*sincos/cossin)/vov**2
-        B = ((ktg3 + gamma3*sincos)/cossin - mr*theta*gamma1)/(
-                vov**2*gamma1
-        )
+        B = ((ktg3 + gamma3*sincos)/cossin - mr*theta*gamma1)/(vov**2*gamma1)
         C = (
                 -0.5*np.log(cossin)
                 + 0.5*mr*texp
