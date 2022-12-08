@@ -162,10 +162,13 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return 1.0 / xx_zz
 
     @staticmethod
-    def cond_avgvar_mv(vovn, z, remove_exp=False):
+    def cond_avgvar_mnc2(vovn, z, remove_exp=False):
         """
-        Mean and M2 (2nd moment) of the average variance conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
+        First 2 non-central (raw) momments (e.g., mean and M2) of the conditional average variance:
+
         int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
+             conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
+
         True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively.
         See Appendix B in Choi et al. (2019), Eqs. (B5) and (B6) in Kennedy et al. (2012)
 
@@ -182,13 +185,13 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             - Kennedy JE, Mitra S, Pham D (2012) On the Approximation of the SABR Model: A Probabilistic Approach. Applied Mathematical Finance 19:553–586. https://doi.org/10.1080/1350486X.2011.646523
         """
 
-        def mean(vv):
+        def m1ftn(vv):
             ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
             m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
             return m
 
-        m1 = mean(vovn)
-        m2 = (mean(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
+        m1 = m1ftn(vovn)
+        m2 = (m1ftn(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
 
         if not remove_exp:
             exp = np.exp(vovn * z)
@@ -198,7 +201,36 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return m1, m2
 
     @staticmethod
-    def avgvar_mv(vovn):
+    def avgvar_mnc4(vovn):
+        """
+        First 4 non-central(raw) moments of the normalized average variance:
+        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
+
+        The implementation is not stable for very small value of vovn. Use avgvar_mvsk instead.
+        This is used for testing the validity of avgvar_mvsk method.
+
+        Args:
+            vovn: vov * sqrt(texp)
+
+        Returns:
+            np.array([m1, n2, m3, m4])
+
+        References
+            - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
+        """
+        vovn2 = vovn**2
+        ww = np.exp(vovn2)
+        m1 = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
+        m2 = (ww**6 - 6*ww + 5)/15/vovn2**2
+        m3 = (ww**15 - 7*ww**6 + 27*ww - 21)/315/vovn2**3
+        m4 = (5*ww**28 - 44*ww**15 + 182*ww**6 - 572*ww + 429)/45045/vovn2**4
+
+        return np.array([m1, m2, m3, m4])
+
+
+    @staticmethod
+    def avgvar_mvsk(vovn):
         """
         mean and variance of the normalized average variance:
         (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
@@ -216,8 +248,31 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         vovn2 = vovn**2
         ww = np.exp(vovn2)
         m = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
-        v = (10 + ww*(6 + ww*(3 + ww))) / 15 * m**3 * vovn2
-        return m, v
+
+        # (10 + 6 x + 3 x^2 + x^3)/15   *   (x - 1)^3
+
+        m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
+        v = m2 * m**3 * vovn2   # * (ww-1)^3
+
+        # 210 x^4 + 126 x^5 + 70 x^6 + 35 x^7 + 15 x^8 + 5 x^9 + x^10
+        # 336 + 456 x + 432 x^2 + 330 x^3       *        (x - 1)^5 / 315
+
+        m3 = 210 + ww*(126 + ww*(70 + ww*(35 + ww*(15 + ww*(5 + ww)))))
+        m3 = (336 + ww*(456 + ww*(432 + ww*(330 + ww*m3)))) / 315  # * (ww-1)^5
+        s = m3 / np.power(m2, 1.5) * np.sqrt(m * vovn2)  # skewness
+
+        # + 3960 x^15 + 2310 x^16 + 1260 x^17 + 630 x^18 + 280 x^19 + 105 x^20 + 30 x^21 + 5 x^22
+        # + 39936 x^9 + 30368 x^10 + 21840 x^11 + 15015 x^12 + 10010 x^13 + 6435 x^14
+        # + 3432 x^3 + 37037 x^4 + 54054 x^5 + 59241 x^6 + 56576 x^7 + 49296 x^8
+        # - 56628 - 60632 x - 34320 x^2           *        (x - 1)^6 / 45045
+
+        m4 = 3960 + ww*(2310 + ww*(1260 + ww*(630 + ww*(280 + ww*(105 + ww*(30 + 5*ww))))))
+        m4 = 39936 + ww*(30368 + ww*(21840 + ww*(15015 + ww*(10010 + ww*(6435 + ww*m4)))))
+        m4 = 3432 + ww*(37037 + ww*(54054 + ww*(59241 + ww*(56576 + ww*(49296 + ww*m4)))))
+        m4 = (-56628 + ww*(-60632 + ww*(-34320 + ww*m4))) / 45045  # * (ww-1)^6
+        k = m4 / m2**2 - 3.0  # ex-kurtosis
+
+        return m, v, s, k
 
 
 class SabrVolApproxABC(SabrABC):

@@ -1,9 +1,9 @@
 import unittest
-import copy
 import numpy as np
 import sys
 import os
 import scipy.special as spsp
+import statsmodels.stats.moment_helpers as sms_m
 
 sys.path.insert(0, os.getcwd())
 import pyfeng as pf
@@ -89,16 +89,22 @@ class TestSabr(unittest.TestCase):
         """
         Various test on momoents of SABR/NSVh
         """
-
-        #### Unconditional mean/var == E(conditional)
         m = pf.SabrNormVolApprox(1)
+
+        #### Unconditional avgvar: mvsk versus non-central moments
+        for vovn in [0.2, 0.4, 0.8, 1.0]:
+            m1, v, s, k = m.avgvar_mvsk(vovn)
+            mvsk = sms_m.mnc2mvsk(m.avgvar_mnc4(vovn))
+            np.testing.assert_allclose(np.array([m1, v, s, k]), mvsk)
+
+        #### Unconditional avgvar: mean/var == E(conditional mean/var)
         for vovn in [1.1, 1.2, 1.4, 1.6]:
             zhat, ww = spsp.roots_hermitenorm(31)
             ww /= np.sqrt(2*np.pi)
             zhat -= 0.5*vovn
 
-            m1, v = m.avgvar_mv(vovn)
-            cond_m1, cond_m2 = m.cond_avgvar_mv(vovn, zhat, False)
+            m1, v, *_ = m.avgvar_mvsk(vovn)
+            cond_m1, cond_m2 = m.cond_avgvar_mnc2(vovn, zhat, False)
 
             np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
             np.testing.assert_allclose(np.sum(cond_m2 * ww), (m1**2 + v))
@@ -117,7 +123,7 @@ class TestSabr(unittest.TestCase):
         for vovn in (0.1, 0.2, 0.5, 1.2):
             m0 = pf.SabrNormVolApprox(sigma=vovn, rho=0, vov=vovn)
             p_var, skew, kurt = m0.price_vsk(texp=1)
-            i_m, i_var = m0.avgvar_mv(vovn)
+            i_m, i_var, *_ = m0.avgvar_mvsk(vovn)
 
             ### E(X^2_IntVar) = vovn^2 * E(I)
             np.testing.assert_allclose(p_var, i_m*vovn**2)
