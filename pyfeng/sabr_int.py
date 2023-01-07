@@ -165,8 +165,8 @@ class SabrMixture(SabrMixtureABC):
 
     def cond_avgvar(self, vovn, zhat):
 
-        m1, m2 = self.cond_avgvar_mnc2(vovn, zhat)
-        m1m2_ratio = m2 / m1**2
+        m1, m2 = self.cond_avgvar_mnc4(vovn, zhat)
+        m2_m1sq_ratio = m2 / m1**2
 
         w2 = np.ones_like(zhat)
 
@@ -174,10 +174,10 @@ class SabrMixture(SabrMixtureABC):
             r_var = m1
             r_vol = np.sqrt(r_var)
         elif self.dist.lower() == 'ln':
-            r_var = m1 / np.sqrt(np.sqrt(m1m2_ratio))
+            r_var = m1 / np.sqrt(np.sqrt(m2_m1sq_ratio))
             r_vol = np.sqrt(r_var)
         elif self.dist.lower() == 'ig':  # inverse Gaussian
-            lam = m1 / (m1m2_ratio - 1.0)
+            lam = m1 / (m2_m1sq_ratio - 1.0)
             r_var = 1 - 1 / (8 * lam) * (1 - 9 / (2 * 8 * lam) * (1 - 25 / (6 * 8 * lam)))
             r_var[lam < 100] = spsp.kv(0, lam[lam < 100]) / spsp.kv(-0.5, lam[lam < 100])
             r_var = m1 * r_var**2
