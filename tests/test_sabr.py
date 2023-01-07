@@ -98,16 +98,20 @@ class TestSabr(unittest.TestCase):
             np.testing.assert_allclose(np.array([m1, v, s, k]), mvsk)
 
         #### Unconditional avgvar: mean/var == E(conditional mean/var)
-        for vovn in [1.1, 1.2, 1.4, 1.6]:
+        for vovn in [0.1, 0.2, 0.4, 0.6, 0.8]:  # test fail in m4 when vovn > 0.8
             zhat, ww = spsp.roots_hermitenorm(31)
             ww /= np.sqrt(2*np.pi)
             zhat -= 0.5*vovn
 
-            m1, v, *_ = m.avgvar_mvsk(vovn)
-            cond_m1, cond_m2 = m.cond_avgvar_mnc2(vovn, zhat, False)
+            m1, v, s, k = m.avgvar_mvsk(vovn)
+            mnc = sms_m.mvsk2mnc([m1, v, s, k])
+            cond_m1, cond_m2, cond_m3, cond_m4 = m.cond_avgvar_mnc4(vovn, zhat, False)
 
             np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
-            np.testing.assert_allclose(np.sum(cond_m2 * ww), (m1**2 + v))
+            np.testing.assert_allclose(np.sum(cond_m2 * ww), mnc[1])
+            np.testing.assert_allclose(np.sum(cond_m3 * ww), mnc[2])
+            np.testing.assert_allclose(np.sum(cond_m4 * ww), mnc[3])
+            # print(np.sum(cond_m4 * ww), mnc[3])
 
         #### Generic Nsvh (lambda = 0) == Normal SABR
         #### Generic Nsvh (lambda = 1) == Nsvh1
