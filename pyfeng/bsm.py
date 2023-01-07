@@ -1,5 +1,7 @@
 import numpy as np
 import scipy.stats as spst
+import scipy.special as spsp
+import scipy.optimize as spopt
 import warnings
 
 from . import opt_abc as opt
@@ -60,16 +62,88 @@ class Bsm(opt.OptAnalyticABC):
         price *= cp*disc_fac
         return price
 
+    @staticmethod
+    def d1sigma(d1, ln_k):
+        sig = np.sqrt(d1**2 + 2*ln_k) + np.abs(d1)
+        sig = np.divide(2*ln_k, sig, out=np.array(sig), where=d1 < 0.)
+        return sig
+
+    @staticmethod
+    def price_std(sigma, ln_k):
+        # don't directly compute d1 just in case sigma_std is infty
+        # handle the case ln_k = sigma = 0 (ATM)
+        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
+        d2 = d1 - 0.5*sigma
+        d1 += 0.5*sigma
+        #price = spst.norm.cdf(d1) - strike_std * spst.norm.cdf(d2)
+        price = 0.5*np.exp(-d1**2/2) * (spsp.erfcx(-d1/np.sqrt(2)) - spsp.erfcx(-d2/np.sqrt(2)))
+        return price
+
+    @staticmethod
+    def vega_std(sigma, ln_k):
+        # don't directly compute d1 just in case sigma_std is infty
+        # handle the case ln_k = sigma = 0 (ATM)
+        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
+        d1 += 0.5*sigma
+        vega = spst.norm._pdf(d1)
+        return vega
+
+    @staticmethod
+    def price_vega_ratio(sigma, ln_k):
+        # don't directly compute d1 just in case sigma_std is infty
+        # handle the case ln_k = sigma = 0 (ATM)
+        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
+        d2 = d1 - 0.5*sigma
+        d1 += 0.5*sigma
+        ratio = np.sqrt(np.pi/2)*(spsp.erfcx(-d1/np.sqrt(2)) - spsp.erfcx(-d2/np.sqrt(2)))
+        return ratio
+
+    @staticmethod
+    def price_delta_ratio(sigma, ln_k):
+        # don't directly compute d1 just in case sigma_std is infty
+        # handle the case ln_k = sigma = 0 (ATM)
+        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
+        d2 = d1 - 0.5*sigma
+        d1 += 0.5*sigma
+        ratio = 1.0 - spsp.erfcx(-d2/np.sqrt(2))/spsp.erfcx(-d1/np.sqrt(2))
+        return ratio
+
     def vega(self, strike, spot, texp, cp=1):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
+        d1 = np.log(fwd/strike)/sigma_std
+        d1 += 0.5*sigma_std
 
         # formula according to wikipedia
-        vega = df*fwd*spst.norm.pdf(d1)*np.sqrt(texp)
+        vega = df*fwd*spst.norm._pdf(d1)*np.sqrt(texp)
         return vega
+
+    def vega2(self, strike, spot, texp, cp=1):
+        """
+        Second derivative w.r.t. sigma.
+
+        Args:
+            strike:
+            spot:
+            texp:
+            cp:
+
+        Returns:
+
+        """
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
+
+        # formula according to wikipedia
+        vega2 = df*fwd*spst.norm._pdf(d1)*np.sqrt(texp) * d1*d2/sigma_std
+        return vega2
+
 
     def d2_var(self, strike, spot, texp, cp=1):
         """
@@ -131,7 +205,8 @@ class Bsm(opt.OptAnalyticABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
-        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
+        d1 = np.log(fwd/strike)/sigma_std
+        d1 += 0.5*sigma_std
 
         delta = cp*spst.norm.cdf(cp*d1)  # formula according to wikipedia
         delta *= df if self.is_fwd else divf
@@ -142,7 +217,8 @@ class Bsm(opt.OptAnalyticABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
-        d2 = np.log(fwd/strike)/sigma_std - 0.5*sigma_std
+        d2 = np.log(fwd/strike)/sigma_std
+        d2 -= 0.5*sigma_std
         cdf = spst.norm.cdf(cp*d2)  # formula according to wikipedia
         return cdf
 
@@ -151,11 +227,10 @@ class Bsm(opt.OptAnalyticABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
-        d1 = np.log(fwd/strike)/sigma_std + 0.5*sigma_std
+        d1 = np.log(fwd/strike)/sigma_std
+        d1 += 0.5*sigma_std
 
-        gamma = (
-                df*spst.norm.pdf(d1)/fwd/sigma_std
-        )  # formula according to wikipedia
+        gamma = df*spst.norm.pdf(d1)/fwd/sigma_std  # formula according to wikipedia
         if not self.is_fwd:
             gamma *= (divf/df)**2
         return gamma
@@ -170,15 +245,14 @@ class Bsm(opt.OptAnalyticABC):
         d1 += 0.5*sigma_std
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
-        theta = -0.5*spst.norm.pdf(d1)*fwd*self.sigma/np.sqrt(
-            texp
-        ) - cp*self.intr*strike*spst.norm.cdf(cp*d2)
+        theta = -0.5*spst.norm.pdf(d1)*fwd*self.sigma/np.sqrt(texp) \
+                - cp*self.intr*strike*spst.norm.cdf(cp*d2)
         theta *= df
         return theta
 
-    def _impvol_newton(self, price, strike, spot, texp, cp=1, setval=False):
+    def impvol(self, price, strike, spot, texp, cp=1, setval=False):
         """
-        BSM implied volatility with Newton's method
+        BSM implied volatility with Newton's method.
 
         Args:
             price: option price
@@ -191,6 +265,7 @@ class Bsm(opt.OptAnalyticABC):
         Returns:
             implied volatility
         """
+
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         strike_std = strike/fwd  # strike / fwd
@@ -207,9 +282,7 @@ class Bsm(opt.OptAnalyticABC):
         ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (p_max - price_std > Bsm.IMPVOL_TOL)
 
         # initial guess = inflection point in sigma (volga=0)
-        _sigma = np.ones_like(ind_solve)*np.sqrt(
-            2*np.abs(np.log(strike_std))/texp
-        )
+        _sigma = np.ones_like(ind_solve)*np.sqrt(2*np.abs(np.log(strike_std))/texp)
 
         bsm_model.sigma = _sigma
         p_err = bsm_model.price(strike_std, 1.0, texp, cp) - price_std
@@ -227,7 +300,7 @@ class Bsm(opt.OptAnalyticABC):
                 # ignore the error of the elements with ind_solve = False
                 if p_err_max < Bsm.IMPVOL_TOL:
                     break
-            # print(k)
+            #print(k)
 
             if p_err_max >= Bsm.IMPVOL_TOL:
                 warn_msg = f"impvol_newton did not converged within {k} iterations: max error = {p_err_max}"
@@ -258,8 +331,57 @@ class Bsm(opt.OptAnalyticABC):
 
         return _sigma
 
-    #### Class method
-    impvol = _impvol_newton
+    def impvol2(self, price, strike, spot, texp, cp=1, setval=False):
+        """
+        BSM implied volatility with Newton's method.
+
+        Args:
+            price: option price
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            setval: if True, sigma is set with the solved implied volatility
+
+        Returns:
+            implied volatility
+        """
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        # standardized strike and price
+        kk = np.fmax(strike/fwd, fwd/strike)
+        log_k = np.log(kk)
+        pp = np.array((price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike))
+
+        # Exclude option price out of bound
+        # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
+        ind_oob = (pp < 0.0) | (pp > 1.0)
+
+        np.clip(pp, 0.01*Bsm.IMPVOL_TOL, 1.0 - 0.01*Bsm.IMPVOL_TOL, out=pp)
+
+        # initial guess = inflection point in sigma (volga=0)
+        lb = -2 * spst.norm.ppf((1.0 - pp)/2)
+        ub = np.fmin(pp, 0.49999999)
+        ub = spst.norm.ppf(2*ub) - spst.norm.ppf(ub/kk)
+        sigma0 = np.clip(np.sqrt(2*np.abs(log_k)), lb, ub)
+
+        def p_err_ftn(_sigma):
+            return self.price_std(_sigma, log_k) - pp
+
+        def vega_ftn(_sigma):
+            return self.vega_std(_sigma, log_k)
+
+        _sigma = spopt.newton(p_err_ftn, sigma0, fprime=vega_ftn, tol=Bsm.IMPVOL_TOL) / np.sqrt(texp)
+
+        # Put Nan for the out-of-bound option prices
+        _sigma = np.where(ind_oob, np.nan, _sigma)
+
+        if setval:
+            self.sigma = _sigma
+
+        return _sigma
+
 
     def vol_smile(self, strike, spot, texp, cp=1, model="norm"):
         """
