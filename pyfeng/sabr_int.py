@@ -26,11 +26,15 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         References
             - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
-        v2 = vovn**2
-        w = np.exp(v2)
-        m1 = np.where(v2 > 1e-6, (w - 1) / v2, 1 + v2 / 2 * (1 + v2 / 3))
-        m2m1ratio = (5 + w * (4 + w * (3 + w * (2 + w)))) / 15
-        sig = np.sqrt(np.where(v2 > 1e-8, np.log(m2m1ratio), 4 / 3 * v2))
+        vovn2 = vovn**2
+        ww = np.exp(vovn2)
+        m1 = np.where(vovn2 > 1e-6, (ww - 1) / vovn2, 1 + vovn2 / 2 * (1 + vovn2 / 3))
+        var_m1sq_ratio = (10 + ww*(6 + ww*(3 + ww))) / 15 * m1 * vovn2
+        sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(1.0 + var_m1sq_ratio), 4/3 * vovn2))
+        ### Equivalently ....
+        #m2_m1sq_ratio = (5 + ww * (4 + ww * (3 + ww * (2 + ww)))) / 15
+        #sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(m2_m1sq_ratio), 4/3 * vovn2))
+
         return m1, sig
 
     @abc.abstractmethod
@@ -161,8 +165,8 @@ class SabrMixture(SabrMixtureABC):
 
     def cond_avgvar(self, vovn, zhat):
 
-        m1, m2 = self.cond_avgvar_mv(vovn, zhat)
-        m1m2_ratio = m2 / m1**2
+        m1, m2 = self.cond_avgvar_mnc4(vovn, zhat)
+        m2_m1sq_ratio = m2 / m1**2
 
         w2 = np.ones_like(zhat)
 
@@ -170,10 +174,10 @@ class SabrMixture(SabrMixtureABC):
             r_var = m1
             r_vol = np.sqrt(r_var)
         elif self.dist.lower() == 'ln':
-            r_var = m1 / np.sqrt(np.sqrt(m1m2_ratio))
+            r_var = m1 / np.sqrt(np.sqrt(m2_m1sq_ratio))
             r_vol = np.sqrt(r_var)
         elif self.dist.lower() == 'ig':  # inverse Gaussian
-            lam = m1 / (m1m2_ratio - 1.0)
+            lam = m1 / (m2_m1sq_ratio - 1.0)
             r_var = 1 - 1 / (8 * lam) * (1 - 9 / (2 * 8 * lam) * (1 - 25 / (6 * 8 * lam)))
             r_var[lam < 100] = spsp.kv(0, lam[lam < 100]) / spsp.kv(-0.5, lam[lam < 100])
             r_var = m1 * r_var**2

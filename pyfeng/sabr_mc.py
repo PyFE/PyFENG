@@ -9,6 +9,10 @@ import scipy.integrate as scint
 from . import sabr
 from . import sv_abc as sv
 
+#### Use of RN generation spawn:
+# 0: simulation of volatility (normal)
+# 2: integrated/average variance (lognormal)
+# 5: asset return
 
 class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
 
@@ -136,12 +140,38 @@ class SabrMcTimeDisc(SabrMcABC):
 
     """
 
-    def cond_states_step(self, dt, sigma_0):
-        sigma_t = self.vol_step(dt)
-        avgvar = sigma_0**2 * (1.0 + sigma_t**2) / 2
-        sigma_t *= sigma_0
+    scheme = 0
+
+    def cond_states_step_trapez(self, dt, sigma_0):
+        sigma_t = sigma_0 * self.vol_step(dt)
+        avgvar = (sigma_0**2 + sigma_t**2) / 2.
 
         return sigma_t, avgvar
+
+    def cond_states_step_chen_2012(self, dt, sigma_0):
+
+        vovn = self.vov * np.sqrt(dt)
+        zhat = self.rv_normal(spawn=0) - vovn/2.
+        sigma_t = sigma_0 * np.exp(vovn * zhat)
+
+        m1, mnc2, mnc3, mnc4 = self.cond_avgvar_mnc4(vovn, zhat)
+        scale = np.sqrt(np.log(mnc2/m1**2))
+        avgvar = sigma_0**2 * m1 * np.exp(scale*(self.rv_normal(spawn=2) - scale/2.))
+
+        return sigma_t, avgvar
+
+    def cond_states_step(self, dt, sigma_0):
+        sigma_t = self.vol_step(dt)
+
+        if self.scheme == 0:
+            sigma_t, avgvar = self.cond_states_step_trapez(dt, sigma_0)
+        elif self.scheme == 1:
+            sigma_t, avgvar = self.cond_states_step_chen_2012(dt, sigma_0)
+        else:
+            ValueError(f"Incorrect scheme: {self.scheme}.")
+
+        return sigma_t, avgvar
+
 
     def vol_paths(self, tobs, mu=0):
         """
