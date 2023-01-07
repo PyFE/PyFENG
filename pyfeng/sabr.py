@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import scipy.optimize as spop
 from scipy import stats as spst
+from numpy.polynomial.hermite_e import hermeval
 
 from . import opt_smile_abc as smile
 from . import bsm
@@ -162,7 +163,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return 1.0 / xx_zz
 
     @staticmethod
-    def cond_avgvar_mnc2(vovn, z, remove_exp=False):
+    def cond_avgvar_mnc4(vovn, z, remove_exp=False):
         """
         First 2 non-central (raw) momments (e.g., mean and M2) of the conditional average variance:
 
@@ -178,7 +179,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             remove_exp: if True, return without multiplying exp(vovn * z). False by default.
 
         Returns:
-            Mean, M2
+            Mean, M2, M3, M4
 
         References:
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
@@ -186,19 +187,71 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         """
 
         def m1ftn(vv):
-            ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
-            m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
+            assert vv >= 0.0
+            if np.abs(vv) > 0.01:
+                ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
+                m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
+            else:
+                ## Alternative evaluation usign Hermite polynomial when vv is very small
+                ### coef = vv^(2n) / (n+1)!  for even n
+                # coef = np.array([1, 0, vv**2/6, 0, vv**4/120, 0, vv**6/5040, 0, vv**8/362880])
+                coef = vv/np.arange(1, 8)  # from 1 to 7
+                coef[0] = 1.0
+                np.cumprod(coef, out=coef)
+                coef[1::2] = 0.0  # zero out even terms
+                m = hermeval(z, coef) * np.exp(vv**2/2)
+
             return m
 
-        m1 = m1ftn(vovn)
-        m2 = (m1ftn(2*vovn) - m1*np.cosh(z*vovn))/vovn**2
+        exp = np.exp(vovn * z)
+        cosh = (exp + 1./exp)/2.
+
+        m1f, m2f, m3f, m4f = m1ftn(vovn), m1ftn(2*vovn), m1ftn(3*vovn), m1ftn(4*vovn)
+
+        m1 = m1f
+        m2 = (m2f - m1f*cosh)/vovn**2
+        m3 = (0.75*m3f - 2*m2f*cosh + m1f*(cosh**2 + 0.25))/vovn**4/2
+        m4 = (0.5*m4f - 2.25*m3f*cosh + m2f*(3*cosh**2 + 0.5) - m1f*cosh*(cosh**2 + 0.75))/vovn**6/6
 
         if not remove_exp:
-            exp = np.exp(vovn * z)
             m1 *= exp
             m2 *= exp**2
+            m3 *= exp**3
+            m4 *= exp**4
 
-        return m1, m2
+        return m1, m2, m3, m4
+
+    @staticmethod
+    def cond_avgvar_displn_params(vovn, z, ratio=0.):
+        """
+        Find the prameters (mu, sigma, ratio) to fit moments
+
+            Y ~ ratio * mu + (1-ratio) * mu * exp(sigma * Z - sigma^2/2)
+
+        Args:
+            vovn:
+            z:
+            ratio:
+
+        Returns:
+
+        """
+
+        # only ratio cares, so use remove_exp=True
+        m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
+        v = mnc2 - m1**2
+        v_over_m1sq = v/m1**2
+
+        if ratio is None:
+            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(v*np.sqrt(v))
+            sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
+            sigma = np.sqrt(np.log(1 + sqrt_w_m_1**2))
+            ratio = 1.0 - np.sqrt(v_over_m1sq) / sqrt_w_m_1
+        else:
+            sigma = np.sqrt(np.log(1 + v_over_m1sq/(1.0-ratio)**2))
+
+        return m1, sigma, ratio
+
 
     @staticmethod
     def avgvar_mnc4(vovn):
