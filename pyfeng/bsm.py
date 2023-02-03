@@ -69,18 +69,17 @@ class Bsm(opt.OptAnalyticABC):
         return sig
 
     @staticmethod
-    def price_std(sigma, ln_k):
-        # don't directly compute d1 just in case sigma_std is infty
-        # handle the case ln_k = sigma = 0 (ATM)
-        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
-        d2 = d1 - 0.5*sigma
-        d1 += 0.5*sigma
-        #price = spst.norm.cdf(d1) - strike_std * spst.norm.cdf(d2)
-        price = 0.5*np.exp(-d1**2/2) * (spsp.erfcx(-d1/np.sqrt(2)) - spsp.erfcx(-d2/np.sqrt(2)))
-        return price
-
-    @staticmethod
     def vega_std(sigma, ln_k):
+        """
+        Standardized Vega
+
+        Args:
+            sigma: volatility
+            ln_k: log strike
+
+        Returns:
+
+        """
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
         d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
@@ -89,23 +88,63 @@ class Bsm(opt.OptAnalyticABC):
         return vega
 
     @staticmethod
-    def price_vega_ratio(sigma, ln_k):
+    def price_vega_std(sigma, ln_k, sign=1, price=False):
+        """
+        Price-to-vega ratio.
+            Option Price / Vega = (N(d1) - k N(d2))/n(d1) = R(-d1) - R(-d2) for sign = 1
+            (1 - Option Price) / Vega = (1 - N(d1) + k N(d2))/n(d1) = R(d1) + R(-d2) for sign = -1
+        where R(x) = N(-x)/n(x) is Mills ratio
+
+        Args:
+            sigma: volatility
+            ln_k: log strike
+            sign: -1 for complementary price. +1 by default
+            price: multiply vega so return price if True. False by default
+
+        Returns:
+
+        """
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
-        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
-        d2 = d1 - 0.5*sigma
-        d1 += 0.5*sigma
-        ratio = np.sqrt(np.pi/2)*(spsp.erfcx(-d1/np.sqrt(2)) - spsp.erfcx(-d2/np.sqrt(2)))
+        sqrt2 = np.sqrt(2.)
+        sqrt_pi_2 = np.sqrt(np.pi/2.)
+
+        d0 = np.array(np.where(ln_k == 0., 0., -ln_k/sigma))
+        sigma = np.broadcast_to(sigma, d0.shape)
+        ratio = np.array(sqrt_pi_2*(spsp.erfcx(-sign*(d0 + sigma/2.)/sqrt2) - sign*spsp.erfcx(-(d0 - sigma/2.)/sqrt2)))
+
+        ## Handle very small sigma
+        idx = (sigma < 1e-4) & (sign > 0)
+        if np.any(idx):
+            sig_sm = sigma[idx]
+            d0_sm = d0[idx]
+            d0_sm2 = d0_sm**2
+            # Mills ratio derivative:
+            # R'(x) = x R(x) - 1
+            # -R'(-x) = x R(-x) + 1
+            Rx_d1 = np.where(d0_sm < -1e3,
+                             1./(d0_sm2 + 2.)*(1. - 1./(d0_sm2 + 4.)*(1. - 5./(d0_sm2 + 6.))),
+                             1. + d0_sm*sqrt_pi_2*spsp.erfcx(-d0_sm/sqrt2)
+                             )
+            # R'''(x) = x(x^2 + 3) R(x) - (x^2 + 2) = (x^2 + 3) R'(x) + 1
+            # -R'''(-x) = (x^2 + 3) -R'(-x) - 1
+            Rx_d3 = (d0_sm2 + 3.)*Rx_d1 - 1.
+            ratio[idx] = (Rx_d1 + sig_sm**2/24.*Rx_d3)*sig_sm
+
+        if price:
+            ratio *= spst.norm.pdf(d0 + sigma/2.)
+
         return ratio
 
     @staticmethod
-    def price_delta_ratio(sigma, ln_k):
+    def price_delta_std(sigma, ln_k):
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
-        d1 = np.where(ln_k == 0., 0., -ln_k/sigma)
-        d2 = d1 - 0.5*sigma
-        d1 += 0.5*sigma
-        ratio = 1.0 - spsp.erfcx(-d2/np.sqrt(2))/spsp.erfcx(-d1/np.sqrt(2))
+        sqrt2 = np.sqrt(2.)
+
+        d0 = np.where(ln_k == 0., 0., -ln_k/sigma)
+        ratio = 1.0 - spsp.erfcx(-(d0 - sigma/2.)/sqrt2)/spsp.erfcx(-(d0 + sigma/2.)/sqrt2)
+
         return ratio
 
     def vega(self, strike, spot, texp, cp=1):
@@ -367,7 +406,7 @@ class Bsm(opt.OptAnalyticABC):
         sigma0 = np.clip(np.sqrt(2*np.abs(log_k)), lb, ub)
 
         def p_err_ftn(_sigma):
-            return self.price_std(_sigma, log_k) - pp
+            return self.price_vega_std(_sigma, log_k, price=True) - pp
 
         def vega_ftn(_sigma):
             return self.vega_std(_sigma, log_k)
@@ -382,6 +421,59 @@ class Bsm(opt.OptAnalyticABC):
 
         return _sigma
 
+    def impvol_log(self, price, strike, spot=1., texp=1., cp=1, setval=False, n_iter=3, halley=True):
+        """
+        BSM implied volatility with Newton's method.
+
+        Args:
+            price: option price
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            setval: if True, sigma is set with the solved implied volatility
+
+        Returns:
+            implied volatility
+        """
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        # standardized strike and price
+        kk = np.array(strike/fwd)
+        np.reciprocal(kk, out=kk, where=(kk < 1.))
+        p = (price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike)
+
+        # Exclude option price out of bound
+        # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
+        log_k, p = np.broadcast_arrays(np.log(kk), p)
+
+        _sigma = np.where(
+            (log_k == 0.) & (p < 1e-8),
+            np.sqrt(2.*np.pi)*p,
+            self.d1sigma(spst.norm.ppf(p*(kk + p)/(2*p + (kk - 1.))), log_k)
+        )
+
+        # reuse allocated space for p
+        np.log(p, out=p)
+        p += 0.5*np.log(2*np.pi)
+        log_p_2pi = p
+
+        for k in range(n_iter):
+            p2v = self.price_vega_std(_sigma, log_k)  # pf.Bsm.price_vega_ratio
+            d1 = -log_k/_sigma + _sigma/2.
+            p_log_err = -d1**2/2. + np.log(p2v) - log_p_2pi
+            if halley:
+                p2v /= 1. - 0.5*p_log_err*(d1*(d1/_sigma - 1.)*p2v - 1.)
+            _sigma -= p_log_err * p2v
+
+        if _sigma.ndim == 0:
+            _sigma = _sigma.item()
+
+        if setval:
+            self.sigma = _sigma
+
+        return _sigma
 
     def vol_smile(self, strike, spot, texp, cp=1, model="norm"):
         """
