@@ -324,7 +324,7 @@ class Bsm(opt.OptAnalyticABC):
         )
 
         if scalar_output:
-            _sigma = np.asscalar(_sigma)
+            _sigma = _sigma.item()
 
         if setval:
             self.sigma = _sigma
