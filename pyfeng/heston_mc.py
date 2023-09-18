@@ -355,9 +355,11 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         zz = np.sqrt(var_0 * var_t) * phi
 
         iv_index = 0.5 * self.chi_dim() - 1
-        iv0 = spsp.iv(iv_index, zz)
-        iv1 = spsp.iv(iv_index + 1, zz)
-        iv2 = spsp.iv(iv_index + 2, zz)
+        # ive(): exponentially scaled iv function
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.ive.html
+        iv0 = spsp.ive(iv_index, zz)
+        iv1 = spsp.ive(iv_index + 1, zz)
+        iv2 = spsp.ive(iv_index + 2, zz)
 
         mean = (zz/2) * (iv1/iv0)
         var = (zz/2)**2 * (iv2/iv0) + mean - mean**2
@@ -695,7 +697,11 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         zz = np.sqrt(var_0 * var_t) * phi
 
         iv_index = 0.5 * self.chi_dim() - 1
-        p0 = np.power(0.5 * zz, iv_index) / (spsp.iv(iv_index, zz) * spsp.gamma(iv_index + 1))
+        # Equivalent to
+        # p0 = np.power(0.5 * zz, iv_index) / (spsp.iv(iv_index, zz) * spsp.gamma(iv_index + 1))
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.ive.html
+        p0 = np.exp(iv_index*np.log(zz/2) - zz - spsp.gammaln(iv_index + 1))/spsp.ive(iv_index, zz)
+
         temp = np.arange(1, 16)[:, None]  # Bessel distribution has short tail, 30 maybe enough
         p = zz**2 / (4 * temp * (temp + iv_index))
         p = np.vstack((p0, p)).cumprod(axis=0).cumsum(axis=0)
