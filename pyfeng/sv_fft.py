@@ -183,7 +183,6 @@ class HestonFft(heston.HestonABC, FftABC):
         tmp1 = 1 - gg*exp
 
         mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
-        print(self.theta)
         return np.exp(mgf/vov2)
 
 
@@ -199,22 +198,24 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
     References:
         - Giorgia Callegaro, Martino Grasselli, Gilles Pagès (2020) Fast Hybrid Schemes for Fractional Riccati Equations (Rough Is Not So Tough). Mathematics of Operations Research 46(1):221-254.https://doi.org/10.1287/moor.2020.1054
 
-
     Examples:
-            strike = np.array([60, 70, 100, 140])
-            sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.1, 0.3156, -0.681, 1, 100, 0.3156, 0.62
-            # sigma, vov, mr, rho, texp, spot,alpha = 0.04, 0.1, 0.5, -0.9, 1, 100, 0.62
-            m = pf.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha)
-            m.price(strike, spot, texp)
+        >>> import numpy as np
+        >>> import pyfeng.ex as pfex
+        >>> strike = np.array([60, 70, 100, 140])
+        >>> sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.1, 0.3156, -0.681, 1, 100, 0.3156, 0.62
+        >>> # sigma, vov, mr, rho, texp, spot,alpha = 0.04, 0.1, 0.5, -0.9, 1, 100, 0.62
+        >>> m = pfex.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha)
+        >>> m.price(strike, spot, texp)
             
-            strike = np.linspace(0.8,1.2,9)
-            sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.331, 0.1, -0.681, 1/12, 1, 0.3156, 0.62
-            m = pf.RoughHestonFastHybridFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha, theta = theta)
-            m.price(strike, spot, texp)
-            >>> array([2.00004861e-01, 1.50105032e-01, 1.01136892e-01, 5.67278209e-02,2.39151266e-02, 6.81264421e-03, 1.19548373e-03, 1.19636483e-04, 6.36294510e-06])
+        >>> strike = np.linspace(0.8,1.2,9)
+        >>> sigma, vov, mr, rho, texp, spot,theta,alpha = 0.0392, 0.331, 0.1, -0.681, 1/12, 1, 0.3156, 0.62
+        >>> m = pfex.RoughHestonFft(sigma, vov=vov, mr=mr, rho=rho,alpha = alpha, theta = theta)
+        >>> m.price(strike, spot, texp)
+        array([2.00004861e-01, 1.50105032e-01, 1.01136892e-01, 5.67278209e-02,2.39151266e-02, 6.81264421e-03, 1.19548373e-03, 1.19636483e-04, 6.36294510e-06])
             
     """
-    
+
+    method = 1
     x_lim = 200  # integratin limit
 
     '''
@@ -420,7 +421,6 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
             - Giorgia Callegaro, Martino Grasselli, Gilles Pagès (2020) Fast Hybrid Schemes for Fractional Riccati Equations (Rough Is Not So Tough). Mathematics of Operations Research 46(1):221-254.https://doi.org/10.1287/moor.2020.1054 
             - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models https://doi.org/10.1111/mafi.12173
         """
-        delta = 1/100
         sigma = self.sigma
         mr = self.mr
         theta = self.theta
@@ -480,6 +480,8 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
         else:
             raise ValueError(f"Unknown method: {self.method}")
         return rv
+
+
 
 class OusvFft(ousv.OusvABC, FftABC):
     """
