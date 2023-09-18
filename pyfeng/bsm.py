@@ -58,7 +58,7 @@ class Bsm(opt.OptAnalyticABC):
         d1 += 0.5*sigma_std
 
         cp = np.array(cp)
-        price = fwd*spst.norm.cdf(cp*d1) - strike*spst.norm.cdf(cp*d2)
+        price = fwd*spst.norm._cdf(cp*d1) - strike*spst.norm._cdf(cp*d2)
         price *= cp*disc_fac
         return price
 
@@ -132,7 +132,7 @@ class Bsm(opt.OptAnalyticABC):
             ratio[idx] = (Rx_d1 + sig_sm**2/24.*Rx_d3)*sig_sm
 
         if price:
-            ratio *= spst.norm.pdf(d0 + sigma/2.)
+            ratio *= spst.norm._pdf(d0 + sigma/2.)
 
         return ratio
 
@@ -207,7 +207,7 @@ class Bsm(opt.OptAnalyticABC):
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
 
-        risk = df*spot*np.sqrt(texp)*spst.norm.pdf(d1)*(d1*d2 - 1)/(4*self.sigma**3)
+        risk = df*spot*np.sqrt(texp)*spst.norm._pdf(d1)*(d1*d2 - 1)/(4*self.sigma**3)
 
         return risk
 
@@ -234,8 +234,7 @@ class Bsm(opt.OptAnalyticABC):
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
 
-        risk = df*spot*np.sqrt(texp)*spst.norm.pdf(d1)\
-               *((d1*d2 - 1)*(d1*d2 - 3) - (d1**2 + d2**2))/(8*self.sigma**5)
+        risk = df*spot*np.sqrt(texp)*spst.norm._pdf(d1)*((d1*d2 - 1)*(d1*d2 - 3) - (d1**2 + d2**2))/(8*self.sigma**5)
 
         return risk
 
@@ -247,7 +246,7 @@ class Bsm(opt.OptAnalyticABC):
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
-        delta = cp*spst.norm.cdf(cp*d1)  # formula according to wikipedia
+        delta = cp*spst.norm._cdf(cp*d1)  # formula according to wikipedia
         delta *= df if self.is_fwd else divf
         return delta
 
@@ -258,7 +257,7 @@ class Bsm(opt.OptAnalyticABC):
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d2 = np.log(fwd/strike)/sigma_std
         d2 -= 0.5*sigma_std
-        cdf = spst.norm.cdf(cp*d2)  # formula according to wikipedia
+        cdf = spst.norm._cdf(cp*d2)  # formula according to wikipedia
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
@@ -269,7 +268,7 @@ class Bsm(opt.OptAnalyticABC):
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
-        gamma = df*spst.norm.pdf(d1)/fwd/sigma_std  # formula according to wikipedia
+        gamma = df*spst.norm._pdf(d1)/fwd/sigma_std  # formula according to wikipedia
         if not self.is_fwd:
             gamma *= (divf/df)**2
         return gamma
@@ -284,8 +283,8 @@ class Bsm(opt.OptAnalyticABC):
         d1 += 0.5*sigma_std
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
-        theta = -0.5*spst.norm.pdf(d1)*fwd*self.sigma/np.sqrt(texp) \
-                - cp*self.intr*strike*spst.norm.cdf(cp*d2)
+        theta = -0.5*spst.norm._pdf(d1)*fwd*self.sigma/np.sqrt(texp) \
+                - cp*self.intr*strike*spst.norm._cdf(cp*d2)
         theta *= df
         return theta
 
@@ -370,9 +369,9 @@ class Bsm(opt.OptAnalyticABC):
 
         return _sigma
 
-    def impvol2(self, price, strike, spot, texp, cp=1, setval=False):
+    def impvol_scipy_newton(self, price, strike, spot, texp, cp=1, setval=False):
         """
-        BSM implied volatility with Newton's method.
+        BSM implied volatility with SciPy Newton function.
 
         Args:
             price: option price
@@ -390,7 +389,7 @@ class Bsm(opt.OptAnalyticABC):
 
         # standardized strike and price
         kk = np.fmax(strike/fwd, fwd/strike)
-        log_k = np.log(kk)
+        lnk = np.log(kk)
         pp = np.array((price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike))
 
         # Exclude option price out of bound
@@ -403,13 +402,13 @@ class Bsm(opt.OptAnalyticABC):
         lb = -2 * spst.norm.ppf((1.0 - pp)/2)
         ub = np.fmin(pp, 0.49999999)
         ub = spst.norm.ppf(2*ub) - spst.norm.ppf(ub/kk)
-        sigma0 = np.clip(np.sqrt(2*np.abs(log_k)), lb, ub)
+        sigma0 = np.clip(np.sqrt(2*np.abs(lnk)), lb, ub)
 
         def p_err_ftn(_sigma):
-            return self.price_vega_std(_sigma, log_k, price=True) - pp
+            return self.price_vega_std(_sigma, lnk, price=True) - pp
 
         def vega_ftn(_sigma):
-            return self.vega_std(_sigma, log_k)
+            return self.vega_std(_sigma, lnk)
 
         _sigma = spopt.newton(p_err_ftn, sigma0, fprime=vega_ftn, tol=Bsm.IMPVOL_TOL) / np.sqrt(texp)
 
@@ -423,7 +422,7 @@ class Bsm(opt.OptAnalyticABC):
 
     def impvol_log(self, price, strike, spot=1., texp=1., cp=1, setval=False, n_iter=3, halley=True):
         """
-        BSM implied volatility with Newton's method.
+        BSM implied volatility with Newton's method with log price
 
         Args:
             price: option price
@@ -432,6 +431,9 @@ class Bsm(opt.OptAnalyticABC):
             texp: time to expiry
             cp: 1/-1 for call/put option
             setval: if True, sigma is set with the solved implied volatility
+
+        References:
+            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
 
         Returns:
             implied volatility
@@ -446,12 +448,13 @@ class Bsm(opt.OptAnalyticABC):
 
         # Exclude option price out of bound
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        log_k, p = np.broadcast_arrays(np.log(kk), p)
+        lnk, p = np.broadcast_arrays(np.log(kk), p)
 
         _sigma = np.where(
-            (log_k == 0.) & (p < 1e-8),
+            (lnk == 0.) & (p < 1e-8),
             np.sqrt(2.*np.pi)*p,
-            self.d1sigma(spst.norm.ppf(p*(kk + p)/(2*p + (kk - 1.))), log_k)
+            #self.d1sigma(spst.norm.ppf(p*(kk + p)/(2*p + (kk - 1.))), lnk)
+            self.d1sigma(spst.norm.ppf(p*(0.5 + kk/(p*(kk + 1.) + (kk - 1.)))), lnk)
         )
 
         # reuse allocated space for p
@@ -460,8 +463,8 @@ class Bsm(opt.OptAnalyticABC):
         log_p_2pi = p
 
         for k in range(n_iter):
-            p2v = self.price_vega_std(_sigma, log_k)  # pf.Bsm.price_vega_ratio
-            d1 = -log_k/_sigma + _sigma/2.
+            p2v = self.price_vega_std(_sigma, lnk)  # pf.Bsm.price_vega_ratio
+            d1 = -lnk/_sigma + _sigma/2.
             p_log_err = -d1**2/2. + np.log(p2v) - log_p_2pi
             if halley:
                 p2v /= 1. - 0.5*p_log_err*(d1*(d1/_sigma - 1.)*p2v - 1.)
@@ -517,7 +520,7 @@ class Bsm(opt.OptAnalyticABC):
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
 
-        price = fwd*spst.norm.cdf(cp*d1) - strike*spst.norm.cdf(cp*d2)
+        price = fwd*spst.norm._cdf(cp*d1) - strike*spst.norm._cdf(cp*d2)
         price *= cp*df
         return price
 
