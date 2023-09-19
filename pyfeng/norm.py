@@ -6,6 +6,7 @@ Created on Tue Sep 19 22:56:58 2017
 
 import numpy as np
 import scipy.stats as spst
+import scipy.special as spsp
 
 from . import opt_abc as opt
 from . import bsm
@@ -55,6 +56,9 @@ class Norm(opt.OptAnalyticABC):
         1.0,
     ]
 
+    SQRT2 = np.sqrt(2.)
+    SQRT_PI_2 = np.sqrt(np.pi/2.)
+
     # option value below the intrinsic value by IMPVOL_TOL is considered to be numerical error.
     # volatility will be set to 0
     IMPVOL_TOL = 1000 * np.finfo(float).eps
@@ -83,12 +87,39 @@ class Norm(opt.OptAnalyticABC):
         df = np.exp(-texp * intr)
         fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / df)
 
-        sigma_std = np.maximum(np.array(sigma) * np.sqrt(texp), np.finfo(float).eps)
-        d = (fwd - strike) / sigma_std
+        sigma_std = np.array(sigma) * np.sqrt(texp)
+        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).tiny)
 
         cp = np.array(cp)
-        price = df * (cp * (fwd - strike) * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
+        price = df * (cp * (fwd - strike) * spst.norm._cdf(cp * d) + sigma_std * spst.norm._pdf(d))
         return price
+
+    @staticmethod
+    def price_vega_std(sigma, k, price=False):
+        """
+        Price-to-vega ratio for standardized option (cp=1, texp=1, fwd=0)
+
+        Args:
+            sigma: sigma * sqrt(t), standard deviation
+            k: strike
+            price: multiply vega so return price if True. False by default
+
+        Returns:
+
+        """
+        m_d = k / sigma  # -d (minus d)
+
+        ratio = 1. - Norm.SQRT_PI_2 * m_d * spsp.erfcx(m_d/Norm.SQRT2)
+        # Use expansion for very large m_cp_d based on A&S 26.2.13
+        idx = (m_d > 1e3)
+        m_d_sq = m_d[idx]**2
+        ratio[idx] = 1./(m_d_sq + 2.)*(1. - 1./(m_d_sq + 4.)*(1 - 5/(m_d_sq + 6.)))
+
+        if price:
+            ratio *= spst.norm._pdf(m_d)
+
+        return ratio
+
 
     def _impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
         """
@@ -149,30 +180,30 @@ class Norm(opt.OptAnalyticABC):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d = (fwd - strike) / sigma_std
 
         # formula according to lecture notes
-        vega = df * spst.norm.pdf(d) * np.sqrt(texp)
+        vega = df * spst.norm._pdf(d) * np.sqrt(texp)
         return vega
 
     def delta(self, strike, spot, texp, cp=1):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d = (fwd - strike) / sigma_std
 
-        delta = cp * spst.norm.cdf(cp * d)  # formula according to wikipedia
+        delta = cp * spst.norm._cdf(cp * d)  # formula according to wikipedia
         delta *= df if self.is_fwd else divf
         return delta
 
     def cdf(self, strike, spot, texp, cp=1):
 
         fwd = self.forward(spot, texp)
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d = (fwd - strike) / sigma_std
-        cdf = spst.norm.cdf(cp * d)  # formula according to wikipedia
+        cdf = spst.norm._cdf(cp * d)  # formula according to wikipedia
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
@@ -180,10 +211,10 @@ class Norm(opt.OptAnalyticABC):
         # cp is not used
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d = (fwd - strike) / sigma_std
 
-        gamma = df * spst.norm.pdf(d) / sigma_std  # formula according to wikipedia
+        gamma = df * spst.norm._pdf(d) / sigma_std  # formula according to wikipedia
         if not self.is_fwd:
             gamma *= (divf / df) ** 2
         return gamma
@@ -192,24 +223,24 @@ class Norm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d = (fwd - strike) / sigma_std
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
-        theta = sigma_std * spst.norm.pdf(d)
-        theta = -0.5 * theta / texp + self.intr * (theta - cp * strike * spst.norm.cdf(cp * d))
+        theta = sigma_std * spst.norm._pdf(d)
+        theta = -0.5 * theta / texp + self.intr * (theta - cp * strike * spst.norm._cdf(cp * d))
         return df * theta
 
     def price_binary(self, strike, spot, texp, cp=1, opt_type="cash"):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
-        d = (fwd - strike) / sigma_std
+        sigma_std = self.sigma * np.sqrt(texp)
+        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).tiny)
 
         if opt_type.lower() == "asset":
-            price = df * (cp * fwd * spst.norm.cdf(cp * d) + sigma_std * spst.norm.pdf(d))
+            price = df * (cp * fwd * spst.norm._cdf(cp * d) + sigma_std * spst.norm._pdf(d))
         else:
-            price = df * spst.norm.cdf(cp * d)
+            price = df * spst.norm._cdf(cp * d)
 
         return price
 
@@ -250,10 +281,10 @@ class Norm(opt.OptAnalyticABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
         strike2 = strike if strike2 is None else strike2
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
         d2 = (fwd - strike2) / sigma_std
 
-        price = cp * (fwd - strike) * spst.norm.cdf(cp * d2) + sigma_std * spst.norm.pdf(d2)
+        price = cp * (fwd - strike) * spst.norm._cdf(cp * d2) + sigma_std * spst.norm._pdf(d2)
         price *= df
         return price
 
