@@ -7,7 +7,7 @@ import warnings
 from . import opt_abc as opt
 from . import norm
 from . import opt_smile_abc as smile
-
+from .util import MathFuncs, MathConsts
 
 class Bsm(opt.OptAnalyticABC):
     """
@@ -106,12 +106,9 @@ class Bsm(opt.OptAnalyticABC):
         """
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
-        sqrt2 = np.sqrt(2.)
-        sqrt_pi_2 = np.sqrt(np.pi/2.)
-
         d0 = np.array(np.where(ln_k == 0., 0., -ln_k/sigma))
         sigma = np.broadcast_to(sigma, d0.shape)
-        ratio = np.array(sqrt_pi_2*(spsp.erfcx(-sign*(d0 + sigma/2.)/sqrt2) - sign*spsp.erfcx(-(d0 - sigma/2.)/sqrt2)))
+        ratio = np.array(MathFuncs.mills_ratio(-sign*(d0 + sigma/2.)) - sign*MathFuncs.mills_ratio(-d0 + sigma/2.))
 
         ## Handle very small sigma
         idx = (sigma < 1e-4) & (sign > 0)
@@ -124,7 +121,7 @@ class Bsm(opt.OptAnalyticABC):
             # -R'(-x) = x R(-x) + 1
             Rx_d1 = np.where(d0_sm < -1e3,
                              1./(d0_sm2 + 2.)*(1. - 1./(d0_sm2 + 4.)*(1. - 5./(d0_sm2 + 6.))),
-                             1. + d0_sm*sqrt_pi_2*spsp.erfcx(-d0_sm/sqrt2)
+                             1. + d0_sm * MathFuncs.mills_ratio(-d0_sm)
                              )
             # R'''(x) = x(x^2 + 3) R(x) - (x^2 + 2) = (x^2 + 3) R'(x) + 1
             # -R'''(-x) = (x^2 + 3) -R'(-x) - 1
@@ -140,10 +137,8 @@ class Bsm(opt.OptAnalyticABC):
     def price_delta_std(sigma, ln_k):
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
-        sqrt2 = np.sqrt(2.)
-
         d0 = np.where(ln_k == 0., 0., -ln_k/sigma)
-        ratio = 1.0 - spsp.erfcx(-(d0 - sigma/2.)/sqrt2)/spsp.erfcx(-(d0 + sigma/2.)/sqrt2)
+        ratio = 1.0 - MathFuncs.mills_ratio(-d0 + sigma/2.) / MathFuncs.mills_ratio(-d0 - sigma/2.)
 
         return ratio
 
@@ -288,7 +283,7 @@ class Bsm(opt.OptAnalyticABC):
         theta *= df
         return theta
 
-    def impvol(self, price, strike, spot, texp, cp=1, setval=False):
+    def impvol_naive(self, price, strike, spot, texp, cp=1, setval=False):
         """
         BSM implied volatility with Newton's method.
 
@@ -420,7 +415,7 @@ class Bsm(opt.OptAnalyticABC):
 
         return _sigma
 
-    def impvol_log(self, price, strike, spot=1., texp=1., cp=1, setval=False, n_iter=3, halley=True):
+    def impvol(self, price, strike, spot, texp, cp=1, setval=False, n_iter=5, halley=False):
         """
         BSM implied volatility with Newton's method with log price
 
@@ -452,15 +447,13 @@ class Bsm(opt.OptAnalyticABC):
 
         _sigma = np.where(
             (lnk == 0.) & (p < 1e-8),
-            np.sqrt(2.*np.pi)*p,
+            MathConsts.M_SQRT2PI * p,
             #self.d1sigma(spst.norm.ppf(p*(kk + p)/(2*p + (kk - 1.))), lnk)
             self.d1sigma(spst.norm.ppf(p*(0.5 + kk/(p*(kk + 1.) + (kk - 1.)))), lnk)
         )
+        # Need to handle when p>1
 
-        # reuse allocated space for p
-        np.log(p, out=p)
-        p += 0.5*np.log(2*np.pi)
-        log_p_2pi = p
+        log_p_2pi = np.log(p) + MathConsts.M_LN2PI_2  # 0.5*np.log(2*np.pi)
 
         for k in range(n_iter):
             p2v = self.price_vega_std(_sigma, lnk)  # pf.Bsm.price_vega_ratio
@@ -469,6 +462,8 @@ class Bsm(opt.OptAnalyticABC):
             if halley:
                 p2v /= 1. - 0.5*p_log_err*(d1*(d1/_sigma - 1.)*p2v - 1.)
             _sigma -= p_log_err * p2v
+
+        _sigma /= np.sqrt(texp)
 
         if _sigma.ndim == 0:
             _sigma = _sigma.item()

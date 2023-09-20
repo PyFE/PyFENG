@@ -10,6 +10,7 @@ import scipy.special as spsp
 
 from . import opt_abc as opt
 from . import bsm
+from .util import MathFuncs, MathConsts
 
 
 class Norm(opt.OptAnalyticABC):
@@ -56,17 +57,12 @@ class Norm(opt.OptAnalyticABC):
         1.0,
     ]
 
-    SQRT2 = np.sqrt(2.)
-    SQRT_PI_2 = np.sqrt(np.pi/2.)
-
     # option value below the intrinsic value by IMPVOL_TOL is considered to be numerical error.
     # volatility will be set to 0
     IMPVOL_TOL = 1000 * np.finfo(float).eps
 
     @staticmethod
-    def price_formula(
-        strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False
-    ):
+    def price_formula(strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False):
         """
         Bachelier model call/put option pricing formula (static method)
 
@@ -109,7 +105,7 @@ class Norm(opt.OptAnalyticABC):
         """
         m_d = k / sigma  # -d (minus d)
 
-        ratio = 1. - Norm.SQRT_PI_2 * m_d * spsp.erfcx(m_d/Norm.SQRT2)
+        ratio = 1. - m_d * MathFuncs.mills_ratio(m_d)
         # Use expansion for very large m_cp_d based on A&S 26.2.13
         idx = (m_d > 1e3)
         m_d_sq = m_d[idx]**2

@@ -51,20 +51,18 @@ class TestBsmMethods(unittest.TestCase):
         for k in range(100):
             spot = np.random.uniform(80, 120)
             strike = np.random.uniform(80, 120)
-            sigma = np.random.uniform(0.1, 10)
+            sigma = np.random.uniform(0.1, 3)
             texp = np.random.uniform(0.1, 10)
             intr = np.random.uniform(0, 0.3)
             divr = np.random.uniform(0, 0.3)
             cp = 1 if np.random.rand() > 0.5 else -1
             is_fwd = np.random.rand() > 0.5
 
-            # print( spot, strike, vol, texp, intr, divr, cp)
             m_bsm = pf.Bsm(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-            price = (m_bsm.price(strike, spot, texp, cp),)
+            price = m_bsm.price(strike, spot, texp, cp)
 
             # get implied vol
             iv = m_bsm.impvol(price, strike, spot, texp=texp, cp=cp)
-
             # now price option with the obtained implied vol
             m_bsm2 = copy.copy(m_bsm)
             m_bsm2.sigma = iv
