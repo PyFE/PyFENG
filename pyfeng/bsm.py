@@ -142,6 +142,30 @@ class Bsm(opt.OptAnalyticABC):
 
         return ratio
 
+    @staticmethod
+    def price_delta_upper_std(sigma, ln_k):
+        """
+        Upper bound of price-delta ratio that does not require erfcx evaluation.
+        It is based on the Mills ratio upper bound: 4 / [sqrt(x^2+8) + 3x]
+
+        Args:
+            sigma:
+            ln_k:
+
+        Returns:
+
+        """
+        # don't directly compute d1 just in case sigma_std is infty
+        # handle the case ln_k = sigma = 0 (ATM)
+        m_d0 = np.where(ln_k == 0., 0., ln_k/sigma)
+        m_d1 = m_d0 - sigma/2.
+        m_d2 = m_d0 + sigma/2.
+        d1_sqrt = np.sqrt(m_d1**2 + 8.)
+        d2_sqrt = np.sqrt(m_d2**2 + 8.)
+        ratio = sigma*(3 + (m_d1 + m_d2)/(d1_sqrt + d2_sqrt))/(d2_sqrt + 3*m_d2)
+
+        return ratio
+
     def vega(self, strike, spot, texp, cp=1):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
