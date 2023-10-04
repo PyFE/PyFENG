@@ -56,7 +56,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
 
         if log:
             log_mass = (a - 1)*np.log(x) - x - np.log(spsp.gamma(a))
-            log_mass += np.log(1 + (a - 1)/x*(1 + (a - 2)/x*(1 + (a - 3)/x*(1 + (a - 4)/x))))
+            log_mass += np.log1p((a - 1)/x*(1 + (a - 2)/x*(1 + (a - 3)/x*(1 + (a - 4)/x))))
             with np.errstate(divide="ignore"):
                 log_mass = np.where(x > 100, log_mass, np.log(spst.gamma.sf(x=x, a=a)))
             return log_mass
