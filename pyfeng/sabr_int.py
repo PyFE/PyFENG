@@ -30,7 +30,7 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         ww = np.exp(vovn2)
         m1 = np.where(vovn2 > 1e-6, (ww - 1) / vovn2, 1 + vovn2 / 2 * (1 + vovn2 / 3))
         var_m1sq_ratio = (10 + ww*(6 + ww*(3 + ww))) / 15 * m1 * vovn2
-        sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(1.0 + var_m1sq_ratio), 4/3 * vovn2))
+        sig = np.sqrt(np.where(vovn2 > 1e-8, np.log1p(var_m1sq_ratio), 4/3 * vovn2))
         ### Equivalently ....
         #m2_m1sq_ratio = (5 + ww * (4 + ww * (3 + ww * (2 + ww)))) / 15
         #sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(m2_m1sq_ratio), 4/3 * vovn2))

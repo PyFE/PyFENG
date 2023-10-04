@@ -238,7 +238,7 @@ class SabrMcTimeDisc(SabrMcABC):
         if mu is None:
             eta = self.vov * np.power(spot, betac) / (self.sigma * betac)
             vovn = self.vov * np.sqrt(texp)
-            mu = 0.5 * (vovn + np.log(1 + eta**2) / vovn)
+            mu = 0.5 * (vovn + np.log1p(eta**2) / vovn)
             # print(f'mu = {mu}')
 
         fwd_ratio, vol_ratio = self.cond_spot_sigma(texp, fwd)

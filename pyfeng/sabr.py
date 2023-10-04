@@ -245,10 +245,10 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         if ratio is None:
             s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(v*np.sqrt(v))
             sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
-            sigma = np.sqrt(np.log(1 + sqrt_w_m_1**2))
+            sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
             ratio = 1.0 - np.sqrt(v_over_m1sq) / sqrt_w_m_1
         else:
-            sigma = np.sqrt(np.log(1 + v_over_m1sq/(1.0-ratio)**2))
+            sigma = np.sqrt(np.log1p(v_over_m1sq/(1.0-ratio)**2))
 
         return m1, sigma, ratio
 

@@ -104,7 +104,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
             shape = mean / scale
             avgvar = scale * self.rng_spawn[2].standard_gamma(shape=shape)
         elif dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + var / mean ** 2))
+            scale = np.sqrt(np.log1p(var / mean**2))
             avgvar = mean * np.exp(scale * (self.rv_normal(spawn=2) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {dist}.")
@@ -844,8 +844,8 @@ class HestonMcAndersen2008(HestonMcABC):
         aa = k1_half_k3 + 2*self.rho/self.vov  # A in Proposition 7
 
         m_corr = -k1_half_k3 * var_0 + dt * self.rho * self.mr * self.theta / self.vov
-        m_corr[idx_below] += -aa * b2 * a / (1 - 2 * aa * a) + 0.5 * np.log(1 - 2 * aa * a)
-        m_corr[~idx_below] += -np.log(1.0 - one_m_p + (beta*one_m_p)/(beta - aa))
+        m_corr[idx_below] += -aa * b2 * a / (1 - 2 * aa * a) + 0.5 * np.log1p(-2 * aa * a)
+        m_corr[~idx_below] += -np.log1p(-one_m_p + (beta*one_m_p)/(beta - aa))
 
         return var_t, m_corr
 
