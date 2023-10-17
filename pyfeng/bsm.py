@@ -633,10 +633,9 @@ class Bsm(opt.OptAnalyticABC):
         References:
             https://en.wikipedia.org/wiki/Log-normal_distribution
         """
-        ww = np.exp(texp*self.sigma**2)
-        var = ww - 1
-        skew = (ww + 2)*np.sqrt(ww - 1)
-        exkurt = ww**2*(ww*(ww + 2) + 3) - 6  # ww**4 + 2*ww**3 + 3*ww - 6
+        var = np.expm1(texp*self.sigma**2)
+        skew = (var + 3)*np.sqrt(var)
+        exkurt = var*(var*(var*(var + 6) + 12) + 13)  # (1+var)**4 + 2*(1+var)**3 + 3*(1+var) - 6
         return var, skew, exkurt
 
 

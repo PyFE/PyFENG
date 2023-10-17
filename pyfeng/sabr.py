@@ -18,7 +18,7 @@ from . import opt_smile_abc as smile
 from . import bsm
 from . import norm
 from . import cev
-
+from . import util
 
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
@@ -299,8 +299,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
         """
         vovn2 = vovn**2
-        ww = np.exp(vovn2)
-        m = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
+        m = util.avg_exp(vovn2)
+        ww = m * vovn2 + 1.
 
         # (10 + 6 x + 3 x^2 + x^3)/15   *   (x - 1)^3
 
