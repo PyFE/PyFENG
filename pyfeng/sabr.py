@@ -296,37 +296,32 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             vovn: vov * sqrt(texp)
 
         Returns:
-            (mean, variance)
+            (mean, variance, skewness, ex-kurtosis)
 
         References
-            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
+            - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
         """
+
+        # Factor[-3(-1 + w) ^ 4 + (2(-1 + w) ^ 2(5 - 6 w + w ^ 6))/5 - (4(-1 + w)(-21 + 27 w - 7 w ^ 6 + w ^ 15))/315 + (
+        #            429 - 572 w + 182 w ^ 6 - 44 w ^ 15 + 5 w ^ 28)/45045 - 3(-(-1 + w) ^ 2 + (5 - 6 w + w ^ 6)/15) ^ 2]
+
+        #((w - 1) ^ 7(25
+        # w ^ 21 + 175 w ^ 20 + 700 w ^ 19 + 2100 w ^ 18 + 5250 w ^ 17 + 11550 w ^ 16 + 23100 w ^ 15 + 42900 w ^ 14 + 75075 w ^ 13 + 125125 w ^ 12 + 200200 w ^ 11 + 309400 w ^ 10 + 461240 w ^ 9 + 660920 w ^ 8 + 907400 w ^ 7 + 1190280 w ^ 6 + 1483482 w ^ 5 + 1735734 w ^ 4 + 1857856 w ^ 3 + 1706848 w ^ 2 + 1246960 w + 583440))/225225
+
         vovn2 = vovn**2
         m = util.avg_exp(vovn2)
         ww = m * vovn2 + 1.
 
-        # (10 + 6 x + 3 x^2 + x^3)/15   *   (x - 1)^3
-
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
         v = m2 * m**3 * vovn2   # * (ww-1)^3
 
-        # 210 x^4 + 126 x^5 + 70 x^6 + 35 x^7 + 15 x^8 + 5 x^9 + x^10
-        # 336 + 456 x + 432 x^2 + 330 x^3       *        (x - 1)^5 / 315
+        coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315
+        s = np.sqrt(m * vovn2) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
 
-        m3 = 210 + ww*(126 + ww*(70 + ww*(35 + ww*(15 + ww*(5 + ww)))))
-        m3 = (336 + ww*(456 + ww*(432 + ww*(330 + ww*m3)))) / 315  # * (ww-1)^5
-        s = m3 / np.power(m2, 1.5) * np.sqrt(m * vovn2)  # skewness
-
-        # + 3960 x^15 + 2310 x^16 + 1260 x^17 + 630 x^18 + 280 x^19 + 105 x^20 + 30 x^21 + 5 x^22
-        # + 39936 x^9 + 30368 x^10 + 21840 x^11 + 15015 x^12 + 10010 x^13 + 6435 x^14
-        # + 3432 x^3 + 37037 x^4 + 54054 x^5 + 59241 x^6 + 56576 x^7 + 49296 x^8
-        # - 56628 - 60632 x - 34320 x^2           *        (x - 1)^6 / 45045
-
-        m4 = 3960 + ww*(2310 + ww*(1260 + ww*(630 + ww*(280 + ww*(105 + ww*(30 + 5*ww))))))
-        m4 = 39936 + ww*(30368 + ww*(21840 + ww*(15015 + ww*(10010 + ww*(6435 + ww*m4)))))
-        m4 = 3432 + ww*(37037 + ww*(54054 + ww*(59241 + ww*(56576 + ww*(49296 + ww*m4)))))
-        m4 = (-56628 + ww*(-60632 + ww*(-34320 + ww*m4))) / 45045  # * (ww-1)^6
-        k = m4 / m2**2 - 3.0  # ex-kurtosis
+        coef = np.array([25, 175, 700, 2100, 5250, 11550, 23100, 42900, 75075, 125125, 200200,
+                         309400, 461240, 660920, 907400, 1190280, 1483482, 1735734, 1857856,
+                         1706848, 1246960, 583440]) / 225225
+        k = m * vovn2 * np.polyval(coef, ww) / m2**2
 
         return m, v, s, k
 
