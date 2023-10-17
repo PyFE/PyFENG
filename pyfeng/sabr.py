@@ -244,6 +244,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
         var = np.where(vovn > 0.003, mnc2 - m1**2, vovn**2/3)
         # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
+        # at vovn = 0.003,  3.000249e-6  vs  3e-6
         var_over_m1sq = var/m1**2
 
         if ratio is None:
@@ -303,26 +304,29 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
         """
 
-        # Factor[-3(-1 + w) ^ 4 + (2(-1 + w) ^ 2(5 - 6 w + w ^ 6))/5 - (4(-1 + w)(-21 + 27 w - 7 w ^ 6 + w ^ 15))/315 + (
-        #            429 - 572 w + 182 w ^ 6 - 44 w ^ 15 + 5 w ^ 28)/45045 - 3(-(-1 + w) ^ 2 + (5 - 6 w + w ^ 6)/15) ^ 2]
-
-        #((w - 1) ^ 7(25
-        # w ^ 21 + 175 w ^ 20 + 700 w ^ 19 + 2100 w ^ 18 + 5250 w ^ 17 + 11550 w ^ 16 + 23100 w ^ 15 + 42900 w ^ 14 + 75075 w ^ 13 + 125125 w ^ 12 + 200200 w ^ 11 + 309400 w ^ 10 + 461240 w ^ 9 + 660920 w ^ 8 + 907400 w ^ 7 + 1190280 w ^ 6 + 1483482 w ^ 5 + 1735734 w ^ 4 + 1857856 w ^ 3 + 1706848 w ^ 2 + 1246960 w + 583440))/225225
-
         vovn2 = vovn**2
-        m = util.avg_exp(vovn2)
-        ww = m * vovn2 + 1.
+        m = util.avg_exp(vovn2)  # [exp(vov2)-1]/vov2
+        ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
         v = m2 * m**3 * vovn2   # * (ww-1)^3
+        # If vov2 -> 0, v = (4/3) vovn^2
 
-        coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315
-        s = np.sqrt(m * vovn2) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
+        s = np.sqrt(m) * vovn * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        # If vov2 -> 0, s = (4/5)*3*sqrt(3)*vov = 2.4*sqrt(3) ~ 4.15692*vov
+
+        # Ex-kurtosis calculation
+        # Factor[-3(-1 + w) ^ 4 + (2(-1 + w) ^ 2(5 - 6 w + w ^ 6))/5 - (4(-1 + w)(-21 + 27 w - 7 w ^ 6 + w ^ 15))/315 + (
+        #            429 - 572 w + 182 w ^ 6 - 44 w ^ 15 + 5 w ^ 28)/45045 - 3(-(-1 + w) ^ 2 + (5 - 6 w + w ^ 6)/15) ^ 2]
+       #((w - 1) ^ 7(25
+        # w ^ 21 + 175 w ^ 20 + 700 w ^ 19 + 2100 w ^ 18 + 5250 w ^ 17 + 11550 w ^ 16 + 23100 w ^ 15 + 42900 w ^ 14 + 75075 w ^ 13 + 125125 w ^ 12 + 200200 w ^ 11 + 309400 w ^ 10 + 461240 w ^ 9 + 660920 w ^ 8 + 907400 w ^ 7 + 1190280 w ^ 6 + 1483482 w ^ 5 + 1735734 w ^ 4 + 1857856 w ^ 3 + 1706848 w ^ 2 + 1246960 w + 583440))/225225
 
         coef = np.array([25, 175, 700, 2100, 5250, 11550, 23100, 42900, 75075, 125125, 200200,
                          309400, 461240, 660920, 907400, 1190280, 1483482, 1735734, 1857856,
-                         1706848, 1246960, 583440]) / 225225
+                         1706848, 1246960, 583440]) / 225225  # O(x^22)
         k = m * vovn2 * np.polyval(coef, ww) / m2**2
+        # If vov2 -> 0, k = 368/35*3 vovn^2 ~ 31.542857 vovn^2
 
         return m, v, s, k
 
