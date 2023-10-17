@@ -242,16 +242,17 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         # only ratio cares, so use remove_exp=True
         m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
-        v = mnc2 - m1**2
-        v_over_m1sq = v/m1**2
+        var = np.where(vovn > 0.003, mnc2 - m1**2, vovn**2/3)
+        # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
+        var_over_m1sq = var/m1**2
 
         if ratio is None:
-            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(v*np.sqrt(v))
+            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(var*np.sqrt(var))
             sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
             sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
-            ratio = 1.0 - np.sqrt(v_over_m1sq) / sqrt_w_m_1
+            ratio = 1.0 - np.sqrt(var_over_m1sq) / sqrt_w_m_1
         else:
-            sigma = np.sqrt(np.log1p(v_over_m1sq/(1.0-ratio)**2))
+            sigma = np.sqrt(np.log1p(var_over_m1sq/(1.0-ratio)**2))
 
         return m1, sigma, ratio
 
