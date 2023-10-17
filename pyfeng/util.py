@@ -56,8 +56,8 @@ def avg_exp(x):
         value
     """
     with np.errstate(invalid="ignore"):
-        rv = np.where(np.abs(x) < 1e-6,
-                      1. + (x/2.)*(1. + (x/3.)),  # + o(x^3)
+        rv = np.where(np.abs(x) < 1e-5,
+                      12/(x*(x-6)+12),  # based on (2,1) Pade approximant
                       np.expm1(x)/x)
     return rv
 
