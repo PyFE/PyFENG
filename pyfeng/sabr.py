@@ -148,19 +148,22 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         """
         rho2 = rho * rho
-        # initalization with expansion for small |zz|
-        xx_zz = 1 - (zz/2) * (rho - zz * (rho2 - 1/3 - (5*rho2 - 3)/4 * rho*zz))
-
-        yy = SabrVolApproxABC._vv(zz, rho)
-        eps = 1e-5
 
         with np.errstate(divide="ignore", invalid="ignore"):  # suppress error for zz=0
-            # replace negative zz
-            xx_zz = np.where(zz > -eps, xx_zz, np.log((1 - rho) / (yy - (zz + rho))) / zz)
-            # replace positive zz
-            xx_zz = np.where(zz < eps, xx_zz, np.log((yy + (zz + rho)) / (1 + rho)) / zz)
+            vv = SabrVolApproxABC._vv(zz, rho)
+            zz_xx = np.where(zz + rho > 0,
+                             zz / np.log((vv + zz + rho) / (1 + rho)),
+                             zz / np.log((1 - rho)/(vv - zz - rho))
+                             )
 
-        return 1.0 / xx_zz
+        # expansion for small |zz|
+        # Series[z/Log[(z + ρ + Sqrt[1 + z^2 + 2 z ρ])/(1 + ρ)], {z, 0, 6}]
+        # 1 + (ρ z)/2 + (1/6 - ρ^2/4) z^2 + 1/24 ρ (6 ρ^2 - 5) z^3 + (-(5 ρ^4)/16 + ρ^2/3 - 17/360) z^4 + 1/480 ρ (210 ρ^4 - 275 ρ^2 + 74) z^5 + O(z^6)
+        # (Taylor series)
+        idx = (np.abs(zz) < 1e-5)
+        zz_xx[idx] = 1 + zz[idx]*(rho/2 + zz[idx]*(1/6 - rho2/4 + rho*(6*rho2 - 5)/24 * zz[idx]))
+
+        return zz_xx
 
     @staticmethod
     def cond_avgvar_mnc4(vovn, z, remove_exp=False):
