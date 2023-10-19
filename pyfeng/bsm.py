@@ -64,8 +64,8 @@ class Bsm(opt.OptAnalyticABC):
 
     @staticmethod
     def d1sigma(d1, ln_k):
-        sig = np.sqrt(d1**2 + 2*ln_k) + np.abs(d1)
-        sig = np.divide(2*ln_k, sig, out=np.array(sig), where=d1 < 0.)
+        sig = np.array(np.sqrt(d1**2 + 2*ln_k) + np.abs(d1))
+        np.divide(2*ln_k, sig, out=sig, where=d1 < 0.)
         return sig
 
     @staticmethod
@@ -462,7 +462,7 @@ class Bsm(opt.OptAnalyticABC):
 
         # standardized strike and price
         kk = np.array(strike/fwd)
-        np.reciprocal(kk, out=kk, where=(kk < 1.))
+        np.reciprocal(kk, out=kk, where=kk < 1.)
         p = (price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike)
 
         # Exclude option price out of bound
