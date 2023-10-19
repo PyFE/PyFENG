@@ -160,7 +160,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         # Series[z/Log[(z + ρ + Sqrt[1 + z^2 + 2 z ρ])/(1 + ρ)], {z, 0, 6}]
         # 1 + (ρ z)/2 + (1/6 - ρ^2/4) z^2 + 1/24 ρ (6 ρ^2 - 5) z^3 + (-(5 ρ^4)/16 + ρ^2/3 - 17/360) z^4 + 1/480 ρ (210 ρ^4 - 275 ρ^2 + 74) z^5 + O(z^6)
         # (Taylor series)
-        idx = (np.abs(zz) < 1e-5)
+        idx = np.abs(zz) < 1e-5
         zz_xx[idx] = 1 + zz[idx]*(rho/2 + zz[idx]*(1/6 - rho2/4 + rho*(6*rho2 - 5)/24 * zz[idx]))
 
         return zz_xx
@@ -242,9 +242,11 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         # only ratio cares, so use remove_exp=True
         m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
-        var = np.where(vovn > 0.003, mnc2 - m1**2, vovn**2/3)
+
+        vovn2 = vovn**2
+        var = np.where(vovn > 0.01, mnc2 - m1**2, vovn2/3*(1 + (4/15)*vovn2*(z**2 + 4)))
         # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
-        # at vovn = 0.003,  3.000249e-6  vs  3e-6
+        # at vovn = 0.01 (z=1.),  3.333787675674493e-05  vs  3.333777777777778e-05
         var_over_m1sq = var/m1**2
 
         if ratio is None:
@@ -357,15 +359,15 @@ class SabrVolApproxABC(SabrABC):
         assert np.isscalar(beta)
         beta = float(beta)  # np.power complains if power is negative integer
         betac = 1.0 - beta
-        kk = strike / fwd
+        kk = np.array(strike / fwd)
 
         # fall-back indices and values first
-        ind_atm = np.fabs(kk - 1.0) < 1e-6
-        val = 1 - beta/2 * (kk - 1) * (1 - (1 + beta)/3 * (kk - 1))
         with np.errstate(divide="ignore", invalid="ignore"):
             if abs(betac) < 1e-4:
-                val = np.where(ind_atm, val, np.log(kk) / (kk - 1))
+                val = util.avg_inv(kk - 1)
             else:
+                ind_atm = np.fabs(kk - 1.0) < 1e-6
+                val = 1 - beta/2*(kk - 1)*(1 - (1 + beta)/3*(kk - 1))
                 val = np.where(ind_atm, val, (np.power(kk, betac) - 1) / betac / (kk - 1))
 
         return val
@@ -560,13 +562,13 @@ class SabrNormVolApprox(SabrVolApproxABC):
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
         """
         vovn = self.vov * np.sqrt(texp)
-        ww = np.exp(vovn**2)
+        m2 = np.expm1(vovn**2)
+        ww = m2 + 1
 
-        m2 = ww - 1
-        skew = self.rho * (ww+2) * np.sqrt(m2)
-        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww**3 + 3*ww**2 + 6*ww + 5) + 1)
+        skew = self.rho * np.sqrt(m2) * (ww+2)
+        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww*(ww*(ww + 3) + 6) + 5) + 1)
 
-        return m2 * (self.sigma/self.vov)**2, skew, exkurt
+        return m2*(self.sigma/self.vov)**2, skew, exkurt
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
