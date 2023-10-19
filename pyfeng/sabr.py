@@ -18,7 +18,7 @@ from . import opt_smile_abc as smile
 from . import bsm
 from . import norm
 from . import cev
-
+from . import util
 
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
@@ -148,19 +148,22 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         """
         rho2 = rho * rho
-        # initalization with expansion for small |zz|
-        xx_zz = 1 - (zz/2) * (rho - zz * (rho2 - 1/3 - (5*rho2 - 3)/4 * rho*zz))
-
-        yy = SabrVolApproxABC._vv(zz, rho)
-        eps = 1e-5
 
         with np.errstate(divide="ignore", invalid="ignore"):  # suppress error for zz=0
-            # replace negative zz
-            xx_zz = np.where(zz > -eps, xx_zz, np.log((1 - rho) / (yy - (zz + rho))) / zz)
-            # replace positive zz
-            xx_zz = np.where(zz < eps, xx_zz, np.log((yy + (zz + rho)) / (1 + rho)) / zz)
+            vv = SabrVolApproxABC._vv(zz, rho)
+            zz_xx = np.where(zz + rho > 0,
+                             zz / np.log((vv + zz + rho) / (1 + rho)),
+                             zz / np.log((1 - rho)/(vv - zz - rho))
+                             )
 
-        return 1.0 / xx_zz
+        # expansion for small |zz|
+        # Series[z/Log[(z + ρ + Sqrt[1 + z^2 + 2 z ρ])/(1 + ρ)], {z, 0, 6}]
+        # 1 + (ρ z)/2 + (1/6 - ρ^2/4) z^2 + 1/24 ρ (6 ρ^2 - 5) z^3 + (-(5 ρ^4)/16 + ρ^2/3 - 17/360) z^4 + 1/480 ρ (210 ρ^4 - 275 ρ^2 + 74) z^5 + O(z^6)
+        # (Taylor series)
+        idx = np.abs(zz) < 1e-5
+        zz_xx[idx] = 1 + zz[idx]*(rho/2 + zz[idx]*(1/6 - rho2/4 + rho*(6*rho2 - 5)/24 * zz[idx]))
+
+        return zz_xx
 
     @staticmethod
     def cond_avgvar_mnc4(vovn, z, remove_exp=False):
@@ -239,16 +242,20 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         # only ratio cares, so use remove_exp=True
         m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
-        v = mnc2 - m1**2
-        v_over_m1sq = v/m1**2
+
+        vovn2 = vovn**2
+        var = np.where(vovn > 0.01, mnc2 - m1**2, vovn2/3*(1 + (4/15)*vovn2*(z**2 + 4)))
+        # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
+        # at vovn = 0.01 (z=1.),  3.333787675674493e-05  vs  3.333777777777778e-05
+        var_over_m1sq = var/m1**2
 
         if ratio is None:
-            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(v*np.sqrt(v))
+            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(var*np.sqrt(var))
             sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
             sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
-            ratio = 1.0 - np.sqrt(v_over_m1sq) / sqrt_w_m_1
+            ratio = 1.0 - np.sqrt(var_over_m1sq) / sqrt_w_m_1
         else:
-            sigma = np.sqrt(np.log1p(v_over_m1sq/(1.0-ratio)**2))
+            sigma = np.sqrt(np.log1p(var_over_m1sq/(1.0-ratio)**2))
 
         return m1, sigma, ratio
 
@@ -293,37 +300,35 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             vovn: vov * sqrt(texp)
 
         Returns:
-            (mean, variance)
+            (mean, variance, skewness, ex-kurtosis)
 
         References
-            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
+            - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
         """
-        vovn2 = vovn**2
-        ww = np.exp(vovn2)
-        m = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
 
-        # (10 + 6 x + 3 x^2 + x^3)/15   *   (x - 1)^3
+        vovn2 = vovn**2
+        m = util.avg_exp(vovn2)  # [exp(vov2)-1]/vov2
+        ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
         v = m2 * m**3 * vovn2   # * (ww-1)^3
+        # If vov2 -> 0, v = (4/3) vovn^2
 
-        # 210 x^4 + 126 x^5 + 70 x^6 + 35 x^7 + 15 x^8 + 5 x^9 + x^10
-        # 336 + 456 x + 432 x^2 + 330 x^3       *        (x - 1)^5 / 315
+        coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
+        s = np.sqrt(m) * vovn * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        # If vov2 -> 0, s = (4/5)*3*sqrt(3)*vov = 2.4*sqrt(3) ~ 4.15692*vov
 
-        m3 = 210 + ww*(126 + ww*(70 + ww*(35 + ww*(15 + ww*(5 + ww)))))
-        m3 = (336 + ww*(456 + ww*(432 + ww*(330 + ww*m3)))) / 315  # * (ww-1)^5
-        s = m3 / np.power(m2, 1.5) * np.sqrt(m * vovn2)  # skewness
+        # Ex-kurtosis calculation
+        # Factor[-3(-1 + w) ^ 4 + (2(-1 + w) ^ 2(5 - 6 w + w ^ 6))/5 - (4(-1 + w)(-21 + 27 w - 7 w ^ 6 + w ^ 15))/315 + (
+        #            429 - 572 w + 182 w ^ 6 - 44 w ^ 15 + 5 w ^ 28)/45045 - 3(-(-1 + w) ^ 2 + (5 - 6 w + w ^ 6)/15) ^ 2]
+       #((w - 1) ^ 7(25
+        # w ^ 21 + 175 w ^ 20 + 700 w ^ 19 + 2100 w ^ 18 + 5250 w ^ 17 + 11550 w ^ 16 + 23100 w ^ 15 + 42900 w ^ 14 + 75075 w ^ 13 + 125125 w ^ 12 + 200200 w ^ 11 + 309400 w ^ 10 + 461240 w ^ 9 + 660920 w ^ 8 + 907400 w ^ 7 + 1190280 w ^ 6 + 1483482 w ^ 5 + 1735734 w ^ 4 + 1857856 w ^ 3 + 1706848 w ^ 2 + 1246960 w + 583440))/225225
 
-        # + 3960 x^15 + 2310 x^16 + 1260 x^17 + 630 x^18 + 280 x^19 + 105 x^20 + 30 x^21 + 5 x^22
-        # + 39936 x^9 + 30368 x^10 + 21840 x^11 + 15015 x^12 + 10010 x^13 + 6435 x^14
-        # + 3432 x^3 + 37037 x^4 + 54054 x^5 + 59241 x^6 + 56576 x^7 + 49296 x^8
-        # - 56628 - 60632 x - 34320 x^2           *        (x - 1)^6 / 45045
-
-        m4 = 3960 + ww*(2310 + ww*(1260 + ww*(630 + ww*(280 + ww*(105 + ww*(30 + 5*ww))))))
-        m4 = 39936 + ww*(30368 + ww*(21840 + ww*(15015 + ww*(10010 + ww*(6435 + ww*m4)))))
-        m4 = 3432 + ww*(37037 + ww*(54054 + ww*(59241 + ww*(56576 + ww*(49296 + ww*m4)))))
-        m4 = (-56628 + ww*(-60632 + ww*(-34320 + ww*m4))) / 45045  # * (ww-1)^6
-        k = m4 / m2**2 - 3.0  # ex-kurtosis
+        coef = np.array([25, 175, 700, 2100, 5250, 11550, 23100, 42900, 75075, 125125, 200200,
+                         309400, 461240, 660920, 907400, 1190280, 1483482, 1735734, 1857856,
+                         1706848, 1246960, 583440]) / 225225  # O(x^22)
+        k = m * vovn2 * np.polyval(coef, ww) / m2**2
+        # If vov2 -> 0, k = 368/35*3 vovn^2 ~ 31.542857 vovn^2
 
         return m, v, s, k
 
@@ -354,15 +359,15 @@ class SabrVolApproxABC(SabrABC):
         assert np.isscalar(beta)
         beta = float(beta)  # np.power complains if power is negative integer
         betac = 1.0 - beta
-        kk = strike / fwd
+        kk = np.array(strike / fwd)
 
         # fall-back indices and values first
-        ind_atm = np.fabs(kk - 1.0) < 1e-6
-        val = 1 - beta/2 * (kk - 1) * (1 - (1 + beta)/3 * (kk - 1))
         with np.errstate(divide="ignore", invalid="ignore"):
             if abs(betac) < 1e-4:
-                val = np.where(ind_atm, val, np.log(kk) / (kk - 1))
+                val = util.avg_inv(kk - 1)
             else:
+                ind_atm = np.fabs(kk - 1.0) < 1e-6
+                val = 1 - beta/2*(kk - 1)*(1 - (1 + beta)/3*(kk - 1))
                 val = np.where(ind_atm, val, (np.power(kk, betac) - 1) / betac / (kk - 1))
 
         return val
@@ -557,13 +562,13 @@ class SabrNormVolApprox(SabrVolApproxABC):
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
         """
         vovn = self.vov * np.sqrt(texp)
-        ww = np.exp(vovn**2)
+        m2 = np.expm1(vovn**2)
+        ww = m2 + 1
 
-        m2 = ww - 1
-        skew = self.rho * (ww+2) * np.sqrt(m2)
-        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww**3 + 3*ww**2 + 6*ww + 5) + 1)
+        skew = self.rho * np.sqrt(m2) * (ww+2)
+        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww*(ww*(ww + 3) + 6) + 5) + 1)
 
-        return m2 * (self.sigma/self.vov)**2, skew, exkurt
+        return m2*(self.sigma/self.vov)**2, skew, exkurt
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)

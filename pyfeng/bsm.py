@@ -64,8 +64,8 @@ class Bsm(opt.OptAnalyticABC):
 
     @staticmethod
     def d1sigma(d1, ln_k):
-        sig = np.sqrt(d1**2 + 2*ln_k) + np.abs(d1)
-        sig = np.divide(2*ln_k, sig, out=np.array(sig), where=d1 < 0.)
+        sig = np.array(np.sqrt(d1**2 + 2*ln_k) + np.abs(d1))
+        np.divide(2*ln_k, sig, out=sig, where=d1 < 0.)
         return sig
 
     @staticmethod
@@ -462,7 +462,7 @@ class Bsm(opt.OptAnalyticABC):
 
         # standardized strike and price
         kk = np.array(strike/fwd)
-        np.reciprocal(kk, out=kk, where=(kk < 1.))
+        np.reciprocal(kk, out=kk, where=kk < 1.)
         p = (price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike)
 
         # Exclude option price out of bound
@@ -633,10 +633,9 @@ class Bsm(opt.OptAnalyticABC):
         References:
             https://en.wikipedia.org/wiki/Log-normal_distribution
         """
-        ww = np.exp(texp*self.sigma**2)
-        var = ww - 1
-        skew = (ww + 2)*np.sqrt(ww - 1)
-        exkurt = ww**2*(ww*(ww + 2) + 3) - 6  # ww**4 + 2*ww**3 + 3*ww - 6
+        var = np.expm1(texp*self.sigma**2)
+        skew = (var + 3)*np.sqrt(var)
+        exkurt = var*(var*(var*(var + 6) + 12) + 13)  # (1+var)**4 + 2*(1+var)**3 + 3*(1+var) - 6
         return var, skew, exkurt
 
 

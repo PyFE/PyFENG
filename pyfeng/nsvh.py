@@ -7,6 +7,7 @@ import scipy.special as spsp
 import scipy.optimize as spop
 
 from . import opt_smile_abc as smile
+from .util import MathFuncs, MathConsts
 
 class NsvhABC(smile.OptSmileABC, abc.ABC):
     beta = 0.0  ## should be fixed as 0
@@ -217,31 +218,22 @@ class Nsvh1(NsvhABC):
             (variance, skewness, and ex-kurtosis)
         """
         vovn = self.vov * np.sqrt(texp)
-        ww = np.exp(vovn**2)
+        ww_m1 = np.expm1(vovn**2)
+        ww, ww_p1 = ww_m1 + 1., ww_m1 + 2.
         rho2 = self.rho**2
-        rho3 = self.rho * rho2
-        rho4 = rho2**2
 
-        c20 = ww + 1
-        c22 = ww - 1
+        m2base = ww_p1 + rho2*ww_m1
+        m2 = (ww_m1/2) * m2base
 
-        c31 = 3 * (ww + 1)**2
-        c33 = (ww - 1) * (ww + 3)
+        c31 = 3 * ww_p1**2
+        c33 = ww_m1 * (ww + 3)
 
-        # C40 = (ww + 1)**2*(ww**4 + 2*ww**2 + 3)
-        # C42 = 6*(ww**2 - 1)*(ww**4 + 2*ww**3 + 4*ww**2 + 2*ww + 1)
-        # C44 = (ww - 1)**2*(ww**4 + 4*ww**3 + 10*ww**2 + 12*ww + 3)
-        # M3 = (1 / 4)*np.sqrt(ww)*(ww - 1)**2*(self.rho*C_31 + rho3*C_33)
-        # M4 = (1 / 8)*(ww - 1)**2*(C_40 + rho2*C_42 + rho4*C_44)
+        k0 = ww_p1**3 * (ww**2 + 3)
+        k2 = 6 * ww_p1**2 * (ww*(ww*(ww + 1)+3)-1)
+        k4 = ww_m1 * (ww*(ww*(ww*(ww + 4)+10)+12) - 3)
 
-        m2 = 0.5 * (ww - 1) * (c20 + rho2 * c22)
-
-        k0 = (ww + 1)**3 * (ww**2 + 3)
-        k2 = 6 * (ww + 1)**2 * (ww**3 + ww**2 + 3 * ww - 1)
-        k4 = (ww - 1) * (ww**4 + 4 * ww**3 + 10 * ww**2 + 12 * ww - 3)
-
-        skew = np.sqrt(ww * (ww - 1) / 2) * (self.rho * c31 + rho3 * c33) / np.power(c20 + rho2 * c22, 1.5)
-        exkurt = 0.5 * (ww - 1) * (k0 + rho2 * k2 + rho4 * k4) / (c20 + rho2 * c22)**2
+        skew = self.rho * np.sqrt(ww_m1*ww/2) * (c31 + rho2*c33) / np.sqrt(m2base**3)
+        exkurt = (ww_m1/2) * (k0 + rho2*(k2 + rho2*k4)) / m2base**2
 
         return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
@@ -442,17 +434,17 @@ class NsvhGaussQuad(NsvhABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
         rho2 = self.rho**2
         rhoc = np.sqrt(1.0 - rho2)
-        vovn = self.vov * np.sqrt(np.maximum(texp, 1e-64))
+        vovn = self.vov * np.sqrt(np.maximum(texp, np.finfo(float).tiny))
 
         ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
-        z_weight /= np.sqrt(2 * np.pi)
         z_weight /= np.sum(np.exp(vovn/2*z_value)*z_weight) / np.exp(vovn**2/8)
-        #print(np.sum(np.exp(-vovn/2*z_value)*z_weight) - np.exp(vovn**2/8))
 
         # quadrature point & weight for exp(-v/2)/(2 pi) derived from sqrt(v) * np.exp(-v)
-        v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
-        v_weight /= np.pi * np.sqrt(v_value)
+        #v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
+        #v_weight /= np.pi * np.sqrt(v_value)
+        v_value, v_weight = spsp.roots_laguerre(self.n_quad[1])
+        v_weight /= np.pi
         v_value *= 2.0
 
         ### axis 0: dependence on v
@@ -474,13 +466,14 @@ class NsvhGaussQuad(NsvhABC):
         
         for i, k_eff in enumerate(strike_eff):
             g_vec = self.rho * exp_plus - (self.rho * vov_var + k_eff) / exp_plus
+
             temp1 = z_star_cosh + 0.5 * g_vec**2 / (1 - rho2)
             v_0 = (np.arccosh(temp1) / vovn)**2 - u_hat**2
+
             h_mat = rhoc * np.sqrt(2*np.cosh(vovn * np.sqrt((u_hat**2 + v_0 + v_value))) - 2*np.cosh(vovn * u_hat))
             theta_mat = np.arccos(np.abs(g_vec) / h_mat)
 
             int_z_v = np.sqrt(h_mat**2 - g_vec**2) - np.abs(g_vec) * theta_mat
-
             int_z = np.sum(int_z_v * v_weight, axis=0)  # integrating over v (column)
             int_z[:] = int_z * np.exp(-v_0/2) + np.fmax(cp[i] * g_vec, 0.0)  # in-place operation
 

@@ -25,8 +25,7 @@ class HestonABC(sv.SvABC, abc.ABC):
         Returns:
             noncentrality parameter (scalar)
         """
-        chi_lambda = 4 * self.sigma * self.mr / self.vov**2
-        chi_lambda /= np.exp(self.mr*dt) - 1
+        chi_lambda = 4 * self.sigma * self.mr / self.vov**2 / np.expm1(self.mr*dt)
         return chi_lambda
 
     def phi_exp(self, texp):
