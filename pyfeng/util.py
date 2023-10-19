@@ -56,8 +56,31 @@ def avg_exp(x):
         value
     """
     with np.errstate(invalid="ignore"):
-        rv = np.where(np.abs(x) < 1e-5,
-                      12/(x*(x-6)+12),  # based on (2,1) Pade approximant
-                      np.expm1(x)/x)
+        rv = np.array(np.expm1(x)/x)
+
+    # bound doesn't really matter. just to avoid /0
+    # based on (2,1) Pade approximant
+    np.divide(12, x*(x-6)+12, out=rv, where=np.abs(x) < 1e-5)
+
     return rv
 
+
+def avg_inv(x):
+    """
+    [Integarl 1/x from 1 to 1+x] / x = log(1+x) / x
+
+    Args:
+        x: argument
+
+    Returns:
+
+    """
+
+    with np.errstate(invalid="ignore"):
+        rv = np.array(np.log1p(x)/x)
+
+    # bound doesn't really matter. just to avoid /0
+    # based on (2,1) Pade approximant
+    np.divide(1+x/2, x*(x/6+1)+1, out=rv, where=np.abs(x) < 1e-5)
+
+    return rv
