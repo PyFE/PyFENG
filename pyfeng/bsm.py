@@ -620,7 +620,7 @@ class Bsm(opt.OptAnalyticABC):
 
         return p
 
-    def moments_vsk(self, texp=1):
+    def price_vsk(self, texp=1):
         """
         Variance, skewness, and ex-kurtosis. Assume mean=1.
 
@@ -798,8 +798,8 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             self.disp(strike), self.disp(barrier), self.disp(spot), *args, **kwargs
         )
 
-    def moments_vsk(self, texp=1):
-        rv = super().moments_vsk(self, texp)
+    def price_vsk(self, texp=1):
+        rv = super().price_vsk(self, texp)
         rv[0] /= self.beta
         rv[1] /= self.beta**3
         rv[2] /= self.beta**4
