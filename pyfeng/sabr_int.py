@@ -18,7 +18,7 @@ class SabrNormalIntAntonov2015(sabr.SabrABC, abc.ABC):
         - https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.dblquad.html
 
     """
-    tol = 1.5e-8
+    tol = 1.49e-8
 
     @staticmethod
     def FnG(u, s, t, k, rho):
