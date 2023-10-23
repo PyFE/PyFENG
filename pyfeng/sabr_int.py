@@ -2,8 +2,58 @@ import abc
 import numpy as np
 from . import sabr
 import scipy.special as spsp
+import scipy.integrate as spint
 from . import opt_smile_abc as smile
 from . import util
+
+
+class SabrNormalIntAntonov2015(sabr.SabrABC, abc.ABC):
+    """
+    Integral of the option value representation in Antonov et al. (2015, Eq (12)) or Antonov et al. (2019, 3.5.1)
+    using scipy.integrate.dblquad.
+
+    References:
+        - Antonov A, Konikov M, Spector M (2015) Mixing SABR models for negative rates. SSRN Electronic Journal
+        - Antonov A, Konikov M, Spector M (2019) Modern SABR Analytics. Springer International Publishing, Cham
+        - https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.dblquad.html
+
+    """
+    tol = 1.5e-8
+
+    @staticmethod
+    def FnG(u, s, t, k, rho):
+        sh, ch = np.sinh(s), np.cosh(s)
+        rv = np.exp(-t/8 - u/2)*np.sqrt((1. - (k/sh - rho*ch/sh)**2) * (np.cosh(np.sqrt(u*t)) - ch))
+        return rv
+
+    def price(self, strike, spot, texp, cp=1):
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+        rhoc2 = 1.0 - self.rho**2
+        vovn = self.vov*np.sqrt(np.maximum(texp, np.finfo(float).tiny))
+
+        #### effective strike
+        strike_eff = (self.vov/self.sigma)*(strike - fwd) + self.rho
+        scalar_output = np.isscalar(strike_eff)
+        strike_eff = np.atleast_1d(strike_eff)
+
+        s0 = np.arccosh(np.fmax((np.sqrt(strike_eff**2 + rhoc2) - self.rho*strike_eff)/rhoc2, 1.0))
+        s0_upper = np.sqrt(s0**2 + 72*vovn**2)
+
+        price = np.zeros_like(strike_eff)
+        for i, k1 in enumerate(strike_eff):
+            rv = spint.dblquad(self.FnG, s0[i], s0_upper[i],
+                               lambda s: (s/vovn)**2, lambda s: (s/vovn)**2 + 72.,
+                               args=(vovn**2, k1, self.rho),
+                               epsabs=self.tol, epsrel=self.tol)
+            price[i] = rv[0]
+
+        price = np.fmax(cp*(fwd - strike), 0) + self.sigma/(np.pi*np.sqrt(np.pi*texp)*self.vov**2)*price
+        price *= df
+        if scalar_output:
+            price = price[0]
+
+        return price
 
 
 class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
@@ -212,3 +262,4 @@ class SabrMixture(SabrMixtureABC):
             fwd_ratio = 1.0
 
         return fwd_ratio.flatten(), r_vol.flatten(), w0123.flatten()
+
