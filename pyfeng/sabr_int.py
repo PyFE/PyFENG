@@ -2,6 +2,8 @@ import abc
 import numpy as np
 from . import sabr
 import scipy.special as spsp
+import scipy.stats as spst
+import scipy.integrate as spint
 from . import opt_smile_abc as smile
 from . import util
 
@@ -212,3 +214,149 @@ class SabrMixture(SabrMixtureABC):
             fwd_ratio = 1.0
 
         return fwd_ratio.flatten(), r_vol.flatten(), w0123.flatten()
+
+
+class SabrNormAnalyticInt(sabr.SabrABC):
+    """
+    Approximated analytic 1-d integral of Antonov et al. (2019, S 3.4.5) with Elliptic integral of 2nd kind (E).
+
+    `price` method implements the 2nd order approximation and optional correction with Gaussian quadrature (when `quad_correction` is True).
+    `price_quad` method impelements the generic integral with `numpy.integrate.quad` function.
+
+    References:
+        - Antonov A, Konikov M, Spector M (2019) Modern SABR Analytics. Springer International Publishing, Cham
+        - https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.quad.html
+    """
+    quad_correction = False
+    n_quad = 9  # only used when quad_correction is True
+    quad_eps = 1e-6  # used for price_quad
+
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
+        """
+        Args:
+            sigma: model volatility at t=0
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            beta: elasticity parameter. should be 0 or None.
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+            is_atmvol: If True, use `sigma` as the ATM normal vol
+        """
+        # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f"Ignoring beta = {beta}...")
+        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+
+    def price(self, strike, spot, texp, cp=1):
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        rhoc2 = 1.0 - self.rho**2
+        xi = self.vov * np.sqrt(texp)/2
+        k = self.vov/self.sigma*(strike - fwd) + self.rho
+        V = np.sqrt(k**2 + rhoc2)
+        u0 = np.arcsinh(np.abs((self.rho*V - k)/rhoc2)) / (2*xi)
+
+        tmp1 = np.abs(self.rho - k/V)
+        tmp2 = 1. - self.rho*k/V
+        A = 0.75*tmp1
+        B = 0.75*(tmp2 - 5/16*tmp1**2)
+
+        R = util.MathFuncs.mills_ratio(np.array([u0 - xi, u0, u0 + xi]))
+        opt_val = (R[0] - R[2]) + A*(R[0] + R[2] - 2*R[1]) + 2*B*(R[0] - R[2] - 2*xi*(1. - u0*R[1]))
+
+        if self.quad_correction:
+            v_value, v_weight = spsp.roots_genlaguerre(self.n_quad, 1.5)
+            axis = len(np.broadcast_shapes(np.shape(strike), np.shape(spot), np.shape(texp)))
+            v_value = np.expand_dims(v_value, list(range(1, axis+1)))
+            v_weight = np.expand_dims(v_weight, list(range(1, axis+1)))
+
+            uu = np.sqrt(u0**2 + 2*v_value)
+            v_weight = v_weight / np.power(v_value, 1.5) / uu
+
+            ch = np.cosh(2*xi*uu)
+            diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - self.rho*ch)**2), 0.0))
+            v_p = self.rho*k + rhoc2*ch + diff
+            V = np.sqrt(k**2 + rhoc2)
+            fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(2*diff/v_p) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
+            base = util.MathFuncs.mills_ratio(uu + xi) + util.MathFuncs.mills_ratio(uu - xi)
+            opt_val += np.sum(fn*base*v_weight, axis=0)
+
+        opt_val *= self.sigma*np.sqrt(texp*V)/2/xi*np.exp(-0.5*xi**2) * spst.norm._pdf(u0)
+        opt_val += np.fmax(cp*(fwd - strike), 0.0)
+        opt_val *= df
+        return opt_val
+
+    @staticmethod
+    def hh_xi(uu, k, xi, rho):
+        """
+        H_xi (u) function. It's used in `price_quad` method
+
+        Args:
+            uu: argument >= u_0. uu = s/(2 xi)
+            k: vov/sigma0*(strike - fwd) + rho
+            xi: vov*sqrt(T)/2
+            rho: correlation
+
+        Returns:
+
+        """
+
+        rhoc2 = 1.0 - rho**2
+        ch = np.cosh(2*xi*uu)
+        diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - rho*ch)**2), 0.0))
+        v_p = rho*k + rhoc2*ch + diff
+        return np.sqrt(v_p) * spsp.ellipe(2*diff/v_p)
+
+    @staticmethod
+    def hh_xi_approx(uu, k, xi, rho):  # u = s/(2*xi)
+        """
+        H_xi (u) function approximated to the 2nd order.
+        It's NOT used for pricing, but implemented for plot
+
+        Args:
+            uu: argument >= u_0. uu = s/(2 xi)
+            k: vov/sigma0*(strike - fwd) + rho
+            xi: vov*sqrt(T)/2
+            rho: correlation
+
+        Returns:
+
+        """
+
+        rhoc2 = 1.0 - rho**2
+        # u = s/(2*xi)
+        V = np.sqrt(k**2 + rhoc2)
+        u0 = np.arcsinh(np.abs((rho*V - k)/rhoc2)) / (2*xi)
+        tmp1 = np.abs(rho - k/V)
+        tmp2 = 1. - rho*k/V
+        A = 0.75*tmp1
+        B = 0.75*(tmp2 - 5/16*tmp1**2)
+
+        return np.sqrt(V)*np.pi/2 * (1. + xi*(uu - u0)*(A + B*xi*(uu - u0)))
+
+    def price_quad(self, strike, spot, texp, cp=1):
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        rhoc2 = 1.0 - self.rho**2
+        xi = 0.5 * self.vov * np.sqrt(texp)
+        k = self.vov/self.sigma*(strike - fwd) + self.rho
+        V = np.sqrt(k**2 + rhoc2)
+        u0 = np.arcsinh(np.abs((self.rho*V - k)/rhoc2)) / (2*xi)
+
+        def integrand(uu_, xi_, k_):
+            rv = self.hh_xi(uu_, k_, xi_, self.rho)
+            rv *= spst.norm._pdf(uu_)*(util.MathFuncs.mills_ratio(uu_ + xi_) + util.MathFuncs.mills_ratio(uu_ - xi_))
+            return rv
+
+        def integral(u0_, xi_, k_):
+            return spint.quad(integrand, u0_, np.sqrt(u0_**2 + 72), (xi_, k_), epsabs=self.quad_eps, epsrel=self.quad_eps)
+
+        opt_val, est_error = np.vectorize(integral)(u0, xi, k)
+        opt_val *= self.sigma*np.sqrt(texp)/np.pi*np.exp(-0.5*xi**2)
+        opt_val += np.fmax(cp*(fwd - strike), 0.0)
+        opt_val *= df
+
+        return opt_val

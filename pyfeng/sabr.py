@@ -225,16 +225,16 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return m1, m2, m3, m4
 
     @staticmethod
-    def cond_avgvar_displn_params(vovn, z, ratio=0.):
+    def cond_avgvar_displn_params(vovn, z, ratio=1.):
         """
         Find the prameters (mu, sigma, ratio) to fit moments
 
-            Y ~ ratio * mu + (1-ratio) * mu * exp(sigma * Z - sigma^2/2)
+            Y ~ (1 - ratio) * mu + ratio * mu * exp(sigma * Z - sigma^2/2)
 
         Args:
             vovn:
             z:
-            ratio:
+            ratio:  ratio for the lognormal distribution. 1.0 by default
 
         Returns:
 
@@ -253,9 +253,9 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
             s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(var*np.sqrt(var))
             sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
             sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
-            ratio = 1.0 - np.sqrt(var_over_m1sq) / sqrt_w_m_1
+            ratio = np.sqrt(var_over_m1sq) / sqrt_w_m_1
         else:
-            sigma = np.sqrt(np.log1p(var_over_m1sq/(1.0-ratio)**2))
+            sigma = np.sqrt(np.log1p(var_over_m1sq/ratio**2))
 
         return m1, sigma, ratio
 

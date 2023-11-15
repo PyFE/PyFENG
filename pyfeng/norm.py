@@ -84,10 +84,10 @@ class Norm(opt.OptAnalyticABC):
         fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / df)
 
         sigma_std = np.array(sigma) * np.sqrt(texp)
-        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).tiny)
+        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).eps)
 
         cp = np.array(cp)
-        price = df * (cp * (fwd - strike) * spst.norm._cdf(cp * d) + sigma_std * spst.norm._pdf(d))
+        price = df * sigma_std * (cp * d * spst.norm._cdf(cp * d) + spst.norm._pdf(d))
         return price
 
     @staticmethod
@@ -145,19 +145,21 @@ class Norm(opt.OptAnalyticABC):
         strd = 2 * price_fwd - strike_std  # straddle value (=call + put)
         # Note: time_val > 0  => strd >= time_val > 0
         # v = |fwd - strike|/(call + put) = np.fabs(strike_std) / strd, ATM when v=0
-        # v1 = 1 - v, ATM when v1=1
-        # Use v1 instead of v to preserve the option value < machine epsilon
-        v1 = np.clip(2 * time_val / strd, 0, 1)
+        # one_m_v = 1 - v, ATM when one_m_v=1
+        # Use one_m_v instead of v to preserve the option value < machine epsilon
+        one_m_v = np.clip(2 * time_val / strd, 0.0, 1.0)
         # bound between 0 and 1 for now. Out-of-bound value will be handleded later
-        v_sq = (1 - v1) ** 2
+        v_sq = (1.0 - one_m_v) ** 2
 
-        # ignore 'divide by 0' error when v1 = 0 for now.
-        # eta = v / atanh(v) = 2v / log((1+v)/(1-v)) = 2v / log((2-v1)/v1)
+        # ignore 'divide by 0' error when one_m_v = 0 for now.
+        # eta = v / atanh(v) = 2v / log((1+v)/(1-v)) = 2v / log((2-one_m_v)/one_m_v)
+        # eta = np.log1p((1.-one_m_v)/one_m_v)
+
         with np.errstate(divide="ignore", invalid="ignore"):
             eta = np.where(
-                v1 < 0.999,
-                2 * (1 - v1) / (np.log((2.0 - v1) / v1)),
-                1 / (1 + v_sq * (1 / 3 + v_sq / 5)),
+                one_m_v < 0.999,
+                2 * (1 - one_m_v) / (np.log((2.0 - one_m_v) / one_m_v)),
+                1 - v_sq/3 * (1 + (4/15)*v_sq),
             )
         h_a = np.sqrt(eta) * np.polyval(Norm._POLY_NU, eta) / np.polyval(Norm._POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
@@ -176,7 +178,7 @@ class Norm(opt.OptAnalyticABC):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         # formula according to lecture notes
@@ -187,7 +189,7 @@ class Norm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         delta = cp * spst.norm._cdf(cp * d)  # formula according to wikipedia
