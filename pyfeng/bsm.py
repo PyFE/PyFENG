@@ -89,10 +89,10 @@ class Bsm(opt.OptAnalyticABC):
     @staticmethod
     def price_vega_std(sigma, ln_k, sign=1, price=False):
         """
-        Price-to-vega ratio.
+        Price-to-vega p_v.
             Option Price / Vega = (N(d1) - k N(d2))/n(d1) = R(-d1) - R(-d2) for sign = 1
             (1 - Option Price) / Vega = (1 - N(d1) + k N(d2))/n(d1) = R(d1) + R(-d2) for sign = -1
-        where R(x) = N(-x)/n(x) is Mills ratio
+        where R(x) = N(-x)/n(x) is Mills p_v
 
         Args:
             sigma: volatility
@@ -110,30 +110,30 @@ class Bsm(opt.OptAnalyticABC):
         # handle the case ln_k = sigma = 0 (ATM)
         d0 = np.array(np.where(ln_k == 0., 0., -ln_k/sigma))
         sigma = np.broadcast_to(sigma, d0.shape)
-        ratio = np.array(MathFuncs.mills_ratio(-sign*(d0 + sigma/2.)) - sign*MathFuncs.mills_ratio(-d0 + sigma/2.))
+        p_v = np.array(MathFuncs.mills_ratio(-sign*(d0 + sigma/2.)) - sign*MathFuncs.mills_ratio(-d0 + sigma/2.))
 
         ## Handle very small sigma
         idx = (sigma < 1e-4) & (sign > 0)
         if np.any(idx):
             sig_sm = sigma[idx]
             d0_sm = d0[idx]
-            d0_sm2 = d0_sm**2
             # Mills ratio derivative:
             # R'(x) = x R(x) - 1
             # -R'(-x) = x R(-x) + 1
-            Rx_d1 = np.where(d0_sm < -1e3,
-                             1./(d0_sm2 + 2.)*(1. - 1./(d0_sm2 + 4.)*(1. - 5./(d0_sm2 + 6.))),
-                             1. + d0_sm * MathFuncs.mills_ratio(-d0_sm)
-                             )
             # R'''(x) = x(x^2 + 3) R(x) - (x^2 + 2) = (x^2 + 3) R'(x) + 1
             # -R'''(-x) = (x^2 + 3) -R'(-x) - 1
-            Rx_d3 = (d0_sm2 + 3.)*Rx_d1 - 1.
-            ratio[idx] = (Rx_d1 + sig_sm**2/24.*Rx_d3)*sig_sm
+
+            Rx_d1 = 1. + d0_sm * MathFuncs.mills_ratio(-d0_sm)
+            # when d0_sm is large negative
+            # Rx_d1 = 1./(d0_sm**2 + 2.)*(1. - 1./(d0_sm**2 + 4.)*(1. - 5./(d0_sm**2 + 6.))),
+
+            Rx_d3 = (d0_sm**2 + 3.)*Rx_d1 - 1.
+            p_v[idx] = (Rx_d1 + sig_sm**2/24.*Rx_d3)*sig_sm
 
         if price:
-            ratio *= spst.norm._pdf(d0 + sigma/2.)
+            p_v *= spst.norm._pdf(d0 + sigma/2.)
 
-        return ratio
+        return p_v
 
     @staticmethod
     def price_delta_std(sigma, ln_k):
