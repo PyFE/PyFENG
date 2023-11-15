@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.stats as spst
-import scipy.special as spsp
 import scipy.optimize as spopt
 import warnings
 
@@ -101,6 +100,9 @@ class Bsm(opt.OptAnalyticABC):
             sign: -1 for complementary price. +1 by default
             price: multiply vega so return price if True. False by default
 
+        References:
+            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+
         Returns:
 
         """
@@ -135,6 +137,20 @@ class Bsm(opt.OptAnalyticABC):
 
     @staticmethod
     def price_delta_std(sigma, ln_k):
+        """
+        Price-to-delta ratio, 1 - R(-d2)/R(-d1) for Mills ratio R(x) = N(-x)/n(x).
+        It's used in calculating upper/lower bound of IV in Choi et al. (2023)
+
+        Args:
+            sigma: volatility
+            ln_k: log strike
+
+        Returns:
+
+        References:
+            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+        """
+
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case ln_k = sigma = 0 (ATM)
         d0 = np.where(ln_k == 0., 0., -ln_k/sigma)
@@ -149,8 +165,8 @@ class Bsm(opt.OptAnalyticABC):
         It is based on the Mills ratio upper bound: 4 / [sqrt(x^2+8) + 3x]
 
         Args:
-            sigma:
-            ln_k:
+            sigma: volatility
+            ln_k: log strike
 
         Returns:
 
@@ -388,58 +404,8 @@ class Bsm(opt.OptAnalyticABC):
 
         return _sigma
 
-    def impvol_scipy_newton(self, price, strike, spot, texp, cp=1, setval=False):
-        """
-        BSM implied volatility with SciPy Newton function.
 
-        Args:
-            price: option price
-            strike: strike price
-            spot: spot (or forward) price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
-            setval: if True, sigma is set with the solved implied volatility
-
-        Returns:
-            implied volatility
-        """
-
-        fwd, df, _ = self._fwd_factor(spot, texp)
-
-        # standardized strike and price
-        kk = np.fmax(strike/fwd, fwd/strike)
-        lnk = np.log(kk)
-        pp = np.array((price/df - np.fmax(cp*(fwd - strike), 0.0)) / np.fmin(fwd, strike))
-
-        # Exclude option price out of bound
-        # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        ind_oob = (pp < 0.0) | (pp > 1.0)
-
-        np.clip(pp, 0.01*Bsm.IMPVOL_TOL, 1.0 - 0.01*Bsm.IMPVOL_TOL, out=pp)
-
-        # initial guess = inflection point in sigma (volga=0)
-        lb = -2 * spst.norm.ppf((1.0 - pp)/2)
-        ub = np.fmin(pp, 0.49999999)
-        ub = spst.norm.ppf(2*ub) - spst.norm.ppf(ub/kk)
-        sigma0 = np.clip(np.sqrt(2*np.abs(lnk)), lb, ub)
-
-        def p_err_ftn(_sigma):
-            return self.price_vega_std(_sigma, lnk, price=True) - pp
-
-        def vega_ftn(_sigma):
-            return self.vega_std(_sigma, lnk)
-
-        _sigma = spopt.newton(p_err_ftn, sigma0, fprime=vega_ftn, tol=Bsm.IMPVOL_TOL) / np.sqrt(texp)
-
-        # Put Nan for the out-of-bound option prices
-        _sigma = np.where(ind_oob, np.nan, _sigma)
-
-        if setval:
-            self.sigma = _sigma
-
-        return _sigma
-
-    def impvol(self, price, strike, spot, texp, cp=1, setval=False, n_iter=5, halley=False):
+    def impvol(self, price, strike, spot, texp, cp=1, setval=False, n_iter=8, halley=False):
         """
         BSM implied volatility with Newton's method with log price
 
@@ -467,35 +433,35 @@ class Bsm(opt.OptAnalyticABC):
 
         # Exclude option price out of bound
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        lnk, p = np.broadcast_arrays(np.log(kk), p)
+        ln_k, p = np.broadcast_arrays(np.log(kk), p)
 
-        _sigma = np.where(
-            (lnk == 0.) & (p < 1e-8),
-            MathConsts.M_SQRT2PI * p,
-            #self.d1sigma(spst.norm.ppf(p*(kk + p)/(2*p + (kk - 1.))), lnk)
-            self.d1sigma(spst.norm.ppf(p*(0.5 + kk/(p*(kk + 1.) + (kk - 1.)))), lnk)
+        sigma = np.where(
+            (ln_k == 0.) & (p < 1e-4),
+            MathConsts.M_SQRT2PI * p * (1.0 + np.pi * p**2 / 12.),
+            self.d1sigma(spst.norm.ppf(p*(0.5 + kk/(p*(kk + 1.) + (kk - 1.)))), ln_k)
         )
-        # Need to handle when p>1
 
         log_p_2pi = np.log(p) + MathConsts.M_LN2PI_2  # 0.5*np.log(2*np.pi)
 
         for k in range(n_iter):
-            p2v = self.price_vega_std(_sigma, lnk)  # pf.Bsm.price_vega_ratio
-            d1 = -lnk/_sigma + _sigma/2.
+            p2v = self.price_vega_std(sigma, ln_k)  # pf.Bsm.price_vega_ratio
+            d1 = -ln_k/sigma + sigma/2.
             p_log_err = -d1**2/2. + np.log(p2v) - log_p_2pi
             if halley:
-                p2v /= 1. - 0.5*p_log_err*(d1*(d1/_sigma - 1.)*p2v - 1.)
-            _sigma -= p_log_err * p2v
+                p2v /= 1. - 0.5*p_log_err*(d1*(d1/sigma - 1.)*p2v - 1.)
+            sigma -= p_log_err * p2v
+            if np.amax(np.abs(p_log_err)) < np.finfo(float).eps * 100:
+                break
 
-        _sigma /= np.sqrt(texp)
+        sigma /= np.sqrt(texp)
 
-        if _sigma.ndim == 0:
-            _sigma = _sigma.item()
+        if sigma.ndim == 0:
+            sigma = sigma.item()
 
         if setval:
-            self.sigma = _sigma
+            self.sigma = sigma
 
-        return _sigma
+        return sigma
 
     def vol_smile(self, strike, spot, texp, cp=1, model="norm"):
         """
