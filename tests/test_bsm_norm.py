@@ -104,7 +104,7 @@ class TestBsmMethods(unittest.TestCase):
             # now price option with the obtained implied vol
             m_norm2 = copy.copy(m_norm)
             m_norm2.sigma = iv
-            price_imp = m_norm2.price(strike, spot, texp, cp)
+            price_imp = m_norm2.price(strike, spot, texp=texp, cp=cp)
 
             # compare the two prices
             self.assertAlmostEqual(price, price_imp, delta=200 * m_norm.IMPVOL_TOL)
