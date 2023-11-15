@@ -159,7 +159,7 @@ class Norm(opt.OptAnalyticABC):
             eta = np.where(
                 one_m_v < 0.999,
                 2 * (1 - one_m_v) / (np.log((2.0 - one_m_v) / one_m_v)),
-                1 / (1 + v_sq * (1 / 3 + v_sq / 5)),
+                1 - v_sq/3 * (1 + (4/15)*v_sq),
             )
         h_a = np.sqrt(eta) * np.polyval(Norm._POLY_NU, eta) / np.polyval(Norm._POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
