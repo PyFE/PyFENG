@@ -1,4 +1,4 @@
-# PyFENG: Python Financial ENGineering
+# PyFENG: [Py]thon [F]inancial [ENG]ineering
 [![PyPI version](https://badge.fury.io/py/pyfeng.svg)](https://pypi.org/project/pyfeng/)
 [![Documentation Status](https://readthedocs.org/projects/pyfeng/badge/?version=latest)](https://pyfeng.readthedocs.io/en/latest/?badge=latest)
 [![Downloads](https://pepy.tech/badge/pyfeng)](https://pepy.tech/project/pyfeng)
