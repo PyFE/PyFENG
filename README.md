@@ -3,7 +3,7 @@
 [![Documentation Status](https://readthedocs.org/projects/pyfeng/badge/?version=latest)](https://pyfeng.readthedocs.io/en/latest/?badge=latest)
 [![Downloads](https://pepy.tech/badge/pyfeng)](https://pepy.tech/project/pyfeng)
 
-PyFENG is the python implemention of the standard option pricing models in financial engineering.
+PyFENG is the Python implementation of the standard option pricing models in financial engineering.
 
 ## Models implemented 
   * Black-Scholes-Merton (and displaced diffusion) model
@@ -12,12 +12,12 @@ PyFENG is the python implemention of the standard option pricing models in finan
   * Stochastic-alpha-beta-rho (SABR) model
   * Hyperbolic normal stochastic volatility (NSVh) model
   * Heston model
-  * Ornstein-Uhlenbeck driven stochastic volatility model
+  * Ornstein-Uhlenbeck-driven stochastic volatility (OUSV) model
 
 ## About the package
 * It assumes variables are `numpy` arrays. So the computations are naturally vectorized.
 * It is purely in Python (i.e., no C, C++, cython). 
-* It is implemented with python class.
+* It is implemented with Python class.
 * It is intended for, but not limited to, academic use. By providing reference models, it saves researchers' time. 
 
 ## Installation
@@ -57,6 +57,7 @@ array([[ 5.75927238,  7.38869609,  5.52948546],
 ## Author
 * Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
 
-## Others
+## Other Projects
+* 
 * See also [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
-Not all models in `PyFENG` is implemented in `FER`. `FER` is a subset of `PyFENG`. 
+Not all models in `PyFENG` are implemented in `FER`. `FER` is a subset of `PyFENG`. 
