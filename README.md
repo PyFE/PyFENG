@@ -72,7 +72,7 @@ array([[ 5.75927238,  7.38869609,  5.52948546],
 * Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
 
 ## Related Projects
-* Commercial versions (implemented and optimized in C/C++) for some models are available. Email the author at pyfe@eml.cc.
+* __Commercial versions (implemented and optimized in C/C++)__ for some models are available. Email the author at pyfe@eml.cc.
 * [PyFENG for Papers](https://github.com/PyFE/PyfengForPapers) is a collection of Jupyter notebooks that reproduce the 
   results of financial engineering research papers using [PyFENG](https://github.com/PyFE/PyFENG).
 * [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
