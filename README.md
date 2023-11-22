@@ -3,22 +3,36 @@
 [![Documentation Status](https://readthedocs.org/projects/pyfeng/badge/?version=latest)](https://pyfeng.readthedocs.io/en/latest/?badge=latest)
 [![Downloads](https://pepy.tech/badge/pyfeng)](https://pepy.tech/project/pyfeng)
 
-PyFENG is the Python implementation of the standard option pricing models in financial engineering.
+PyFENG provides an implementation of the standard financial engineering models for 
+derivative pricing.
 
-## Models implemented 
-  * Black-Scholes-Merton (and displaced diffusion) model
+## Implemented Models 
+  * Black-Scholes-Merton (BSM) and displaced BSM models:
+    * Analytic option pricing, implied volatility.
   * Bachelier (Normal) model
+    * Analytic option pricing, implied volatility.
   * Constant-elasticity-of-variance (CEV) model
+    * Analytic option pricing, implied volatility.
   * Stochastic-alpha-beta-rho (SABR) model
+    * Hagan's BSM vol approximation. 
+    * Choi & Wu's CEV vol approximation.
+    * Analytic integral for the normal SABR.
+    * Closed-form MC simulation for the normal SABR.
   * Hyperbolic normal stochastic volatility (NSVh) model
+    * Analytic option pricing.
   * Heston model
-  * Ornstein-Uhlenbeck-driven stochastic volatility (OUSV) model
+    * FFT option pricing.
+    * Almost exact MC simulation by Glasserman & Kim and Choi & Kwok
+  * Schobel-Zhu (OUSV) model
+    * FFT option pricing.
+    * Almost exact MC simulation by Choi
 
-## About the package
-* It assumes variables are `numpy` arrays. So the computations are naturally vectorized.
-* It is purely in Python (i.e., no C, C++, cython). 
-* It is implemented with Python class.
-* It is intended for, but not limited to, academic use. By providing reference models, it saves researchers' time. 
+## About the Package
+* Uses `numpy` arrays as basic datatype so computations are naturally vectorized.
+* Purely Python without C/C++ extensisons. 
+* Implemented with Python class.
+* Intended for academic use. By providing reference models, it saves researchers' time. 
+  See [PyFENG for Papers](https://github.com/PyFE/PyfengForPapers) in [Related Projects](#related-projects) below.
 
 ## Installation
 ```sh
@@ -57,7 +71,9 @@ array([[ 5.75927238,  7.38869609,  5.52948546],
 ## Author
 * Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
 
-## Other Projects
-* 
-* See also [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
+## Related Projects
+* Commercial implementations (in C/C++) for some functions are available. Contact the author.
+* [PyFENG for Papers](https://github.com/PyFE/PyfengForPapers) is a collection of Jupyter notebooks that reproduce the 
+  results of financial engineering research papers using [PyFENG](https://github.com/PyFE/PyFENG).
+* [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
 Not all models in `PyFENG` are implemented in `FER`. `FER` is a subset of `PyFENG`. 
