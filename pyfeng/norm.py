@@ -104,17 +104,17 @@ class Norm(opt.OptAnalyticABC):
 
         """
         m_d = k / sigma  # -d (minus d)
-
-        ratio = 1. - m_d * MathFuncs.mills_ratio(m_d)
-        # Use expansion for very large m_cp_d based on A&S 26.2.13
-        idx = (m_d > 1e3)
-        m_d_sq = m_d[idx]**2
-        ratio[idx] = 1./(m_d_sq + 2.)*(1. - 1./(m_d_sq + 4.)*(1 - 5/(m_d_sq + 6.)))
+        p = sigma*(1. - m_d * MathFuncs.mills_ratio(m_d))
+        ## Use expansion for very large m_cp_d based on A&S 26.2.13
+        ## But, it is not so necessary
+        #idx = (m_d > 1e3)
+        #m_d_sq = m_d[idx]**2
+        #ratio[idx] = 1./(m_d_sq + 2.)*(1. - 1./(m_d_sq + 4.)*(1 - 5/(m_d_sq + 6.)))
 
         if price:
-            ratio *= spst.norm._pdf(m_d)
+            p *= spst.norm._pdf(m_d)
 
-        return ratio
+        return p
 
 
     def _impvol_Choi2009(self, price, strike, spot, texp, cp=1, setval=False):
@@ -157,9 +157,9 @@ class Norm(opt.OptAnalyticABC):
 
         with np.errstate(divide="ignore", invalid="ignore"):
             eta = np.where(
-                one_m_v < 0.999,
+                one_m_v < 0.995,
                 2 * (1 - one_m_v) / (np.log((2.0 - one_m_v) / one_m_v)),
-                1 - v_sq/3 * (1 + (4/15)*v_sq),
+                (1 - (3/5)*v_sq)/(1 - (4/15)*v_sq)
             )
         h_a = np.sqrt(eta) * np.polyval(Norm._POLY_NU, eta) / np.polyval(Norm._POLY_DE, eta)
         # sigma = sqrt(pi/2T) * (call + put) * h_a
