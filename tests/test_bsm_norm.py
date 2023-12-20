@@ -87,15 +87,21 @@ class TestBsmMethods(unittest.TestCase):
         for k in range(100):
             spot = np.random.uniform(80, 120)
             strike = np.random.uniform(80, 120)
-            sigma = np.random.uniform(1, 100)
-            texp = np.random.uniform(0.1, 10)
-            intr = np.random.uniform(0, 0.3)
-            divr = np.random.uniform(0, 0.3)
-            cp = 1 if np.random.rand() > 0.5 else -1
+            sigma = np.random.uniform(5, 100)
+            texp = np.random.uniform(1, 10)
+            intr = np.random.uniform(0, 0.1)
+            divr = np.random.uniform(0, 0.1)
             is_fwd = np.random.rand() > 0.5
-
-            # print( spot, strike, vol, texp, intr, divr, cp)
             m_norm = pf.Norm(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
+
+            fwd = m_norm.forward(spot, texp)
+            d = (fwd - strike)/sigma/np.sqrt(texp)
+            if np.abs(d) < 4.:
+                cp = 1 if np.random.rand() > 0.5 else -1
+            else:
+                # if d is too extreme, make it out-of-the-money option to avoid the substractive cancellation.
+                cp = -np.sign(d)
+
             price = m_norm.price(strike, spot, texp, cp)
 
             # get implied vol
@@ -105,6 +111,8 @@ class TestBsmMethods(unittest.TestCase):
             m_norm2 = copy.copy(m_norm)
             m_norm2.sigma = iv
             price_imp = m_norm2.price(strike, spot, texp=texp, cp=cp)
+
+            #print( f'spot={spot}, k={strike}, vol={sigma}, iv={iv}, t={texp}, r={intr}, d={divr}, cp={cp}, is_fwd={is_fwd}, p={price}')
 
             # compare the two prices
             self.assertAlmostEqual(price, price_imp, delta=200 * m_norm.IMPVOL_TOL)
