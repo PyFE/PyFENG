@@ -277,9 +277,10 @@ class SabrNormAnalyticInt(sabr.SabrABC):
 
             ch = np.cosh(2*xi*uu)
             diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - self.rho*ch)**2), 0.0))
+
             v_p = self.rho*k + rhoc2*ch + diff
             V = np.sqrt(k**2 + rhoc2)
-            fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(2*diff/v_p) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
+            fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(np.fmin(2*diff/v_p, 1.0)) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
             base = util.MathFuncs.mills_ratio(uu + xi) + util.MathFuncs.mills_ratio(uu - xi)
             opt_val += np.sum(fn*base*v_weight, axis=0)
 
@@ -306,8 +307,8 @@ class SabrNormAnalyticInt(sabr.SabrABC):
         rhoc2 = 1.0 - rho**2
         ch = np.cosh(2*xi*uu)
         diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - rho*ch)**2), 0.0))
-        v_p = rho*k + rhoc2*ch + diff
-        return np.sqrt(v_p) * spsp.ellipe(2*diff/v_p)
+        v_p = np.fmax(rho*k + rhoc2*ch + diff, 0.0)
+        return np.sqrt(v_p) * spsp.ellipe(np.fmin(2*diff/v_p, 1.0))
 
     @staticmethod
     def hh_xi_approx(uu, k, xi, rho):  # u = s/(2*xi)
