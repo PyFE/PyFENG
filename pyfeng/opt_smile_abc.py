@@ -22,7 +22,7 @@ class OptSmileABC(opt.OptABC, abc.ABC):
             base_model = None
         return base_model
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -37,6 +37,9 @@ class OptSmileABC(opt.OptABC, abc.ABC):
             volatility smile under the specified model
         """
         base_model = self._m_smile(model)
+        if cp is None:
+            fwd = self.forward(spot, texp)
+            cp = np.where(strike > fwd, 1, -1)  # make option out-of-the-money
         price = self.price(strike, spot, texp, cp=cp)
         vol = base_model.impvol(price, strike, spot, texp, cp=cp)
         return vol

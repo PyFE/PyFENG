@@ -445,7 +445,7 @@ class Bsm(opt.OptAnalyticABC):
 
     impvol = impvol_log
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="norm"):
+    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -454,14 +454,17 @@ class Bsm(opt.OptAnalyticABC):
             spot: spot price
             texp: time to expiry
             cp: 1/-1 for call/put option
-            model: {'norm' (default), 'norm-approx', 'norm-grunspan', 'bsm'}
+            model: {'bsm' (default), 'norm-approx', 'norm-grunspan', 'norm'}
 
         Returns:
             volatility smile under the specified model
         """
         if model.lower() == "bsm":
-            return self.sigma*np.ones_like(strike + spot + texp + cp)
+            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
         if model.lower() == "norm":
+            if cp is None:
+                fwd = self.forward(spot, texp)
+                cp = np.where(strike > fwd, 1, -1)  # make option out-of-the-money
             price = self.price(strike, spot, texp, cp=cp)
             return norm.Norm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == "norm-approx" or model.lower() == "norm-grunspan":
@@ -741,9 +744,9 @@ class BsmDisp(smile.OptSmileABC, Bsm):
 
         return vol
 
-    def price_barrier(self, strike, barrier, spot, *args, **kwargs):
-        return (1/self.beta)*self.bsm_model.price_barrier(
-            self.disp(strike), self.disp(barrier), self.disp(spot), *args, **kwargs
+    def price_barrier(self, strike, barrier, spot, texp, *args, **kwargs):
+        return (1/self.beta)*super().price_barrier(
+            self.disp_strike(strike, texp), self.disp_strike(barrier, texp), self.disp_spot(spot), texp, *args, **kwargs
         )
 
     def price_vsk(self, texp=1):

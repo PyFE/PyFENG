@@ -245,7 +245,7 @@ class Norm(opt.OptAnalyticABC):
     ####
     impvol = _impvol_Choi2009
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -260,8 +260,11 @@ class Norm(opt.OptAnalyticABC):
             volatility smile under the specified model
         """
         if model.lower() == "norm":
-            return self.sigma * np.ones_like(strike + spot + texp + cp)
+            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
         if model.lower() == "bsm":
+            if cp is None:
+                fwd = self.forward(spot, texp)
+                cp = np.where(strike > fwd, 1, -1)  # make option out-of-the-money
             price = self.price(strike, spot, texp, cp=cp)
             return bsm.Bsm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == "bsm-approx":
