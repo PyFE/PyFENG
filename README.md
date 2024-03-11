@@ -8,11 +8,11 @@ derivative pricing.
 
 ## Implemented Models 
   * Black-Scholes-Merton (BSM) and displaced BSM models:
-    * Analytic option pricing, implied volatility.
+    * Analytic option price, Greeks, and implied volatility.
   * Bachelier (Normal) model
-    * Analytic option pricing, implied volatility.
+    * Analytic option price, Greeks, and implied volatility.
   * Constant-elasticity-of-variance (CEV) model
-    * Analytic option pricing, implied volatility.
+    * Analytic option price, Greeks, and implied volatility.
   * Stochastic-alpha-beta-rho (SABR) model
     * Hagan's BSM vol approximation. 
     * Choi & Wu's CEV vol approximation.
@@ -22,7 +22,7 @@ derivative pricing.
     * Analytic option pricing.
   * Heston model
     * FFT option pricing.
-    * Almost exact MC simulation by Glasserman & Kim and Choi & Kwok
+    * Almost exact MC simulation by Glasserman & Kim and Choi & Kwok.
   * Schobel-Zhu (OUSV) model
     * FFT option pricing.
     * Almost exact MC simulation by Choi
@@ -72,7 +72,7 @@ array([[ 5.75927238,  7.38869609,  5.52948546],
 * Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
 
 ## Related Projects
-* Commercial implementations (in C/C++) for some functions are available. Contact the author.
+* __Commercial versions (implemented and optimized in C/C++)__ for some models are available. Email the author at pyfe@eml.cc.
 * [PyFENG for Papers](https://github.com/PyFE/PyfengForPapers) is a collection of Jupyter notebooks that reproduce the 
   results of financial engineering research papers using [PyFENG](https://github.com/PyFE/PyFENG).
 * [FER: Financial Engineering in R](https://cran.r-project.org/package=FER) developed by the same author.
