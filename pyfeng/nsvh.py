@@ -441,10 +441,10 @@ class NsvhGaussQuad(NsvhABC):
         z_weight /= np.sum(np.exp(vovn/2*z_value)*z_weight) / np.exp(vovn**2/8)
 
         # quadrature point & weight for exp(-v/2)/(2 pi) derived from sqrt(v) * np.exp(-v)
-        #v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
-        #v_weight /= np.pi * np.sqrt(v_value)
-        v_value, v_weight = spsp.roots_laguerre(self.n_quad[1])
-        v_weight /= np.pi
+        v_value, v_weight = spsp.roots_genlaguerre(self.n_quad[1], 0.5)
+        v_weight /= np.pi * np.sqrt(v_value)
+        #v_value, v_weight = spsp.roots_laguerre(self.n_quad[1])
+        #v_weight /= np.pi
         v_value *= 2.0
 
         ### axis 0: dependence on v

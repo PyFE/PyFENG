@@ -12,7 +12,7 @@ from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, ExpNigFft, Sv32Fft
 
 # SABR/NSVh related models
 from .sabr import SabrHagan2002, SabrNormVolApprox, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P
-from .sabr_int import SabrUncorrChoiWu2021, SabrNormAnalyticInt
+from .sabr_int import SabrUncorrChoiWu2021, SabrNormAnalytic, SabrNormEllipeInt
 from .sabr_mc import SabrMcTimeDisc
 from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 
