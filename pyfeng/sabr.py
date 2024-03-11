@@ -75,11 +75,11 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         else:
             return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
 
-    def vol_smile(self, strike, spot, texp, cp=1, model=None):
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         if model is None:
             model = "norm" if np.isclose(self.beta, 0) else "bsm"
 
-        return super().vol_smile(strike, spot, texp, cp=1, model=model)
+        return super().vol_smile(strike, spot, texp, cp=cp, model=model)
 
     @classmethod
     def init_benchmark(cls, set_no=None):
@@ -160,8 +160,9 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         # Series[z/Log[(z + ρ + Sqrt[1 + z^2 + 2 z ρ])/(1 + ρ)], {z, 0, 6}]
         # 1 + (ρ z)/2 + (1/6 - ρ^2/4) z^2 + 1/24 ρ (6 ρ^2 - 5) z^3 + (-(5 ρ^4)/16 + ρ^2/3 - 17/360) z^4 + 1/480 ρ (210 ρ^4 - 275 ρ^2 + 74) z^5 + O(z^6)
         # (Taylor series)
-        idx = np.abs(zz) < 1e-5
-        zz_xx[idx] = 1 + zz[idx]*(rho/2 + zz[idx]*(1/6 - rho2/4 + rho*(6*rho2 - 5)/24 * zz[idx]))
+        idx = np.abs(zz) < 1e-3
+        if np.any(idx):
+            zz_xx[idx] = 1 + zz[idx]*(rho/2 + zz[idx]*(1/6 - rho2/4 + rho*(6*rho2 - 5)/24 * zz[idx]))
 
         return zz_xx
 
@@ -408,7 +409,7 @@ class SabrVolApproxABC(SabrABC):
             self.sigma = sigma
         return sigma
 
-    def vol_smile(self, strike, spot, texp, cp=1, model=None):
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         if model is None:
             model = "norm" if np.isclose(self.beta, 0) else "bsm"
 

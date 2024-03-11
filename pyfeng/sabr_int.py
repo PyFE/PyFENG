@@ -216,7 +216,7 @@ class SabrMixture(SabrMixtureABC):
         return fwd_ratio.flatten(), r_vol.flatten(), w0123.flatten()
 
 
-class SabrNormAnalyticInt(sabr.SabrABC):
+class SabrNormAnalytic(sabr.SabrABC):
     """
     Approximated analytic 1-d integral of Antonov et al. (2019, S 3.4.5) with Elliptic integral of 2nd kind (E).
 
@@ -229,7 +229,6 @@ class SabrNormAnalyticInt(sabr.SabrABC):
     """
     quad_correction = False
     n_quad = 9  # only used when quad_correction is True
-    quad_eps = 1e-6  # used for price_quad
 
     def __init__(self, sigma, vov=0.1, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
         """
@@ -264,7 +263,8 @@ class SabrNormAnalyticInt(sabr.SabrABC):
         B = 0.75*(tmp2 - 5/16*tmp1**2)
 
         R = util.MathFuncs.mills_ratio(np.array([u0 - xi, u0, u0 + xi]))
-        opt_val = (R[0] - R[2]) + A*(R[0] + R[2] - 2*R[1]) + 2*B*(R[0] - R[2] - 2*xi*(1. - u0*R[1]))
+        opt_val = ((R[0] - R[2]) + A*(R[0] + R[2] - 2*R[1]) + 2*B*(R[0] - R[2] - 2*xi*(1. - u0*R[1]))) / xi
+        # At the end of above, n(u0)/xi should be multiplied. Only /xi is multiplied and n(u0) will be applied later.
 
         if self.quad_correction:
             v_value, v_weight = spsp.roots_genlaguerre(self.n_quad, 1.5)
@@ -277,16 +277,48 @@ class SabrNormAnalyticInt(sabr.SabrABC):
 
             ch = np.cosh(2*xi*uu)
             diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - self.rho*ch)**2), 0.0))
+
             v_p = self.rho*k + rhoc2*ch + diff
             V = np.sqrt(k**2 + rhoc2)
-            fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(2*diff/v_p) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
+            fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(np.fmin(2*diff/v_p, 1.0)) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
             base = util.MathFuncs.mills_ratio(uu + xi) + util.MathFuncs.mills_ratio(uu - xi)
             opt_val += np.sum(fn*base*v_weight, axis=0)
 
-        opt_val *= self.sigma*np.sqrt(texp*V)/2/xi*np.exp(-0.5*xi**2) * spst.norm._pdf(u0)
+        opt_val *= 0.5*self.sigma*np.sqrt(texp*V)*np.exp(-0.5*xi**2) * spst.norm._pdf(u0)
         opt_val += np.fmax(cp*(fwd - strike), 0.0)
         opt_val *= df
         return opt_val
+
+
+class SabrNormEllipeInt(sabr.SabrABC):
+    """
+    Approximated analytic 1-d integral of Antonov et al. (2019, S 3.4.5) with Elliptic integral of 2nd kind (E).
+
+    `price` method implements the 2nd order approximation and optional correction with Gaussian quadrature (when `quad_correction` is True).
+    `price_quad` method impelements the generic integral with `numpy.integrate.quad` function.
+
+    References:
+        - Antonov A, Konikov M, Spector M (2019) Modern SABR Analytics. Springer International Publishing, Cham
+        - https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.quad.html
+    """
+    quad_eps = 1e-6  # used for price_quad
+
+    def __init__(self, sigma, vov=0.1, rho=0.0, beta=None, intr=0.0, divr=0.0, is_fwd=False, is_atmvol=False):
+        """
+        Args:
+            sigma: model volatility at t=0
+            vov: volatility of volatility
+            rho: correlation between price and volatility
+            beta: elasticity parameter. should be 0 or None.
+            intr: interest rate (domestic interest rate)
+            divr: dividend/convenience yield (foreign interest rate)
+            is_fwd: if True, treat `spot` as forward price. False by default.
+            is_atmvol: If True, use `sigma` as the ATM normal vol
+        """
+        # Make sure beta = 0
+        if beta is not None and not np.isclose(beta, 0.0):
+            print(f"Ignoring beta = {beta}...")
+        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     @staticmethod
     def hh_xi(uu, k, xi, rho):
@@ -306,8 +338,8 @@ class SabrNormAnalyticInt(sabr.SabrABC):
         rhoc2 = 1.0 - rho**2
         ch = np.cosh(2*xi*uu)
         diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - rho*ch)**2), 0.0))
-        v_p = rho*k + rhoc2*ch + diff
-        return np.sqrt(v_p) * spsp.ellipe(2*diff/v_p)
+        v_p = np.fmax(rho*k + rhoc2*ch + diff, 0.0)
+        return np.sqrt(v_p) * spsp.ellipe(np.fmin(2*diff/v_p, 1.0))
 
     @staticmethod
     def hh_xi_approx(uu, k, xi, rho):  # u = s/(2*xi)
@@ -336,7 +368,7 @@ class SabrNormAnalyticInt(sabr.SabrABC):
 
         return np.sqrt(V)*np.pi/2 * (1. + xi*(uu - u0)*(A + B*xi*(uu - u0)))
 
-    def price_quad(self, strike, spot, texp, cp=1):
+    def price(self, strike, spot, texp, cp=1):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
@@ -352,7 +384,7 @@ class SabrNormAnalyticInt(sabr.SabrABC):
             return rv
 
         def integral(u0_, xi_, k_):
-            return spint.quad(integrand, u0_, np.sqrt(u0_**2 + 72), (xi_, k_), epsabs=self.quad_eps, epsrel=self.quad_eps)
+            return spint.quad(integrand, u0_, np.sqrt(u0_**2 + 73), (xi_, k_), epsabs=self.quad_eps, epsrel=self.quad_eps)
 
         opt_val, est_error = np.vectorize(integral)(u0, xi, k)
         opt_val *= self.sigma*np.sqrt(texp)/np.pi*np.exp(-0.5*xi**2)
