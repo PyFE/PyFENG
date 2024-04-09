@@ -667,18 +667,31 @@ class CgmyFft(smile.OptSmileABC, FftABC):
         self.C, self.G, self.M, self.Y = C, G, M, Y
 
     def mgf_logprice(self, uu, texp):
+        """
+        MGF of log price of CGMY from Eq (19) from Ballotta and Kyriakou (2014)
 
+        Args:
+            uu: dummy variable
+            texp: time to expiry
+
+        Returns:
+            MGF value at uu
+
+        References:
+            - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY Process and Option Pricing. Journal of Futures Markets 34:1095–1121. https://doi.org/10.1002/fut.21647
+
+        """
         gam_Y = spsp.gamma(-self.Y)
         M_pow_Y = np.power(self.M, self.Y)
         G_pow_Y = np.power(self.G, self.Y)
 
         rv = self.C * gam_Y * (
                 np.power(self.M - uu, self.Y) - M_pow_Y
-                + np.power(self.G - uu, self.Y) - G_pow_Y
+                + np.power(self.G + uu, self.Y) - G_pow_Y
         )
         mu = - self.C * gam_Y * (
             np.power(self.M - 1., self.Y) - M_pow_Y
-            + np.power(self.G - 1., self.Y) - G_pow_Y
+            + np.power(self.G + 1., self.Y) - G_pow_Y
         )
         np.exp(texp*(mu + rv), out=rv)
         return rv
