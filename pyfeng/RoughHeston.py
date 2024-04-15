@@ -1,0 +1,434 @@
+import abc
+import numpy as np
+import scipy.special as spsp
+import pyfeng as pf
+
+class RoughHestonMcABC(abc.ABC):
+    """
+    Rough Heston abstract class
+    """
+
+    def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, S_0, texp, intr=0.0, divr=0.0) -> None:
+        """
+        Args:
+            V_0: initial volatility
+            rho: correlation
+            kappa: mean reversion speed
+            epsilon: volatility of volatility
+            theta: long term volatility
+            alpha: modified Hurst exponent (\alpha = -(H - 0.5))
+            S_0: initial stock price
+            texp: time to maturity
+            intr: interest rate
+            divr: dividend rate
+        """
+        self.V_0 = V_0
+        self.rho = rho
+        self.kappa = kappa
+        self.epsilon = epsilon
+        self.theta = theta
+        self.alpha = alpha
+        self.S_0 = S_0
+        self.texp = texp
+        self.intr = intr
+        self.divr = divr
+
+    def set_num_params(self, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            n_ts: number of time steps for dicretization
+            rn_seed: random number seed
+            antithetic: antithetic
+        """
+        self.n_path = int(n_path)
+        self.n_ts = int(n_ts)
+        self.rn_seed = rn_seed
+        self.antithetic = antithetic
+        self.dt = self.texp / self.n_ts
+        self.tgrid = np.linspace(0, self.texp, self.n_ts + 1)
+
+        self.rng = np.random.default_rng(rn_seed)
+        seed_seq = np.random.SeedSequence(rn_seed)
+        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(6)]
+        self.result = {}
+
+    def tobs(self):
+        """
+        Return array of observation time in even size. 0 is included.
+
+        Args:
+            None
+
+        Returns:
+            array of observation time
+        """
+        return np.linspace(0, self.texp, self.n_ts + 1)
+
+class RoughHestonMcMaWu2022(RoughHestonMcABC):
+    """
+    Simulation using Gaussian quadrature based on Ma and Wu (2022)
+
+    References:
+        - Jingtang Ma & Haofei Wu (2022) A fast algorithm for simulation of rough volatility models, Quantitative Finance, 22:3, 447-462, DOI: 10.1080/14697688.2021.1970213
+    """
+
+    def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, S_0, texp, intr=0.0, divr=0.0) -> None:
+        super().__init__(V_0, rho, kappa, epsilon, theta, alpha, S_0, texp, intr, divr)
+
+    def set_num_params(self, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
+        """
+        Set MC parameters
+
+        Args:
+            n_path: number of paths
+            n_ts: number of time steps for dicretization
+            rn_seed: random number seed
+            antithetic: antithetic
+        """
+        super().set_num_params(n_path, n_ts, rn_seed, antithetic)
+
+    def f(self, V_s):
+        """
+        The drift term of the rough Heston model $f(V_s) = \kappa (\theta - V_s)$
+
+        Args:
+            V_s: volatility at time s
+
+        Returns:
+            drift term
+        """
+        return self.kappa * (self.theta - V_s)
+
+    def g(self, V_s):
+        """
+        The diffusion term of the rough Heston model $g(V_s) = \kappa \epsilon * \sqrt(V_s)$
+
+        Args:
+            V_s: volatility at time s
+        
+        Returns:
+            diffusion term
+        """
+        return self.kappa * self.epsilon * np.sqrt(V_s)
+    
+    def random_normals(self):
+        """
+        Generate random normal variables for the simulation
+
+        Args:
+            None
+
+        Returns:
+            Z_t1: random normal variables for the simulation of the volatility process
+            W_t: random normal variables for the simulation of the stock price process
+        """
+        Z_t1 = self.rng.normal(size=(self.n_ts, self.n_path))
+        Z_t2 = self.rng.normal(size=(self.n_ts, self.n_path))
+        W_t = self.rho * Z_t1 + np.sqrt(1 - self.rho**2) * Z_t2
+        return Z_t1, W_t
+    
+    def ModifiedEM(self, Z_t):
+        """
+        Simulation of the rough Heston model using the modified Euler-Maruyama algorithm
+
+        Args:
+            Z_t: random normal variables for the simulation of the volatility process
+        
+        References:
+            - Algorithm 1 in Ma & Wu (2022)
+
+        Returns:
+            V_t: simulated volatility process
+        """
+        assert Z_t.shape == (self.n_ts, self.n_path)
+        tpoints = self.tobs()
+
+        V_t = np.zeros((self.n_ts + 1, self.n_path))
+        V_t[0] = self.V_0
+
+        for i in range(self.n_ts):
+            V_t[i + 1, :] = self.V_0
+            summation_f = np.array([self.f(V_t[k, :]) * ((tpoints[i + 1] - tpoints[k]) ** (1 - self.alpha) - (tpoints[i + 1] - tpoints[k + 1]) ** (1 - self.alpha)) for k in range(i + 1)]).sum(axis=0)
+            V_t[i + 1, :] += 1 / spsp.gamma(2 - self.alpha) * summation_f
+            summation_g = np.array([self.g(V_t[k, :]) * np.sqrt(((tpoints[i + 1] - tpoints[k]) ** (1 - 2 * self.alpha) - (tpoints[i + 1] - tpoints[k + 1]) ** (1 - 2 * self.alpha)) / (1 - 2 * self.alpha)) * Z_t[k, :] for k in range(i + 1)]).sum(axis=0)
+            V_t[i + 1, :] += 1 / spsp.gamma(1 - self.alpha) * summation_g
+
+        return V_t
+    
+    def get_num_nodes(self, err_tol=1e-4, scale_coef=1):
+        """
+        Number of nodes for the Gaussian quadrature
+
+        Args:
+            err_tol: absolute error tolerance for the approximation of the kernel function
+            scale_coef: scaling coefficient of the number of nodes
+
+        References:
+            - Algorithm 2 in Ma & Wu (2022)
+
+        Returns:
+            M: value of $M$ for the integration on $[0, 2^{-M}]$
+            N: value of $N$ for the cutoff of the integral approximation
+            n_o: number of nodes for the Gauss-Jacobi quadrature on the interval $[0, 2^{-M}]$
+            n_s: number of nodes for the Gauss-Legendre quadrature on the interval $[2^{j}, 2^{j+1}], j=-M, \cdots, -1$
+            n_l: number of nodes for the Gauss-Legendre quadrature on the interval $[2^{j}, 2^{j+1}], j=0, \cdots, N$
+        """
+        M = scale_coef * np.ceil(np.log(self.texp)) + 1
+        N = scale_coef * np.ceil(np.log(np.log(1 / err_tol)) + np.log(1 / self.dt))
+        n_o = scale_coef * np.ceil(np.log(1 / err_tol))
+        n_s = scale_coef * np.ceil(np.log(1 / err_tol))
+        n_l = scale_coef * np.ceil(np.log(1 / err_tol) + np.log(1 / self.dt))
+
+        return M, N, n_o, n_s, n_l
+
+    def GaussJacobiQuad(self, n, M):
+        """
+        Nodes and weights for the Gauss-Jacobi quadrature
+
+        Args:
+            n: number of nodes
+            M: value of $M$ for the integration on $[0, 2^{-M}]$
+        
+        Returns:
+            s_o: nodes
+            omega_o: weights
+        """
+        s_o, w_o = spsp.roots_jacobi(n, self.alpha-1, 0)
+        s_o = 2 ** (-M - 1) * (s_o + 1)
+        w_o = 2 ** ((-M - 1) * self.alpha) * w_o
+        omega_o = w_o / spsp.gamma(self.alpha)
+        
+        return s_o, omega_o
+    
+    def GaussLegendreQuad(self, n, j):
+        """
+        Nodes and weights for the Gauss-Legendre quadrature
+
+        Args:
+            n: number of nodes
+            j: index for the interval
+
+        Returns:
+            s_i: nodes
+            omega_i: weights
+        """
+        s_i, w_i = spsp.roots_legendre(n)
+        s_i = 2 ** (j - 1) * (s_i + 3)
+        w_i = s_i ** (self.alpha - 1) * w_i * 2 ** (j - 1)
+        omega_i = w_i / spsp.gamma(self.alpha)
+
+        return s_i, omega_i
+    
+    def get_nodes_weights(self, err_tol, scale_coef):
+        """
+        Nodes and weights for the entire approximation
+
+        Args:
+            err_tol: absolute error tolerance for the approximation of the kernel function
+            scale_coef: scaling coefficient of the number of nodes
+            
+        Returns:
+            x_all: nodes
+            omega_all: weights
+        """
+        M, N, n_o, n_s, n_l = self.get_num_nodes(err_tol, scale_coef)
+
+        x_o, omega_o = self.GaussJacobiQuad(n_o, M)
+        x_s = np.array([self.GaussLegendreQuad(n_s, j)[0] for j in range(-int(M), 0)])
+        omega_s = np.array([self.GaussLegendreQuad(n_s, j)[1] for j in range(-int(M), 0)])
+        x_l = np.array([self.GaussLegendreQuad(n_l, j)[0] for j in range(0, int(N) + 1)])
+        omega_l = np.array([self.GaussLegendreQuad(n_l, j)[1] for j in range(0, int(N) + 1)])
+
+        x_all = np.concatenate((x_o, x_s.reshape(-1), x_l.reshape(-1)))
+        omega_all = np.concatenate((omega_o, omega_s.reshape(-1), omega_l.reshape(-1)))
+
+        N_all = int(n_o + M * n_s + (N + 1) * n_l)
+        assert N_all == len(x_all)
+        assert len(x_all) == len(omega_all)
+
+        return x_all, omega_all
+    
+    def H_N(self, x_all, H_previous, V_previous):
+        """
+        Update rule of the auxiliary function $H_{l}^{N}(t_n)$
+
+        Args:
+            x_all: all nodes of the Gaussian quadrature approximation
+            H_previous: $H_{l}^{N}(t_{n-1})$
+            V_previous: $V_{t_{n-1}}$
+        
+        References:
+            - Equation (18) in Ma & Wu (2022)
+
+        Returns:
+            updated function: $H_{l}^{N}(t_n)$
+        """
+        return (1 / x_all * (1 - np.exp(-x_all * self.dt)))[np.newaxis, :] * self.f(V_previous)[:, np.newaxis] + np.exp(-x_all * self.dt) * H_previous
+    
+    def J_N(self, x_all, J_previous, V_previous, Z_t):
+        """
+        Update rule of the auxiliary function $J_{l}^{N}(t_n)$
+
+        Args:
+            x_all: all nodes of the Gaussian quadrature approximation
+            J_previous: $J_{l}^{N}(t_{n-1})$
+            V_previous: $V_{t_{n-1}}$
+            Z_t: random normal variables for the current time step
+
+        References:
+            - Equation (19) in Ma & Wu (2022)
+
+        Returns:
+            updated function: $J_{l}^{N}(t_n)$
+        """
+        return np.sqrt(((1 - np.exp(-2 * x_all * self.dt)) / (2 * x_all)))[np.newaxis, :] * (self.g(V_previous) * Z_t)[:, np.newaxis] + np.exp(-x_all * self.dt) * J_previous
+    
+    def Fast(self, Z_t, err_tol=1e-4, scale_coef=1):
+        """
+        Simulation of the rough Heston model using the Fast algorithm
+
+        Args:
+            Z_t: random normal variables for the simulation of the volatility process
+            err_tol: absolute error tolerance for the approximation of the kernel function
+            scale_coef: scaling coefficient of the number of nodes
+
+        References:
+            - Algorithm 2 in Ma & Wu (2022)
+
+        Returns:
+            V_t: simulated volatility process
+        """
+        x_all, omega_all = self.get_nodes_weights(err_tol=err_tol, scale_coef=scale_coef)
+
+        V_t = np.zeros((self.n_ts + 1, self.n_path))
+        V_t[0, :] = self.V_0
+        N_all = len(x_all)
+
+        H_t = np.zeros((self.n_path, N_all))
+        J_t = np.zeros((self.n_path, N_all))
+
+        for i in range(self.n_ts):
+            V_t[i + 1, :] = self.V_0 + self.dt ** (1 - self.alpha) / spsp.gamma(2 - self.alpha) * self.f(V_t[i, :]) \
+                            + 1 / spsp.gamma(1 - self.alpha) * (omega_all * np.exp(-x_all * self.dt) * H_t).sum(axis=1) \
+                            + self.dt ** (1 - self.alpha) / np.sqrt(1 - 2 * self.alpha) / spsp.gamma(1 - self.alpha) * self.g(V_t[i, :]) * Z_t[i, :] \
+                            + 1 / spsp.gamma(1 - self.alpha) * (omega_all * np.exp(-x_all * self.dt) * J_t).sum(axis=1)
+            H_t = self.H_N(x_all, H_t, V_t[i, :])
+            J_t = self.J_N(x_all, J_t, V_t[i, :], Z_t[i, :])
+
+        return V_t
+    
+    def eta_j(self, N_exp):
+        """
+        $\eta_j$ for the Multifactor approximation
+
+        Args:
+            N_exp: number of factors
+
+        References:
+            - Equation (27) in Ma & Wu (2022)
+
+        Returns:
+            array of $\eta_j$
+        """
+        return np.array([0] + [j * N_exp ** (-1 / 5) / self.texp * (np.sqrt(10) * self.alpha / (2 + self.alpha)) ** (2 / 5) for j in range(1, N_exp + 1)])
+    
+    def c_j(self, N_exp):
+        """
+        $c_j$ for the Multifactor approximation
+
+        Args:
+            N_exp: number of factors
+
+        References:
+            - Equation (27) in Ma & Wu (2022)
+
+        Returns:
+            array of $c_j$
+        """
+        eta = self.eta_j(N_exp)
+        return np.array([(eta[i + 1] ** self.alpha - eta[i] ** self.alpha) / spsp.gamma(1 - self.alpha) / spsp.gamma(1 + self.alpha) for i in range(N_exp)])
+    
+    def gamma_j(self, N_exp):
+        """
+        $\gamma_j$ for the Multifactor approximation
+
+        Args:
+            N_exp: number of factors
+
+        References:
+            - Equation (27) in Ma & Wu (2022)
+
+        Returns:
+            array of $\gamma_j$
+        """
+        eta = self.eta_j(N_exp)
+        return np.array([(eta[i + 1] ** (1 + self.alpha) - eta[i] ** (1 + self.alpha)) / (eta[i + 1] ** self.alpha - eta[i] ** self.alpha) * self.alpha / (1 + self.alpha) for i in range(N_exp)])
+    
+    def V_tJ(self, V_tj_previous, V_previous, gammaj, Z_t):
+        """
+        Update rule of the factors $V_{t_{n}}^{\tilde{N}_{\text{exp}}, j, N}$ for the Multifactor approximation
+
+        Args:
+            V_tj_previous: $V_{t_{n-1}}^{\tilde{N}_{\text{exp}}, j}$
+            V_previous: $V_{t_{n}}^{\tilde{N}_{\text{exp}}, N}$
+            gammaj: $\gamma_j$
+            Z_t: random normal variables for the current time step
+
+        References:
+            - Algorithm 4 in Ma & Wu (2022)
+
+        Returns:
+            updated function: $V_{t_{n}}^{\tilde{N}_{\text{exp}}, j, N}$
+        """
+        return (V_tj_previous + (-self.kappa * V_previous * self.dt + self.g(V_previous) * np.sqrt(self.dt) * Z_t)[:, np.newaxis]) / ((1 + gammaj * self.dt)[np.newaxis, :])
+    
+    def MultifactorApprox(self, Z_t):
+        """
+        Simulation of the rough Heston model using the Multifactor approximation
+
+        Args:
+            Z_t: random normal variables for the simulation of the volatility process
+
+        References:
+            - Algorithm 4 in Ma & Wu (2022)
+
+        Returns:
+            V_t: simulated volatility process
+        """
+        N_exp = int(np.ceil(self.n_ts ** (5 / 4)))
+        cj = self.c_j(N_exp)
+        gammaj = self.gamma_j(N_exp)
+
+        V_t = np.zeros((self.n_ts + 1, self.n_path))
+        V_t[0, :] = self.V_0
+        V_tj = np.zeros((self.n_path, N_exp))
+        for i in range(self.n_ts):
+            V_tj = self.V_tJ(V_tj, V_t[i, :], gammaj, Z_t[i, :])
+            V_t[i + 1, :] = self.V_0 + self.kappa * self.theta * (cj / gammaj * (1 - np.exp(-gammaj * self.tgrid[i + 1]))).sum() + (cj * V_tj).sum(axis=1)
+
+        return V_t
+    
+    def price(self, V_t, W_t, K):
+        """
+        Price of European call options
+
+        Args:
+            V_t: simulated volatility process
+            W_t: random normal variables for the simulation of the stock price process
+            K: strike price
+
+        Returns:
+            S_t: simulated stock price process
+            price: price of the European call option
+        """
+        X_t = np.zeros((self.n_ts, self.n_path))
+        X_t[0, :] = np.log(self.S_0)
+        for i in range(self.n_ts - 1):
+            X_t[i + 1, :] = X_t[i, :] + (self.intr - 0.5 * V_t[i, :] * self.dt + np.sqrt(V_t[i, :] * self.dt) * W_t[i, :])
+
+        S_t = np.exp(X_t)
+
+        return S_t, np.fmax(0, S_t[-1, :] - K).mean()
