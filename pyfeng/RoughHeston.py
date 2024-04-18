@@ -33,6 +33,34 @@ class RoughHestonMcABC(abc.ABC):
         self.intr = intr
         self.divr = divr
 
+    @property
+    def gamma_a(self):
+        """
+        $\Gamma(\alpha)$
+        """
+        return spsp.gamma(self.alpha)
+    
+    @property
+    def gamma_1ma(self):
+        """
+        $\Gamma(1-\alpha)$
+        """
+        return spsp.gamma(1 - self.alpha)
+    
+    @property
+    def gamma_2ma(self):
+        """
+        $\Gamma(2-\alpha)$
+        """
+        return spsp.gamma(2 - self.alpha)
+    
+    @property
+    def gamma_1pa(self):
+        """
+        $\Gamma(1+\alpha)$
+        """
+        return spsp.gamma(1 + self.alpha)
+
     def set_num_params(self, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
         """
         Set MC parameters
@@ -54,18 +82,6 @@ class RoughHestonMcABC(abc.ABC):
         seed_seq = np.random.SeedSequence(rn_seed)
         self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(6)]
         self.result = {}
-
-    def tobs(self):
-        """
-        Return array of observation time in even size. 0 is included.
-
-        Args:
-            None
-
-        Returns:
-            array of observation time
-        """
-        return np.linspace(0, self.texp, self.n_ts + 1)
 
 class RoughHestonMcMaWu2022(RoughHestonMcABC):
     """
@@ -126,9 +142,40 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             W_t: random normal variables for the simulation of the stock price process
         """
         Z_t1 = self.rng.normal(size=(self.n_ts, self.n_path))
-        Z_t2 = self.rng.normal(size=(self.n_ts, self.n_path))
-        W_t = self.rho * Z_t1 + np.sqrt(1 - self.rho**2) * Z_t2
+        W_t = self.rho * Z_t1 + np.sqrt(1 - self.rho**2) * self.rng.normal(size=(self.n_ts, self.n_path))
         return Z_t1, W_t
+    
+    def term_1(self, t_n, t_k):
+        """
+        The term $\left[\left(t_n-t_{k-1}\right)^{1-\alpha}-\left(t_n-t_k\right)^{1-\alpha}\right]$
+
+        Args:
+            t_n: time at $t_n$
+            t_k: time at $t_k$
+
+        References:
+            - Equation (8) in Ma & Wu (2022)
+
+        Returns:
+            value of the term
+        """
+        return (t_n - t_k + self.dt) ** (1 - self.alpha) - (t_n - t_k) ** (1 - self.alpha)
+    
+    def term_2(self, t_n, t_k):
+        """
+        The term $\left[\frac{\left(t_n-t_{k-1}\right)^{1-2 \alpha}-\left(t_n-t_k\right)^{1-2 \alpha}}{1-2 \alpha}\right]^{1 / 2}$
+
+        Args:
+            t_n: time at $t_n$
+            t_k: time at $t_k$
+
+        References:
+            - Equation (8) in Ma & Wu (2022)
+
+        Returns:
+            value of the term
+        """
+        return np.sqrt(((t_n - t_k + self.dt) ** (1 - 2 * self.alpha) - (t_n - t_k) ** (1 - 2 * self.alpha)) / (1 - 2 * self.alpha))
     
     def ModifiedEM(self, Z_t):
         """
@@ -144,17 +191,17 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             V_t: simulated volatility process
         """
         assert Z_t.shape == (self.n_ts, self.n_path)
-        tpoints = self.tobs()
 
         V_t = np.zeros((self.n_ts + 1, self.n_path))
         V_t[0] = self.V_0
 
         for i in range(self.n_ts):
             V_t[i + 1, :] = self.V_0
-            summation_f = np.array([self.f(V_t[k, :]) * ((tpoints[i + 1] - tpoints[k]) ** (1 - self.alpha) - (tpoints[i + 1] - tpoints[k + 1]) ** (1 - self.alpha)) for k in range(i + 1)]).sum(axis=0)
-            V_t[i + 1, :] += 1 / spsp.gamma(2 - self.alpha) * summation_f
-            summation_g = np.array([self.g(V_t[k, :]) * np.sqrt(((tpoints[i + 1] - tpoints[k]) ** (1 - 2 * self.alpha) - (tpoints[i + 1] - tpoints[k + 1]) ** (1 - 2 * self.alpha)) / (1 - 2 * self.alpha)) * Z_t[k, :] for k in range(i + 1)]).sum(axis=0)
-            V_t[i + 1, :] += 1 / spsp.gamma(1 - self.alpha) * summation_g
+            j = np.arange(1, i + 2)
+            summation_f = (self.f(V_t[:i + 1, :]) * self.term_1(self.tgrid[i + 1], self.tgrid[j])[:, np.newaxis]).sum(axis=0)
+            V_t[i + 1, :] += 1 / self.gamma_2ma * summation_f
+            summation_g = (self.g(V_t[:i + 1, :]) * self.term_2(self.tgrid[i + 1], self.tgrid[j])[:, np.newaxis] * Z_t[:i + 1, :]).sum(axis=0)
+            V_t[i + 1, :] += 1 / self.gamma_1ma * summation_g
 
         return V_t
     
@@ -177,10 +224,10 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             n_l: number of nodes for the Gauss-Legendre quadrature on the interval $[2^{j}, 2^{j+1}], j=0, \cdots, N$
         """
         M = scale_coef * np.ceil(np.log(self.texp)) + 1
-        N = scale_coef * np.ceil(np.log(np.log(1 / err_tol)) + np.log(1 / self.dt))
+        N = scale_coef * np.ceil(np.log(np.log(1 / err_tol) / self.dt))
         n_o = scale_coef * np.ceil(np.log(1 / err_tol))
         n_s = scale_coef * np.ceil(np.log(1 / err_tol))
-        n_l = scale_coef * np.ceil(np.log(1 / err_tol) + np.log(1 / self.dt))
+        n_l = scale_coef * np.ceil(np.log(1 / err_tol / self.dt))
 
         return M, N, n_o, n_s, n_l
 
@@ -199,7 +246,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         s_o, w_o = spsp.roots_jacobi(n, self.alpha-1, 0)
         s_o = 2 ** (-M - 1) * (s_o + 1)
         w_o = 2 ** ((-M - 1) * self.alpha) * w_o
-        omega_o = w_o / spsp.gamma(self.alpha)
+        omega_o = w_o / self.gamma_a
         
         return s_o, omega_o
     
@@ -218,7 +265,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         s_i, w_i = spsp.roots_legendre(n)
         s_i = 2 ** (j - 1) * (s_i + 3)
         w_i = s_i ** (self.alpha - 1) * w_i * 2 ** (j - 1)
-        omega_i = w_i / spsp.gamma(self.alpha)
+        omega_i = w_i / self.gamma_a
 
         return s_i, omega_i
     
@@ -237,10 +284,10 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         M, N, n_o, n_s, n_l = self.get_num_nodes(err_tol, scale_coef)
 
         x_o, omega_o = self.GaussJacobiQuad(n_o, M)
-        x_s = np.array([self.GaussLegendreQuad(n_s, j)[0] for j in range(-int(M), 0)])
-        omega_s = np.array([self.GaussLegendreQuad(n_s, j)[1] for j in range(-int(M), 0)])
-        x_l = np.array([self.GaussLegendreQuad(n_l, j)[0] for j in range(0, int(N) + 1)])
-        omega_l = np.array([self.GaussLegendreQuad(n_l, j)[1] for j in range(0, int(N) + 1)])
+        i = np.arange(-int(M), 0)
+        x_s, omega_s = self.GaussLegendreQuad(n_s, i[:, np.newaxis])
+        j = np.arange(0, int(N) + 1)
+        x_l, omega_l = self.GaussLegendreQuad(n_l, j[:, np.newaxis])
 
         x_all = np.concatenate((x_o, x_s.reshape(-1), x_l.reshape(-1)))
         omega_all = np.concatenate((omega_o, omega_s.reshape(-1), omega_l.reshape(-1)))
@@ -266,7 +313,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Returns:
             updated function: $H_{l}^{N}(t_n)$
         """
-        return (1 / x_all * (1 - np.exp(-x_all * self.dt)))[np.newaxis, :] * self.f(V_previous)[:, np.newaxis] + np.exp(-x_all * self.dt) * H_previous
+        return 1 / x_all * (1 - np.exp(-x_all * self.dt)) * self.f(V_previous)[:, np.newaxis] + np.exp(-x_all * self.dt) * H_previous
     
     def J_N(self, x_all, J_previous, V_previous, Z_t):
         """
@@ -284,7 +331,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Returns:
             updated function: $J_{l}^{N}(t_n)$
         """
-        return np.sqrt(((1 - np.exp(-2 * x_all * self.dt)) / (2 * x_all)))[np.newaxis, :] * (self.g(V_previous) * Z_t)[:, np.newaxis] + np.exp(-x_all * self.dt) * J_previous
+        return np.exp(-x_all[np.newaxis, :] * self.dt) * ((self.g(V_previous) * Z_t * np.sqrt(self.dt))[:, np.newaxis] + J_previous)
     
     def Fast(self, Z_t, err_tol=1e-4, scale_coef=1):
         """
@@ -311,10 +358,10 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         J_t = np.zeros((self.n_path, N_all))
 
         for i in range(self.n_ts):
-            V_t[i + 1, :] = self.V_0 + self.dt ** (1 - self.alpha) / spsp.gamma(2 - self.alpha) * self.f(V_t[i, :]) \
-                            + 1 / spsp.gamma(1 - self.alpha) * (omega_all * np.exp(-x_all * self.dt) * H_t).sum(axis=1) \
-                            + self.dt ** (1 - self.alpha) / np.sqrt(1 - 2 * self.alpha) / spsp.gamma(1 - self.alpha) * self.g(V_t[i, :]) * Z_t[i, :] \
-                            + 1 / spsp.gamma(1 - self.alpha) * (omega_all * np.exp(-x_all * self.dt) * J_t).sum(axis=1)
+            V_t[i + 1, :] = self.V_0 + self.dt ** (1 - self.alpha) / self.gamma_2ma * self.f(V_t[i, :]) \
+                            + 1 / self.gamma_1ma * (omega_all * np.exp(-x_all * self.dt) * H_t).sum(axis=1) \
+                            + self.dt ** (0.5 - self.alpha) / np.sqrt(1 - 2 * self.alpha) / self.gamma_1ma * self.g(V_t[i, :]) * Z_t[i, :] \
+                            + 1 / self.gamma_1ma * (omega_all * np.exp(-x_all * self.dt) * J_t).sum(axis=1)
             H_t = self.H_N(x_all, H_t, V_t[i, :])
             J_t = self.J_N(x_all, J_t, V_t[i, :], Z_t[i, :])
 
@@ -333,11 +380,12 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Returns:
             array of $\eta_j$
         """
-        return np.array([0] + [j * N_exp ** (-1 / 5) / self.texp * (np.sqrt(10) * self.alpha / (2 + self.alpha)) ** (2 / 5) for j in range(1, N_exp + 1)])
+        j = np.arange(N_exp + 1)
+        return j * N_exp ** (-1 / 5) / self.texp * (np.sqrt(10) * self.alpha / (2 + self.alpha)) ** (2 / 5)
     
-    def c_j(self, N_exp):
+    def c_j_gamma_j(self, N_exp):
         """
-        $c_j$ for the Multifactor approximation
+        $c_j$ and $\gamma_j$ for the Multifactor approximation
 
         Args:
             N_exp: number of factors
@@ -346,26 +394,13 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             - Equation (27) in Ma & Wu (2022)
 
         Returns:
-            array of $c_j$
+            tuple of arrays of $c_j$ and $\gamma_j$
         """
         eta = self.eta_j(N_exp)
-        return np.array([(eta[i + 1] ** self.alpha - eta[i] ** self.alpha) / spsp.gamma(1 - self.alpha) / spsp.gamma(1 + self.alpha) for i in range(N_exp)])
-    
-    def gamma_j(self, N_exp):
-        """
-        $\gamma_j$ for the Multifactor approximation
+        cj = (eta[1:] ** self.alpha - eta[:-1] ** self.alpha) / self.gamma_1ma / self.gamma_1pa
+        gammaj = (eta[1:] ** (self.alpha + 1) - eta[:-1] ** (self.alpha + 1)) / (eta[1:] ** self.alpha - eta[:-1] ** self.alpha) * self.alpha / (1 + self.alpha)
 
-        Args:
-            N_exp: number of factors
-
-        References:
-            - Equation (27) in Ma & Wu (2022)
-
-        Returns:
-            array of $\gamma_j$
-        """
-        eta = self.eta_j(N_exp)
-        return np.array([(eta[i + 1] ** (1 + self.alpha) - eta[i] ** (1 + self.alpha)) / (eta[i + 1] ** self.alpha - eta[i] ** self.alpha) * self.alpha / (1 + self.alpha) for i in range(N_exp)])
+        return cj, gammaj
     
     def V_tJ(self, V_tj_previous, V_previous, gammaj, Z_t):
         """
@@ -383,7 +418,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Returns:
             updated function: $V_{t_{n}}^{\tilde{N}_{\text{exp}}, j, N}$
         """
-        return (V_tj_previous + (-self.kappa * V_previous * self.dt + self.g(V_previous) * np.sqrt(self.dt) * Z_t)[:, np.newaxis]) / ((1 + gammaj * self.dt)[np.newaxis, :])
+        return (1 - gammaj * self.dt) * V_tj_previous + (-self.kappa * V_previous * self.dt + self.g(V_previous) * np.sqrt(self.dt) * Z_t)[:, np.newaxis]
     
     def MultifactorApprox(self, Z_t):
         """
@@ -399,8 +434,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             V_t: simulated volatility process
         """
         N_exp = int(np.ceil(self.n_ts ** (5 / 4)))
-        cj = self.c_j(N_exp)
-        gammaj = self.gamma_j(N_exp)
+        cj, gammaj = self.c_j_gamma_j(N_exp)
 
         V_t = np.zeros((self.n_ts + 1, self.n_path))
         V_t[0, :] = self.V_0
