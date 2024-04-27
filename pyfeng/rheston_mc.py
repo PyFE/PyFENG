@@ -5,7 +5,7 @@ from . import sv_abc as sv
 from . import rheston
 
 
-class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
+class RoughHestonMcABC(rheston.RoughHestonABC, sv.SvABC, abc.ABC):
     
     def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, intr=0.0, divr=0.0) -> None:
         """
@@ -24,6 +24,15 @@ class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
         super().__init__(V_0, kappa * epsilon, rho, kappa, theta, alpha, intr, divr)
 
     def set_num_params(self, texp, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
+        self.n_path = int(n_path)
+        self.rn_seed = rn_seed
+        self.antithetic = antithetic
+
+        self.rng = np.random.default_rng(rn_seed)
+        seed_seq = np.random.SeedSequence(rn_seed)
+        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(6)]
+        self.result = {}
+
         self.texp = texp
         self.n_ts = int(n_ts)
         self.dt = self.texp / self.n_ts
@@ -32,7 +41,6 @@ class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
         self._gamma_1ma = spsp.gamma(1 - self.alpha)
         self._gamma_2ma = spsp.gamma(2 - self.alpha)
         self._gamma_1pa = spsp.gamma(1 + self.alpha)
-        super().set_num_params(n_path, self.dt, rn_seed, antithetic)
 
 
 class RoughHestonMcMaWu2022(RoughHestonMcABC):
@@ -276,6 +284,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Returns:
             updated function: $J_{l}^{N}(t_n)$
         """
+        # A correction for the paper: in the first line of `J_N`, `np.sqrt((1 - np.exp(-2 * x_all * self.dt)) / (2 * x_all))` is added due to Ito's Isometry
         return np.sqrt(((1 - np.exp(-2 * x_all * self.dt)) / (2 * x_all))) * (self.g(V_previous) * Z_t)[:, np.newaxis] + np.exp(-x_all * self.dt) * J_previous
     
     def Fast(self, Z_t, err_tol=1e-4, scale_coef=1):
