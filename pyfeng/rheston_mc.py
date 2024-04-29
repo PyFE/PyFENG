@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on May 2, 2024
+
+@author: Enze Zhou, Vahan Geghamyan
+"""
+
 import abc
 import numpy as np
 import scipy.special as spsp
@@ -5,7 +12,7 @@ from . import sv_abc as sv
 from . import rheston
 
 
-class RoughHestonMcABC(rheston.RoughHestonABC, sv.SvABC, abc.ABC):
+class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
     
     def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, intr=0.0, divr=0.0) -> None:
         """
@@ -24,19 +31,14 @@ class RoughHestonMcABC(rheston.RoughHestonABC, sv.SvABC, abc.ABC):
         super().__init__(V_0, kappa * epsilon, rho, kappa, theta, alpha, intr, divr)
 
     def set_num_params(self, texp, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
-        self.n_path = int(n_path)
-        self.rn_seed = rn_seed
-        self.antithetic = antithetic
-
-        self.rng = np.random.default_rng(rn_seed)
-        seed_seq = np.random.SeedSequence(rn_seed)
-        self.rng_spawn = [np.random.default_rng(s) for s in seed_seq.spawn(6)]
-        self.result = {}
+        super().set_num_params(n_path, n_ts, rn_seed, antithetic)
 
         self.texp = texp
         self.n_ts = int(n_ts)
         self.dt = self.texp / self.n_ts
         self.tgrid = np.linspace(0, self.texp, self.n_ts + 1)
+
+        # Frequently used constants
         self._gamma_a = spsp.gamma(self.alpha)
         self._gamma_1ma = spsp.gamma(1 - self.alpha)
         self._gamma_2ma = spsp.gamma(2 - self.alpha)
@@ -174,7 +176,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             n_s: number of nodes for the Gauss-Legendre quadrature on the interval $[2^{j}, 2^{j+1}], j=-M, \cdots, -1$
             n_l: number of nodes for the Gauss-Legendre quadrature on the interval $[2^{j}, 2^{j+1}], j=0, \cdots, N$
         """
-        M = scale_coef * np.ceil(np.log(self.texp)) + 1
+        M = scale_coef * np.fmax(np.ceil(np.log(self.texp)), 0) + 1
         N = scale_coef * np.ceil(np.log(np.log(1 / err_tol) / self.dt))
         n_o = scale_coef * np.ceil(np.log(1 / err_tol))
         n_s = scale_coef * np.ceil(np.log(1 / err_tol))
@@ -195,8 +197,8 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             omega_o: weights
         """
         s_o, w_o = spsp.roots_jacobi(n, self.alpha-1, 0)
-        s_o = 2 ** (-M - 1) * (s_o + 1)
-        w_o = 2 ** ((-M - 1) * self.alpha) * w_o
+        s_o = 2.0 ** (-M - 1) * (s_o + 1)
+        w_o = 2.0 ** ((-M - 1) * self.alpha) * w_o
         omega_o = w_o / self._gamma_a
         
         return s_o, omega_o
@@ -214,8 +216,8 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             omega_i: weights
         """
         s_i, w_i = spsp.roots_legendre(n)
-        s_i = 2 ** (j - 1) * (s_i + 3)
-        w_i = s_i ** (self.alpha - 1) * w_i * 2 ** (j - 1)
+        s_i = 2.0 ** (j - 1) * (s_i + 3)
+        w_i = s_i ** (self.alpha - 1) * w_i * 2.0 ** (j - 1)
         omega_i = w_i / self._gamma_a
 
         return s_i, omega_i
@@ -402,7 +404,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
     
     def price(self, S_0, V_t, W_t, K):
         """
-        Price of European call options
+        Stock price paths and price of European call options
 
         Args:
             V_t: simulated volatility process
@@ -420,4 +422,28 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
         S_t = np.exp(X_t)
 
-        return S_t, np.fmax(0, S_t[-1, :] - K).mean()
+        if isinstance(K, (int, float)):
+            return S_t, np.fmax(0, S_t[-1, :] - K).mean()
+        elif isinstance(K, np.ndarray):
+            return S_t, np.fmax(0, S_t[-1, :] - K[:, np.newaxis]).mean(axis=1)
+        else:
+            raise ValueError("Strike price must be a scalar or a numpy array")
+        
+    def cond_spot_sigma(self, texp, var_0):
+        """
+        Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
+        The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
+        Therefore, they should be scaled by the original F_0 and sigma_0 values.
+        Volatility, not variance, is returned.
+
+        Args:
+            texp: time-to-expiry
+            var_0: initial variance (or vol)
+
+        Returns: (forward, volatility)
+        """
+        return NotImplementedError
+    
+    def return_var_realized(self, texp, cond):
+        return NotImplementedError
+        
