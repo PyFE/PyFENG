@@ -8,6 +8,7 @@ Created on May 2, 2024
 import abc
 import numpy as np
 import scipy.special as spsp
+import scipy.integrate as spint
 from . import sv_abc as sv
 from . import rheston
 
@@ -407,6 +408,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Stock price paths and price of European call options
 
         Args:
+            S_0: spot price
             V_t: simulated volatility process
             W_t: random normal variables for the simulation of the stock price process
             K: strike price
@@ -429,7 +431,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
         
-    def cond_spot_sigma(self, texp, var_0):
+    def cond_spot_sigma(self, spot, V_t, Z_t, correct_fwd=False):
         """
         Returns new forward and volatility conditional on volatility path (e.g., sigma_T, integrated variance)
         The forward and volatility are standardized in the sense that F_0 = 1 and sigma_0 = 1
@@ -437,12 +439,48 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         Volatility, not variance, is returned.
 
         Args:
-            texp: time-to-expiry
-            var_0: initial variance (or vol)
+            spot: spot price
+            V_t: variance paths
+            Z_t: the BMs driving the volatility process (needed for integration)
+            correct_fwd: Martingale correcting Control Variate
 
         Returns: (forward, volatility)
         """
-        return NotImplementedError
+        div_fac = np.exp(-self.texp * self.divr)
+        disc_fac = np.exp(-self.texp * self.intr)
+        forward = spot / disc_fac * div_fac
+
+        V_0_T = spint.trapezoid(V_t, x=self.tgrid, axis=0)
+        Y_0_T = spint.trapezoid(np.sqrt(V_t), dx=Z_t * np.sqrt(self.dt), axis=0)
+
+        cond_forward = forward * np.exp(self.intr * self.texp + self.rho * Y_0_T - 0.5 * self.rho ** 2 * V_0_T)
+        cond_sigma = np.sqrt((1 - self.rho ** 2) * V_0_T / self.texp)
+
+        if correct_fwd:
+            forward_mc = np.mean(cond_forward)
+            lambda_ = forward * np.exp(self.intr * self.texp) / forward_mc
+
+            return lambda_ * cond_forward, cond_sigma
+
+        else:
+            return cond_forward, cond_sigma
+        
+    def priceCMC(self, spot, V_t, Z_t, K, correct_fwd=False):
+        """
+        Pricing of European options using conditional Monte Carlo
+
+        Args:
+            K: strike price
+            spot: spot price
+            V_t: variance paths
+            Z_t: the BMs driving the volatility process (needed for integration)
+            correct_fwd: Martingale correcting Control Variate
+        """
+        cond_forward, cond_sigma = self.cond_spot_sigma(spot, V_t, Z_t, correct_fwd=correct_fwd)
+        base_model = self.base_model(vol=cond_sigma)
+        price_ = base_model.price(K[:, None], spot=cond_forward, texp=self.texp)
+
+        return np.mean(price_, axis=1)
     
     def return_var_realized(self, texp, cond):
         return NotImplementedError
