@@ -417,6 +417,8 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             S_t: simulated stock price process
             price: price of the European call option
         """
+        disc_fac = np.exp(-self.texp * self.intr)
+        
         X_t = np.zeros((self.n_ts, self.n_path))
         X_t[0, :] = np.log(S_0)
         for i in range(self.n_ts - 1):
@@ -425,9 +427,9 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         S_t = np.exp(X_t)
 
         if isinstance(K, (int, float)):
-            return S_t, np.fmax(0, S_t[-1, :] - K).mean()
+            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - K).mean()
         elif isinstance(K, np.ndarray):
-            return S_t, np.fmax(0, S_t[-1, :] - K[:, np.newaxis]).mean(axis=1)
+            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - K[:, np.newaxis]).mean(axis=1)
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
         
@@ -442,7 +444,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             spot: spot price
             V_t: variance paths
             Z_t: the BMs driving the volatility process (needed for integration)
-            correct_fwd: Martingale correcting Control Variate
+            correct_fwd: Martingale preserving Control Variate
 
         Returns: (forward, volatility)
         """
@@ -474,11 +476,16 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             spot: spot price
             V_t: variance paths
             Z_t: the BMs driving the volatility process (needed for integration)
-            correct_fwd: Martingale correcting Control Variate
+            correct_fwd: Martingale preserving Control Variate
         """
         cond_forward, cond_sigma = self.cond_spot_sigma(spot, V_t, Z_t, correct_fwd=correct_fwd)
         base_model = self.base_model(vol=cond_sigma)
-        price_ = base_model.price(K[:, None], spot=cond_forward, texp=self.texp)
+        if isinstance(K, (int, float)):
+            price_ = base_model.price(K, spot=cond_forward, texp=self.texp)
+        elif isinstance(K, np.ndarray):
+            price_ = base_model.price(K[:, None], spot=cond_forward, texp=self.texp)
+        else:
+            raise ValueError("Strike price must be a scalar or a numpy array")
 
         return np.mean(price_, axis=1)
     
