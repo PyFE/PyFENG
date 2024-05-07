@@ -403,15 +403,15 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
         return V_t
     
-    def price(self, S_0, V_t, W_t, K):
+    def price(self, spot, V_t, W_t, strike):
         """
         Stock price paths and price of European call options
 
         Args:
-            S_0: spot price
+            spot: spot price
             V_t: simulated volatility process
             W_t: random normal variables for the simulation of the stock price process
-            K: strike price
+            strike: strike price
 
         Returns:
             S_t: simulated stock price process
@@ -420,16 +420,16 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         disc_fac = np.exp(-self.texp * self.intr)
         
         X_t = np.zeros((self.n_ts, self.n_path))
-        X_t[0, :] = np.log(S_0)
+        X_t[0, :] = np.log(spot)
         for i in range(self.n_ts - 1):
             X_t[i + 1, :] = X_t[i, :] + (self.intr - 0.5 * V_t[i, :] * self.dt + np.sqrt(V_t[i, :] * self.dt) * W_t[i, :])
 
         S_t = np.exp(X_t)
 
-        if isinstance(K, (int, float)):
-            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - K).mean()
-        elif isinstance(K, np.ndarray):
-            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - K[:, np.newaxis]).mean(axis=1)
+        if isinstance(strike, (int, float)):
+            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - strike).mean()
+        elif isinstance(strike, np.ndarray):
+            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - strike[:, np.newaxis]).mean(axis=1)
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
         
@@ -444,7 +444,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             spot: spot price
             V_t: variance paths
             Z_t: the BMs driving the volatility process (needed for integration)
-            correct_fwd: Martingale preserving Control Variate
+            correct_fwd: martingale preserving control variate
 
         Returns: (forward, volatility)
         """
@@ -467,23 +467,23 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         else:
             return cond_forward, cond_sigma
         
-    def priceCMC(self, spot, V_t, Z_t, K, correct_fwd=False):
+    def priceCMC(self, spot, V_t, Z_t, strike, correct_fwd=False):
         """
         Pricing of European options using conditional Monte Carlo
 
         Args:
-            K: strike price
             spot: spot price
             V_t: variance paths
             Z_t: the BMs driving the volatility process (needed for integration)
-            correct_fwd: Martingale preserving Control Variate
+            strike: strike price
+            correct_fwd: martingale preserving control variate
         """
         cond_forward, cond_sigma = self.cond_spot_sigma(spot, V_t, Z_t, correct_fwd=correct_fwd)
         base_model = self.base_model(vol=cond_sigma)
-        if isinstance(K, (int, float)):
-            price_ = base_model.price(K, spot=cond_forward, texp=self.texp)
-        elif isinstance(K, np.ndarray):
-            price_ = base_model.price(K[:, None], spot=cond_forward, texp=self.texp)
+        if isinstance(strike, (int, float)):
+            price_ = base_model.price(strike, spot=cond_forward, texp=self.texp)
+        elif isinstance(strike, np.ndarray):
+            price_ = base_model.price(strike[:, None], spot=cond_forward, texp=self.texp)
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
 
