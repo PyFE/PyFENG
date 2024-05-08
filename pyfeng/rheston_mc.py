@@ -452,8 +452,10 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         disc_fac = np.exp(-self.texp * self.intr)
         forward = spot / disc_fac * div_fac
 
-        V_0_T = spint.trapezoid(V_t, x=self.tgrid, axis=0)
-        Y_0_T = spint.trapezoid(np.sqrt(V_t), dx=Z_t * np.sqrt(self.dt), axis=0)
+        # V_0_T = spint.trapezoid(V_t, x=self.tgrid, axis=0)
+        # Y_0_T = spint.trapezoid(np.sqrt(V_t), dx=Z_t * np.sqrt(self.dt), axis=0)
+        V_0_T = spint.trapezoid(V_t[:-1], x=self.tgrid[:-1], axis=0)
+        Y_0_T = np.sum(np.sqrt(V_t[:-1] * self.dt) * Z_t, axis=0) # cannot use the trapezoid rule because it is an Ito integral
 
         cond_forward = forward * np.exp(self.intr * self.texp + self.rho * Y_0_T - 0.5 * self.rho ** 2 * V_0_T)
         cond_sigma = np.sqrt((1 - self.rho ** 2) * V_0_T / self.texp)
@@ -462,7 +464,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             forward_mc = np.mean(cond_forward)
             lambda_ = forward * np.exp(self.intr * self.texp) / forward_mc
 
-            return lambda_ * cond_forward, cond_sigma
+            return lambda_ * cond_forward, cond_sigma, lambda_
 
         else:
             return cond_forward, cond_sigma
