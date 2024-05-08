@@ -464,7 +464,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             forward_mc = np.mean(cond_forward)
             lambda_ = forward * np.exp(self.intr * self.texp) / forward_mc
 
-            return lambda_ * cond_forward, cond_sigma, lambda_
+            return lambda_ * cond_forward, cond_sigma
 
         else:
             return cond_forward, cond_sigma

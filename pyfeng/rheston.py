@@ -1,6 +1,4 @@
 import abc
-import numpy as np
-import scipy.special as spsp
 from . import sv_abc as sv
 
 
