@@ -403,9 +403,9 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
         return V_t
     
-    def price(self, spot, V_t, W_t, strike):
+    def price(self, spot, V_t, W_t, strike, cp=1):
         """
-        Stock price paths and price of European call options
+        Stock price paths and prices of European options
 
         Args:
             spot: spot price
@@ -415,7 +415,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
         Returns:
             S_t: simulated stock price process
-            price: price of the European call option
+            price: prices of European options
         """
         disc_fac = np.exp(-self.texp * self.intr)
         
@@ -427,9 +427,9 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         S_t = np.exp(X_t)
 
         if isinstance(strike, (int, float)):
-            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - strike).mean()
+            return S_t, disc_fac * np.fmax(0.0, cp * (S_t[-1, :] - strike)).mean()
         elif isinstance(strike, np.ndarray):
-            return S_t, disc_fac * np.fmax(0, S_t[-1, :] - strike[:, np.newaxis]).mean(axis=1)
+            return S_t, disc_fac * np.fmax(0.0, cp * (S_t[-1, :] - strike[:, np.newaxis])).mean(axis=1)
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
         
@@ -446,16 +446,17 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             Z_t: the BMs driving the volatility process (needed for integration)
             correct_fwd: martingale preserving control variate
 
-        Returns: (forward, volatility)
+        Returns: 
+            cond_forward: conditional forward
+            cond_sigma: conditional volatility
         """
         div_fac = np.exp(-self.texp * self.divr)
         disc_fac = np.exp(-self.texp * self.intr)
         forward = spot / disc_fac * div_fac
 
-        # V_0_T = spint.trapezoid(V_t, x=self.tgrid, axis=0)
+        V_0_T = spint.trapezoid(V_t, x=self.tgrid, axis=0)
+        Y_0_T = np.sum(np.sqrt(V_t[:-1] * self.dt) * Z_t, axis=0) # cannot use the trapezoid rule because it is an Ito integral, see below for the trapezoid rule
         # Y_0_T = spint.trapezoid(np.sqrt(V_t), dx=Z_t * np.sqrt(self.dt), axis=0)
-        V_0_T = spint.trapezoid(V_t[:-1], x=self.tgrid[:-1], axis=0)
-        Y_0_T = np.sum(np.sqrt(V_t[:-1] * self.dt) * Z_t, axis=0) # cannot use the trapezoid rule because it is an Ito integral
 
         cond_forward = forward * np.exp(self.intr * self.texp + self.rho * Y_0_T - 0.5 * self.rho ** 2 * V_0_T)
         cond_sigma = np.sqrt((1 - self.rho ** 2) * V_0_T / self.texp)
@@ -469,7 +470,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         else:
             return cond_forward, cond_sigma
         
-    def priceCMC(self, spot, V_t, Z_t, strike, correct_fwd=False):
+    def priceCMC(self, spot, V_t, Z_t, strike, correct_fwd=False, cp=1):
         """
         Pricing of European options using conditional Monte Carlo
 
@@ -479,13 +480,16 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             Z_t: the BMs driving the volatility process (needed for integration)
             strike: strike price
             correct_fwd: martingale preserving control variate
+
+        Returns:
+            price_: prices of European options
         """
         cond_forward, cond_sigma = self.cond_spot_sigma(spot, V_t, Z_t, correct_fwd=correct_fwd)
         base_model = self.base_model(vol=cond_sigma)
         if isinstance(strike, (int, float)):
-            price_ = base_model.price(strike, spot=cond_forward, texp=self.texp)
+            price_ = base_model.price(strike, spot=cond_forward, texp=self.texp, cp=cp)
         elif isinstance(strike, np.ndarray):
-            price_ = base_model.price(strike[:, None], spot=cond_forward, texp=self.texp)
+            price_ = base_model.price(strike[:, None], spot=cond_forward, texp=self.texp, cp=cp)
         else:
             raise ValueError("Strike price must be a scalar or a numpy array")
 
