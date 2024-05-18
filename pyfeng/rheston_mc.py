@@ -197,7 +197,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             s_o: nodes
             omega_o: weights
         """
-        s_o, w_o = spsp.roots_jacobi(n, self.alpha-1, 0)
+        s_o, w_o = spsp.roots_jacobi(n, 0, self.alpha-1)
         s_o = 2.0 ** (-M - 1) * (s_o + 1)
         w_o = 2.0 ** ((-M - 1) * self.alpha) * w_o
         omega_o = w_o / self._gamma_a
