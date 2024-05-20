@@ -179,7 +179,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         mean_ln = self.rho / self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
                   + (self.intr - self.divr - 0.5 * avgvar) * dt
         sigma_ln2 = (1.0 - self.rho**2) * dt * avgvar
-        return mean_ln**2 + sigma_ln2
+        return mean_ln**2 + sigma_ln2 
 
     def draw_log_return(self, dt, var_0, var_t, avgvar):
         """
@@ -199,6 +199,25 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
         zn = self.rv_normal(spawn=5)
         return ln_m + ln_sig * zn
+    
+    def draw_pct_return(self, dt, var_0, var_t, avgvar):
+        """
+        Samples log return, (S_t/S_0)-1
+
+        Args:
+            dt: time step
+            var_0: initial variance
+            var_t: final variance
+            avgvar: average variance
+
+        Returns:
+            pct return
+        """
+        ln_m = self.rho/self.vov * ((var_t - var_0) + self.mr * dt * (avgvar - self.theta)) \
+            + (self.intr - self.divr - 0.5 * avgvar) * dt
+        ln_sig = np.sqrt((1.0 - self.rho**2) * dt * avgvar)
+        zn = self.rv_normal(spawn=5)
+        return np.exp(ln_m + ln_sig * zn)-1
 
     def return_var_realized(self, texp, cond=False):
         """
@@ -235,6 +254,46 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
                 var_r += self.cond_log_return_var(dt[i], var_0, var_t, avgvar_inc)
             else:
                 var_r += (self.draw_log_return(dt[i], var_0, var_t, avgvar_inc) + qe_m_corr) ** 2
+
+            var_0 = var_t
+
+        return var_r / texp  # annualized
+    
+    def return_pctvar_realized(self, texp, cond=False):
+        """
+        Annualized realized return variance
+
+        Args:
+            texp: time to expiry
+            cond: use conditional expectation without simulating price
+
+        Returns:
+
+        """
+        tobs = self.tobs(texp)
+        n_dt = len(tobs)
+        dt = np.diff(tobs, prepend=0)
+
+        var_r = np.zeros(self.n_path)
+        var_0 = np.full(self.n_path, self.sigma)
+
+        tmp = self.rho/self.vov*self.mr - 0.5
+
+        for i in range(n_dt):
+            var_t, avgvar_inc, extra = self.cond_states_step(dt[i], var_0)
+
+            if self.correct_martingale:
+                pois_avgvar_v = extra.get('pois_avgvar_v', None)
+                if pois_avgvar_v is not None:  # missing variance:
+                    var_r += (tmp*dt[i])**2 * pois_avgvar_v
+                qe_m_corr = extra.get('qe_m_corr', 0.0)
+            else:
+                qe_m_corr = 0.0
+
+            if cond:
+                var_r += np.exp(self.cond_log_return_var(dt[i], var_0, var_t, avgvar_inc))-1
+            else:
+                var_r += (np.exp(self.draw_log_return(dt[i], var_0, var_t, avgvar_inc))-1 + qe_m_corr) ** 2
 
             var_0 = var_t
 
@@ -771,6 +830,60 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         assert eta.sum() == total
 
         return var_t, avgvar, {}
+
+class HestonMC:
+    """
+    Heston model with Monte-Carlo simulation
+
+    Naive MC for Heston model based on Euler-Maruyama discretization scheme 
+
+    Underlying price follows a geometric Brownian motion, and variance of the price follows a CIR process.
+
+    References:
+        -  Song-Ping Zhu∗, Guang-Hua Lian(2011) SA Closed-form Exact Solution for Pricing Variance Swaps with Stochastic Volatility
+    """
+    def __init__(self, **kwargs) -> None:
+        default_kwargs = {'sigma': 0.04, 'vov': 0.618, 'rho': -0.64,\
+                           'mr': 11.35, 'theta': 0.022, 'intr': 0.1}
+        for key, value in default_kwargs.items():
+            setattr(self, key, kwargs.get(key, value))
+
+    def set_num_params(self,dt=1/4,n_path=200000):
+        self.dt = dt
+        self.n_path = n_path
+        
+    def return_pctvar_realized(self, texp):
+        """
+        Annualized realized return variance
+
+        Args:
+            texp: time to expiry
+        Returns:
+        """
+        n_dt = int(texp / self.dt)
+        dt =  texp / n_dt
+
+        var_r = np.zeros(self.n_path)
+        var_0 = np.full(self.n_path, self.sigma)
+
+        for i in range(n_dt):
+            var_t, z1 = self.cond_states_step(dt, var_0)
+            var_r += (self.draw_pct_return(dt, var_0, z1) ) ** 2
+            var_0 = var_t
+
+        return var_r / texp  # annualized
+
+    def cond_states_step(self, dt, var_0):
+        z1 = np.random.normal(size=self.n_path)
+        z2 = np.random.normal(size=self.n_path)
+        zz = self.rho * z1 + np.sqrt(1 - self.rho**2) * z2
+        var_t = var_0 + self.mr * (self.theta - var_0) * dt + np.sqrt(abs(var_0)) * self.vov * zz * np.sqrt(dt)
+        var_t = np.maximum(var_t, 0)
+        return var_t, z1
+    
+    def draw_pct_return(self, dt, var_0, z1):
+        res = self.intr*dt+np.sqrt(abs(var_0))*z1*np.sqrt(dt)
+        return res
 
 
 class HestonMcAndersen2008(HestonMcABC):
