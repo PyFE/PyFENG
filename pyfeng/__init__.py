@@ -24,6 +24,9 @@ from .heston_mc import (
     HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
     HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd
 )
+
+from .rheston_mc import RoughHestonMcMaWu2022
+
 from .ousv import OusvUncorrBallRoma1994, OusvMcTimeDisc, OusvMcChoi2023KL
 from .svi import Svi
 

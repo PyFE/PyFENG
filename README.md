@@ -26,6 +26,8 @@ derivative pricing.
   * Schobel-Zhu (OUSV) model
     * FFT option pricing.
     * Almost exact MC simulation by Choi
+  * Rough volatility models
+    * Rough Heston MC by Ma & Wu
 
 ## About the Package
 * Uses `numpy` arrays as basic datatype so computations are naturally vectorized.

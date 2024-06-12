@@ -18,16 +18,16 @@ class FftABC(opt.OptABC, abc.ABC):
     x_lim = 200  # integratin limit
 
     @abc.abstractmethod
-    def mgf_logprice(self, xx, texp):
+    def mgf_logprice(self, uu, texp):
         """
         Moment generating function (MGF) of log price. (forward = 1)
 
         Args:
-            xx: dummy variable
+            uu: dummy variable
             texp: time to expiry
 
         Returns:
-            MGF value at xx
+            MGF value at uu
         """
         return NotImplementedError
 
@@ -657,25 +657,41 @@ class Sv32Fft(sv.SvABC, FftABC):
 
 class CgmyFft(smile.OptSmileABC, FftABC):
 
-    C = 1
-    G = 1
-    M = 1
-    Y = 0
+    C = 1.
+    G = 1.
+    M = 1.
+    Y = 0.
 
     def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
-        super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.G, self.M, self.Y = G, M, Y
+        super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)  # self.sigma = C
+        self.C, self.G, self.M, self.Y = C, G, M, Y
 
-    def mgf_logprice(self, xx, texp):
+    def mgf_logprice(self, uu, texp):
+        """
+        MGF of log price of CGMY from Eq (19) from Ballotta and Kyriakou (2014)
 
-        rv = self.C * spsp.gamma(-self.Y) * (
-            np.power(self.M - xx, self.Y) - np.power(self.M, self.Y)
-            + np.power(self.G - xx, self.Y) - np.power(self.G, self.Y)
+        Args:
+            uu: dummy variable
+            texp: time to expiry
+
+        Returns:
+            MGF value at uu
+
+        References:
+            - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY Process and Option Pricing. Journal of Futures Markets 34:1095–1121. https://doi.org/10.1002/fut.21647
+
+        """
+        gam_Y = spsp.gamma(-self.Y)
+        M_pow_Y = np.power(self.M, self.Y)
+        G_pow_Y = np.power(self.G, self.Y)
+
+        rv = self.C * gam_Y * (
+                np.power(self.M - uu, self.Y) - M_pow_Y
+                + np.power(self.G + uu, self.Y) - G_pow_Y
         )
-        mu = - self.sigma * spsp.gamma(-self.Y) * (
-            np.power(self.M - 1, self.Y) - np.power(self.M, self.Y)
-            + np.power(self.G - 1, self.Y) - np.power(self.G, self.Y)
+        mu = - self.C * gam_Y * (
+            np.power(self.M - 1., self.Y) - M_pow_Y
+            + np.power(self.G + 1., self.Y) - G_pow_Y
         )
-
         np.exp(texp*(mu + rv), out=rv)
         return rv
