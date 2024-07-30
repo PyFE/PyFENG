@@ -56,7 +56,7 @@ class MathFuncs:
             value
         """
 
-        rv = np.ones_like(x)
+        rv = np.ones_like(x, dtype=float)
         np.divide(np.expm1(x),  x, out=rv, where=(x != 0.0))
         return rv
 
@@ -73,7 +73,7 @@ class MathFuncs:
         """
         assert np.all(x > -1.0)
 
-        rv = np.ones_like(x)
+        rv = np.ones_like(x, dtype=float)
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0))
         return rv
 
@@ -93,7 +93,7 @@ class MathFuncs:
 
         assert np.all(x > -1.0)
         a1p = 1.0 + a
-        rv = np.ones(np.broadcast_shapes(np.shape(a1p), np.shape(x)))
+        rv = np.ones(np.broadcast_shapes(np.shape(a1p), np.shape(x)), dtype=float)
         np.divide(np.expm1(a1p * np.log1p(x)),  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0) & (a1p == 0.0))
 
