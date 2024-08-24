@@ -44,43 +44,57 @@ class MathFuncs:
         """
         return MathConsts.M_SQRT_PI_2 * spsp.erfcx(x * MathConsts.M_SQRT1_2)
 
+    @staticmethod
+    def avg_exp(x):
+        """
+        Integral_0^x exp(x) dx / x = ( exp(x) - 1 ) / x
 
-def avg_exp(x):
-    """
-    Integral_0^x exp(x) dx / x = ( exp(x) - 1 ) / x
+        Args:
+            x: argument
 
-    Args:
-        x: argument
+        Returns:
+            value
+        """
 
-    Returns:
-        value
-    """
-    with np.errstate(invalid="ignore"):
-        rv = np.array(np.expm1(x)/x)
+        rv = np.ones_like(x, dtype=float)
+        np.divide(np.expm1(x),  x, out=rv, where=(x != 0.0))
+        return rv
 
-    # bound doesn't really matter. just to avoid /0
-    # based on (2,1) Pade approximant
-    np.divide(12, x*(x-6)+12, out=rv, where=np.abs(x) < 1e-5)
+    @staticmethod
+    def avg_inv(x):
+        """
+        [Integarl 1/x from 1 to 1+x] / x = log(1+x) / x
 
-    return rv
+        Args:
+            x: argument
 
+        Returns:
 
-def avg_inv(x):
-    """
-    [Integarl 1/x from 1 to 1+x] / x = log(1+x) / x
+        """
+        assert np.all(x > -1.0)
 
-    Args:
-        x: argument
+        rv = np.ones_like(x, dtype=float)
+        np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0))
+        return rv
 
-    Returns:
+    @staticmethod
+    def avg_pow(x, a):
+        """
+        (int from 1 to (1+x) t^a dt) / x
+            = 1/(1+a) * ((1+x)^(1+a) - 1) / x
 
-    """
+        Args:
+            x: argument
+            a: exponent
 
-    with np.errstate(invalid="ignore"):
-        rv = np.array(np.log1p(x)/x)
+        Returns:
 
-    # bound doesn't really matter. just to avoid /0
-    # based on (2,1) Pade approximant
-    np.divide(1+x/2, x*(x/6+1)+1, out=rv, where=np.abs(x) < 1e-5)
+        """
 
-    return rv
+        assert np.all(x > -1.0)
+        a1p = 1.0 + a
+        rv = np.ones(np.broadcast_shapes(np.shape(a1p), np.shape(x)), dtype=float)
+        np.divide(np.expm1(a1p * np.log1p(x)),  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
+        np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0) & (a1p == 0.0))
+
+        return rv

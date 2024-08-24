@@ -6,7 +6,7 @@ import numpy as np
 from . import opt_abc as opt
 from . import opt_smile_abc as smile
 from . import sv_abc as sv
-from .util import avg_exp
+from .util import MathFuncs
 
 
 class CevAbc(smile.OptSmileABC, abc.ABC):
@@ -51,7 +51,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
 
         betac = 1.0 - self.beta
         a = 0.5 / betac  # shape parameter of gamma
-        var = (betac * self.sigma)**2 * texp * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         x = 0.5 * np.power(fwd, 2*betac) / var
 
         if log:
@@ -76,7 +76,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         fwd = self.forward(spot, texp)
         betac = 1.0 - self.beta
         alpha = self.sigma/np.power(fwd, betac)
-        var_t0 = (betac*alpha)**2 * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var_t0 = (betac*alpha)**2 * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         t0 = 0.5/var_t0
 
         return t0
@@ -107,7 +107,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         betac = 1.0 - beta
         betac_inv = 1.0/betac
         alpha = sigma/np.power(fwd, betac)
-        var = np.maximum(alpha**2 * texp, np.finfo(float).eps) * betac**2 * avg_exp(2*(intr-divr)*betac*texp)
+        var = np.maximum(alpha**2 * texp, np.finfo(float).eps) * betac**2 * MathFuncs.avg_exp(2*(intr-divr)*betac*texp)
 
         xx = 1.0 / var
         yy = np.power(strike/fwd, 2*betac) * xx
@@ -132,7 +132,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
 
-        var = (betac * self.sigma)**2 * texp * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         xx = np.power(fwd, 2*betac) / var
         yy = np.power(strike, 2*betac) / var
 
@@ -153,7 +153,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         betac_inv = 1.0/betac
 
         alpha = self.sigma/np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         xx = 1.0/var
         yy = np.power(strike/fwd, 2*betac) * xx
 
@@ -166,7 +166,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
 
-        var = (betac * self.sigma)**2 * texp * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         xx = np.power(fwd, 2*betac) / var
         yy = np.power(strike, 2*betac) / var
 
@@ -192,7 +192,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
 
-        var = (betac * self.sigma)**2 * texp * avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
         xx = np.power(fwd, 2*betac) / var
         yy = np.power(strike, 2*betac) / var
 
@@ -270,7 +270,7 @@ class CevMc(CevAbc):
         s_t = np.exp((self.intr - self.divr)*dt) * spot
         betac = 1.0 - self.beta
 
-        var = (betac * self.sigma)**2 * dt * avg_exp(2*(self.intr-self.divr)*betac*dt)
+        var = (betac * self.sigma)**2 * dt * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*dt)
         z0 = np.power(s_t[nz_idx], 2*betac) / var
         rv_gam = 2 * self.rng.standard_gamma(1/(2*betac), size=len(z0))
         pois_lam = (z0 - rv_gam) / 2
