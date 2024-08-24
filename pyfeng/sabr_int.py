@@ -5,7 +5,7 @@ import scipy.special as spsp
 import scipy.stats as spst
 import scipy.integrate as spint
 from . import opt_smile_abc as smile
-from . import util
+from .util import MathFuncs
 
 
 class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
@@ -33,7 +33,7 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         #ww = np.exp(vovn2)
         #m1 = np.where(vovn2 > 1e-6, (ww - 1) / vovn2, 1 + vovn2 / 2 * (1 + vovn2 / 3))
 
-        m1 = util.avg_exp(vovn2)
+        m1 = MathFuncs.avg_exp(vovn2)
         ww = vovn2 * m1 + 1.
         var_m1sq_ratio = (10 + ww*(6 + ww*(3 + ww))) / 15 * m1 * vovn2
         sig = np.sqrt(np.log1p(var_m1sq_ratio))
@@ -262,7 +262,7 @@ class SabrNormAnalytic(sabr.SabrABC):
         A = 0.75*tmp1
         B = 0.75*(tmp2 - 5/16*tmp1**2)
 
-        R = util.MathFuncs.mills_ratio(np.array([u0 - xi, u0, u0 + xi]))
+        R = MathFuncs.mills_ratio(np.array([u0 - xi, u0, u0 + xi]))
         opt_val = ((R[0] - R[2]) + A*(R[0] + R[2] - 2*R[1]) + 2*B*(R[0] - R[2] - 2*xi*(1. - u0*R[1]))) / xi
         # At the end of above, n(u0)/xi should be multiplied. Only /xi is multiplied and n(u0) will be applied later.
 
@@ -281,7 +281,7 @@ class SabrNormAnalytic(sabr.SabrABC):
             v_p = self.rho*k + rhoc2*ch + diff
             V = np.sqrt(k**2 + rhoc2)
             fn = (2/np.pi)*np.sqrt(v_p/V)*spsp.ellipe(np.fmin(2*diff/v_p, 1.0)) - 1. - xi*(uu - u0)*(A + B*xi*(uu - u0))
-            base = util.MathFuncs.mills_ratio(uu + xi) + util.MathFuncs.mills_ratio(uu - xi)
+            base = MathFuncs.mills_ratio(uu + xi) + MathFuncs.mills_ratio(uu - xi)
             opt_val += np.sum(fn*base*v_weight, axis=0)
 
         opt_val *= 0.5*self.sigma*np.sqrt(texp*V)*np.exp(-0.5*xi**2) * spst.norm._pdf(u0)
@@ -380,7 +380,7 @@ class SabrNormEllipeInt(sabr.SabrABC):
 
         def integrand(uu_, xi_, k_):
             rv = self.hh_xi(uu_, k_, xi_, self.rho)
-            rv *= spst.norm._pdf(uu_)*(util.MathFuncs.mills_ratio(uu_ + xi_) + util.MathFuncs.mills_ratio(uu_ - xi_))
+            rv *= spst.norm._pdf(uu_)*(MathFuncs.mills_ratio(uu_ + xi_) + MathFuncs.mills_ratio(uu_ - xi_))
             return rv
 
         def integral(u0_, xi_, k_):

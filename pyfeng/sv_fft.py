@@ -695,3 +695,8 @@ class CgmyFft(smile.OptSmileABC, FftABC):
         )
         np.exp(texp*(mu + rv), out=rv)
         return rv
+
+class CGMY_New():
+
+    def __init__(self):
+        pass
