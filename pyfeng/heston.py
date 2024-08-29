@@ -120,6 +120,135 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         return strike
 
+    def strike_var_swap_analytic_pctreturn(self, texp, dt):
+        """
+        Analytic fair strike of variance swap. Proposition3.2 in Bernard & Cui (2014)
+
+        Args:
+            texp: time to expiry
+            dt: observation time step (e.g., dt=1/12 for monthly) For continuous monitoring, set dt=0
+                must in the form of 1/n for some integer n
+
+        Returns:
+            Fair strike
+
+        References:
+            - Bernard C, Cui Z (2014) Prices and Asymptotics for Discrete Variance Swaps. Applied Mathematical Finance 21:140–173. https://doi.org/10.1080/1350486X.2013.820524
+
+        """
+        n = int(texp/dt)
+        delta = dt
+        kappa = self.mr
+        theta = self.theta
+        gamma = self.vov
+        rho = self.rho
+        V0 = self.sigma
+        r = self.intr
+        S0 = 1
+
+        
+        alpha = 2*kappa*theta/gamma**2-1
+
+        def d(u):
+            res = np.sqrt((kappa-gamma*rho*u)**2 + (u - u*2)*gamma**2)
+            return res
+
+        def g(u):
+            res = (kappa - gamma*rho*u - d(u))/(kappa - gamma*rho*u + d(u))
+            return res
+
+        def q(u):
+            res = ((kappa - gamma*rho*u - d(u))/(gamma**2))*(1 - np.exp(-d(u)*delta))/(1 - g(u)*np.exp(-d(u)*delta))
+            return res
+
+        def eta(u):
+            res = (2*kappa)/((gamma**2)*(1 - np.exp(-u*kappa)))
+            return res
+
+        def M(u,t):
+            e1 = np.exp((kappa*theta/gamma**2)*((kappa - gamma*rho*u - d(u))*t - 2*np.log((1 - g(u)*np.exp(-d(u)*t))/(1 - g(u)))))
+            e2 = np.exp(V0*(kappa-gamma*rho*u-d(u))*(1 - np.exp(-d(u)*t))/(gamma**2*(1 - g(u)*np.exp(-d(u)*t))))
+            res = (S0**u)*e1*e2
+            return res
+
+        def ai(ti):
+            e1 = np.exp(q(2)*V0*(eta(ti)*np.exp(-kappa*ti)/(eta(ti)-q(2))-1))
+            e2 = (eta(ti)/(eta(ti)-q(2)))**(alpha+1)
+            res = np.exp(2*r*delta)*M(2, delta)*e1*e2/(S0**2)
+            return res
+
+        def K(n):
+            res = 0
+            a = np.exp(2*r*delta)*M(2, delta)/S0**2
+            res += a
+            for i in range(1,n):
+                ti = i*delta
+                res += ai(ti)
+            res = res/texp + (n-2*n*np.exp(r*delta))/texp
+            return res
+
+        return K(n)
+
+    def strike_var_swap_analytic_ZhuLian(self, texp, dt):
+        """
+        Analytic fair strike of variance swap. eq (2.34) Lian & Zhu (2011)
+
+        Args:
+            texp: time to expiry
+            dt: observation time step (e.g., dt=1/12 for monthly) For continuous monitoring, set dt=0
+                must in the form of 1/n for some integer n
+
+        Returns:
+            Fair strike
+
+        References:
+            - Song-Ping Zhu, Guang-Hua Lian (2011) A Closed-form Exact Solution for Pricing Variance Swaps with Stochastic Volatility
+
+        """
+        kappa = self.mr
+        theta = self.theta
+        rho = self.rho
+        sigma_V = self.vov
+        v0 = self.sigma
+        r = self.intr
+        N = int(texp/dt)
+        T = texp
+
+        def C_D_calculation():
+            tilde_a = kappa - 2 * rho * sigma_V
+            tilde_b = np.sqrt(tilde_a ** 2 - 2 * sigma_V ** 2)
+            tilde_g = (tilde_a / sigma_V) ** 2 - 1 + (tilde_a / sigma_V) * np.sqrt((tilde_a / sigma_V) ** 2 - 2)
+        
+            term1 = r * dt
+            term2 = (kappa * theta) / (sigma_V ** 2)
+            term3 = (tilde_a + tilde_b) * dt
+            term4 = 2 * np.log((1 - tilde_g * np.exp(tilde_b * dt)) / (1 - tilde_g))
+        
+            C = term1 + term2 * (term3 - term4)
+
+            D = ((tilde_a + tilde_b) / sigma_V ** 2) * ((1 - np.exp(tilde_b * dt)) / (1 - tilde_g * np.exp(tilde_b * dt)))
+            return C, D
+        
+        def f():
+            C, D = C_D_calculation()
+            return np.exp(C + D * v0) + np.exp(-r * dt) - 2
+
+        def sum_fi():
+            C, D = C_D_calculation()
+            sum = 0
+            for i in range(2, N + 1):
+                c_i = 2 * kappa / (sigma_V ** 2 * (1 - np.exp(-kappa * (i - 1) * dt)))
+                term1 = np.exp(C + c_i * np.exp(-kappa * (i - 1) * dt) / (c_i - D) * D * v0)
+                term2 = (c_i / (c_i - D)) ** (2 * kappa * theta / (sigma_V ** 2))
+                sum += term1 * term2 + np.exp(-r * dt) - 2
+            return sum
+    
+        
+        f_v0 = f()
+        sum_fi_v0 = sum_fi()
+        K_var = (np.exp(r * dt) / T) * (f_v0 + sum_fi_v0) 
+        return K_var
+
 
 class HestonUncorrBallRoma1994(HestonABC):
     """
