@@ -657,10 +657,7 @@ class Sv32Fft(sv.SvABC, FftABC):
 
 class CgmyFft(smile.OptSmileABC, FftABC):
 
-    C = 1.
-    G = 1.
-    M = 1.
-    Y = 0.
+    C, G, M, Y = 1., 1., 1., 0.
 
     def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
         super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)  # self.sigma = C
@@ -679,7 +676,6 @@ class CgmyFft(smile.OptSmileABC, FftABC):
 
         References:
             - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY Process and Option Pricing. Journal of Futures Markets 34:1095–1121. https://doi.org/10.1002/fut.21647
-
         """
         gam_Y = spsp.gamma(-self.Y)
         M_pow_Y = np.power(self.M, self.Y)
@@ -693,10 +689,5 @@ class CgmyFft(smile.OptSmileABC, FftABC):
             np.power(self.M - 1., self.Y) - M_pow_Y
             + np.power(self.G + 1., self.Y) - G_pow_Y
         )
-        np.exp(texp*(mu + rv), out=rv)
+        np.exp(texp*(mu*uu + rv), out=rv)
         return rv
-
-class CGMY_New():
-
-    def __init__(self):
-        pass
