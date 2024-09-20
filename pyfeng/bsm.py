@@ -68,52 +68,52 @@ class Bsm(opt.OptAnalyticABC):
         return sig
 
     @staticmethod
-    def vega_std(sigma, logk):
+    def price_std(sigma, logk, sign=1, type=1):
         """
-        Standardized Vega
+        Price (ratio) for standardized parameters
 
-        Args:
-            sigma: volatility
-            logk: log strike
+        type=0: Price
+            Option Price = N(d1) - k N(d2) = n(d1) * [R(-d1) - R(-d2)]
+        where R(x) = N(-x)/n(x) is Mills ratio
 
-        Returns:
+        type=1: Price-to-vega ratio
+            Option Price / Vega = [N(d1) - k N(d2)]/n(d1) = R(-d1) - R(-d2) for sign = 1
+            (1 - Option Price) / Vega = [1 - N(d1) + k N(d2)]/n(d1) = R(d1) + R(-d2) for sign = -1
 
-        """
-        # don't directly compute d1 just in case sigma_std is infty
-        # handle the case logk = sigma = 0 (ATM)
-        d1 = np.where(logk == 0., 0., -logk/sigma)
-        d1 += 0.5*sigma
-        vega = spst.norm._pdf(d1)
-        return vega
+        type=-1: Vega = n(d1)
 
-    @staticmethod
-    def price_vega_std(sigma, logk, sign=1, price=False):
-        """
-        Price-to-vega pv.
-            Option Price / Vega = (N(d1) - k N(d2))/n(d1) = R(-d1) - R(-d2) for sign = 1
-            (1 - Option Price) / Vega = (1 - N(d1) + k N(d2))/n(d1) = R(d1) + R(-d2) for sign = -1
-        where R(x) = N(-x)/n(x) is Mills pv
+        type=2: Price-to-delta ratio
+            Option Price / Delta = [N(d1) - k N(d2)]/N(d1) = 1 - R(-d2)/R(-d1)
+
+        These values are used in calculating upper/lower bound of IV in Choi et al. (2025)
 
         Args:
             sigma: volatility
             logk: log strike
             sign: -1 for complementary price. +1 by default
-            price: multiply vega so return price if True. False by default
+            type: 0 for price, 1 for price-to-vega (default), -1 for vega, 2 for price-to-delta
 
         References:
-            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+            Choi J, Huh J, and Su N (2025) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
 
         Returns:
-
+            scaled price (ratio) value
         """
         # don't directly compute d1 just in case sigma_std is infty
         # handle the case logk = sigma = 0 (ATM)
-        d0 = np.array(np.where(logk == 0., 0., -logk/sigma))
-        sigma = np.broadcast_to(sigma, d0.shape)
-        pv = np.array(MathFuncs.mills_ratio(-sign*(d0 + sigma/2.)) - sign*MathFuncs.mills_ratio(-d0 + sigma/2.))
+        sh = np.broadcast_shapes(np.shape(logk), np.shape(sigma))
+        sigma = np.broadcast_to(sigma, shape=sh)
+        d0 = np.full(sh, fill_value=-logk)
+        np.divide(d0, sigma, out=d0, where=(d0 != 0.0))
+
+        if type == -1:
+            return spst.norm._pdf(d0 + sigma/2.)
+
+        R_left = MathFuncs.mills_ratio(-sign * (d0 + 0.5*sigma))
+        rv = R_left - sign*MathFuncs.mills_ratio(-d0 + 0.5*sigma)
 
         ## Correct pv values for very small sigma/d0
-        idx = (sigma/np.fmax(1.0, -d0) < 1e-3) & (sign > 0)
+        idx = (sigma > 0.0) & (sigma/np.fmax(1.0, -d0) < 1e-3) & (sign > 0)
         if np.any(idx):
             sig_idx = sigma[idx]
             d0_idx = d0[idx]
@@ -129,35 +129,14 @@ class Bsm(opt.OptAnalyticABC):
 
             R_d3 = (d0_idx**2 + 3.)*R_d1 - 1.
             # next term is sig_idx**4/1920 * R_d5
-            pv[idx] = (R_d1 + sig_idx**2/24.*R_d3)*sig_idx
+            rv[idx] = (R_d1 + sig_idx**2/24.*R_d3)*sig_idx
 
-        if price:
-            pv *= spst.norm._pdf(d0 + sigma/2.)
+        if type == 0:  # price
+            rv *= spst.norm._pdf(d0 + sigma/2.)
+        elif type == 2:  # price-to-delta
+            rv /= R_left
 
-        return pv
-
-    @staticmethod
-    def price_delta_std(sigma, logk):
-        """
-        Price-to-delta ratio, 1 - R(-d2)/R(-d1) for Mills ratio R(x) = N(-x)/n(x).
-        It's used in calculating upper/lower bound of IV in Choi et al. (2023)
-
-        Args:
-            sigma: volatility
-            logk: log strike
-
-        Returns:
-
-        References:
-            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
-        """
-
-        # don't directly compute d1 just in case sigma_std is infty
-        # handle the case logk = sigma = 0 (ATM)
-        d0 = np.where(logk == 0., 0., -logk/sigma)
-        ratio = 1.0 - MathFuncs.mills_ratio(-d0 + sigma/2.) / MathFuncs.mills_ratio(-d0 - sigma/2.)
-
-        return ratio
+        return rv
 
     def vega(self, strike, spot, texp, cp=1):
 
@@ -329,7 +308,7 @@ class Bsm(opt.OptAnalyticABC):
 
         # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        ind_solve = (price_std - p_min > Bsm.IMPVOL_TOL) & (p_max - price_std > Bsm.IMPVOL_TOL)
+        ind_solve = (price_std - p_min > self.IMPVOL_TOL) & (p_max - price_std > self.IMPVOL_TOL)
 
         # initial guess = inflection point in sigma (volga=0)
         _sigma = np.ones_like(ind_solve)*np.sqrt(2*np.abs(np.log(strike_std))/texp)
@@ -348,11 +327,11 @@ class Bsm(opt.OptAnalyticABC):
                 # print(k, p_err_max, _sigma)
 
                 # ignore the error of the elements with ind_solve = False
-                if p_err_max < Bsm.IMPVOL_TOL:
+                if p_err_max < self.IMPVOL_TOL:
                     break
             #print(k)
 
-            if p_err_max >= Bsm.IMPVOL_TOL:
+            if p_err_max >= self.IMPVOL_TOL:
                 warn_msg = f"impvol_newton did not converged within {k} iterations: max error = {p_err_max}"
                 warnings.warn(warn_msg, Warning)
 
@@ -361,14 +340,14 @@ class Bsm(opt.OptAnalyticABC):
 
         # Though not error is above tolerance, if the price is close to min or max, set 0 or inf
         _sigma = np.where(
-            (np.abs(p_err) >= Bsm.IMPVOL_TOL)
-            & (np.abs(price_std - p_min) <= Bsm.IMPVOL_TOL),
+            (np.abs(p_err) >= self.IMPVOL_TOL)
+            & (np.abs(price_std - p_min) <= self.IMPVOL_TOL),
             0,
             _sigma,
         )
         _sigma = np.where(
-            (np.abs(p_err) >= Bsm.IMPVOL_TOL)
-            & (np.abs(price_std - p_max) <= Bsm.IMPVOL_TOL),
+            (np.abs(p_err) >= self.IMPVOL_TOL)
+            & (np.abs(price_std - p_max) <= self.IMPVOL_TOL),
             np.inf,
             _sigma,
         )
@@ -395,7 +374,7 @@ class Bsm(opt.OptAnalyticABC):
             setval: if True, sigma is set with the solved implied volatility
 
         References:
-            Choi J, Huh J, Su N (2023) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+            Choi J, Huh J, and Su N (2025) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
 
         Returns:
             implied volatility
@@ -415,22 +394,22 @@ class Bsm(opt.OptAnalyticABC):
         sigma = np.where(
             (logk == 0.) & (p < 1e-4),
             MathConsts.M_SQRT2PI * p * (1.0 + np.pi * p**2 / 12.),
-            self.d1sigma(spst.norm.ppf(p*(kk+p)/(2*p+(kk-1.))), logk)  # Lower bound from the paper
+            self.d1sigma(spst.norm._ppf(p*(kk+p)/(2*p+(kk-1.))), logk)  # Lower bound from the paper
         )
 
         log_p_2pi = np.log(p) + MathConsts.M_LN2PI_2  # 0.5*np.log(2*np.pi)
 
         for k in range(n_iter):
-            p2v = self.price_vega_std(sigma, logk)  # pf.Bsm.price_vega_ratio
+            pv = self.price_std(sigma, logk, type=1)  # price-to-vega ratio
             d1 = np.where(logk == 0., 0., -logk/sigma) + 0.5*sigma
-            p_log_err = -0.5*d1**2 + np.log(p2v) - log_p_2pi
+            p_log_err = -0.5*d1**2 + np.log(pv) - log_p_2pi
             p_log_err_max = np.amax(np.abs(p_log_err))
-            if p_log_err_max < Bsm.IMPVOL_TOL:
+            if p_log_err_max < self.IMPVOL_TOL:
                 break
-            sigma -= p_log_err * p2v
+            sigma -= p_log_err * pv
 
-        if p_log_err_max >= Bsm.IMPVOL_TOL:
-            warn_msg = f"impvol_newton did not converged within {k} iterations: max error = {p_log_err_max}"
+        if p_log_err_max >= self.IMPVOL_TOL:
+            warn_msg = f"impvol_newton did not converged within {k} iterations: max log error = {p_log_err_max}"
             warnings.warn(warn_msg, Warning)
 
         sigma /= np.sqrt(texp)
