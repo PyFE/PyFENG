@@ -691,3 +691,77 @@ class CgmyFft(smile.OptSmileABC, FftABC):
         )
         np.exp(texp*(mu*uu + rv), out=rv)
         return rv
+
+
+class GarchFftWuMaWang2012(sv.SvABC, FftABC):
+    """
+    GARCH diffusion model option pricing with Fourier inversion
+
+    References:
+        - Wu X-Y, Ma C-Q, Wang S-Y (2012) Warrant pricing under GARCH diffusion model. Economic Modelling 29:2237–2244. https://doi.org/10.1016/j.econmod.2012.06.020
+        - Lewis AL (2000) Option valuation under stochastic volatility: with Mathematica code. Finance Press
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> sigma, mr, theta, vov, rho = 0.06, 20.48, 0.218, 3.20, -0.99
+        >>> strike, spot, texp = np.array([95, 100, 105]), 100, 0.5
+        >>> m = pf.GarchFftWuMaWang2012(sigma, vov=vov, mr=mr, rho=rho, theta=theta)
+        >>> m.price(strike, spot, texp)
+        array([11.7235,  8.9978,  6.7091])
+    """
+
+    model_type = "GarchDiff"
+    var_process = True
+
+    def zeta(self, phi):
+        return -0.5 * (phi - phi ** 2)
+
+    def g(self, uu):
+        return self.mr - (3 / 2) * self.rho * self.vov * np.sqrt(self.theta) * uu
+
+    def dd(self, uu):
+        return np.sqrt(self.g(uu) ** 2 - 4 * self.vov ** 2 * self.zeta(uu) * self.theta)
+
+    def C(self, uu, texp):
+        dd = self.dd(uu)
+        gg = self.g(uu)
+
+        term2_num = 2 * dd - (dd - self.g(uu)) * (1 - np.exp(-dd * texp))
+        term2_den = 2 * dd
+        term2_log = 2 * np.log(term2_num / term2_den)
+
+        term2 = - (1 / (2 * self.theta * self.vov ** 2)) * (
+                self.mr * self.theta - 1 / 2 * self.rho * self.vov * uu * self.theta ** (3 / 2)) * (
+                        term2_log + (dd - gg) * texp)
+
+        term3_num = (dd ** 2 - gg ** 2) * (dd - gg) * texp + (
+                dd - gg) ** 3 * np.exp(-dd * texp) * texp - 4 * dd * (
+                            dd - gg) * (1 - np.exp(-dd * texp))
+        term3_den = 2 * dd - (dd - gg) * (1 - np.exp(-dd * texp))
+        term3_log = -4 * gg * np.log(term2_num / term2_den)
+        term3 = - (1 / (8 * self.vov ** 2)) * (term3_log + term3_num / term3_den)
+
+        return term2 + term3
+
+    def D(self, uu, texp):
+        dd = self.dd(uu)
+        num = 2 * self.zeta(uu) * (1 - np.exp(-dd * texp))
+        den = 2 * dd - (dd - self.g(uu)) * (1 - np.exp(-dd * texp))
+        return num / den
+
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the GARCH diffusion model. Lemma 2.1. of Wu Et al. (2012).
+
+        Args:
+            uu: dummy variable
+            texp: time-to-expiry
+
+        References:
+            - Wu X-Y, Ma C-Q, Wang S-Y (2012) Warrant pricing under GARCH diffusion model. Economic Modelling 29:2237–2244. https://doi.org/10.1016/j.econmod.2012.06.020
+
+        Returns:
+            MGF value
+        """
+        return np.exp(self.C(uu, texp) + self.D(uu, texp) * self.sigma)
