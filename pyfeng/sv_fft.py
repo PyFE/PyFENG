@@ -11,7 +11,7 @@ from . import opt_smile_abc as smile
 from . import ousv
 from . import heston
 from . import rheston
-
+from .util import MathFuncs
 
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -695,7 +695,7 @@ class CgmyFft(smile.OptSmileABC, FftABC):
 
 class GarchFftWuMaWang2012(sv.SvABC, FftABC):
     """
-    GARCH diffusion model option pricing with Fourier inversion
+    GARCH diffusion model option pricing with approximate Fourier inversion
 
     References:
         - Wu X-Y, Ma C-Q, Wang S-Y (2012) Warrant pricing under GARCH diffusion model. Economic Modelling 29:2237–2244. https://doi.org/10.1016/j.econmod.2012.06.020
@@ -714,20 +714,27 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
     model_type = "GarchDiff"
     var_process = True
 
-    def zeta(self, phi):
-        return -0.5 * (phi - phi ** 2)
+    def mgf_logprice_old(self, uu, texp):
+        """
+        Approximated log price MGF under the GARCH diffusion model.
+        Line-by-line implementation of Lemma 2.1. of Wu Et al. (2012).
 
-    def g(self, uu):
-        return self.mr - (3 / 2) * self.rho * self.vov * np.sqrt(self.theta) * uu
+        Args:
+            uu: dummy variable
+            texp: time-to-expiry
 
-    def dd(self, uu):
-        return np.sqrt(self.g(uu) ** 2 - 4 * self.vov ** 2 * self.zeta(uu) * self.theta)
+        References:
+            - Wu X-Y, Ma C-Q, Wang S-Y (2012) Warrant pricing under GARCH diffusion model. Economic Modelling 29:2237–2244. https://doi.org/10.1016/j.econmod.2012.06.020
 
-    def C(self, uu, texp):
-        dd = self.dd(uu)
-        gg = self.g(uu)
+        Returns:
+            MGF value
+        """
+        zeta = -0.5 * (uu - uu ** 2)
+        gg = self.mr - (3 / 2) * self.rho * self.vov * np.sqrt(self.theta) * uu
+        dd = np.sqrt(gg ** 2 - 4 * self.vov ** 2 * zeta * self.theta)
 
-        term2_num = 2 * dd - (dd - self.g(uu)) * (1 - np.exp(-dd * texp))
+        #### C ####
+        term2_num = 2 * dd - (dd - gg) * (1 - np.exp(-dd * texp))
         term2_den = 2 * dd
         term2_log = 2 * np.log(term2_num / term2_den)
 
@@ -741,18 +748,20 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         term3_den = 2 * dd - (dd - gg) * (1 - np.exp(-dd * texp))
         term3_log = -4 * gg * np.log(term2_num / term2_den)
         term3 = - (1 / (8 * self.vov ** 2)) * (term3_log + term3_num / term3_den)
+        C =  term2 + term3
 
-        return term2 + term3
+        #### D ####
+        num = 2 * zeta * (1 - np.exp(-dd * texp))
+        den = 2 * dd - (dd - gg) * (1 - np.exp(-dd * texp))
+        D =  num / den
 
-    def D(self, uu, texp):
-        dd = self.dd(uu)
-        num = 2 * self.zeta(uu) * (1 - np.exp(-dd * texp))
-        den = 2 * dd - (dd - self.g(uu)) * (1 - np.exp(-dd * texp))
-        return num / den
+        return np.exp(C + D * self.sigma)
+
 
     def mgf_logprice(self, uu, texp):
         """
-        Log price MGF under the GARCH diffusion model. Lemma 2.1. of Wu Et al. (2012).
+        Approximated Log price MGF under the GARCH diffusion model.
+        Refined implementation of Lemma 2.1. of Wu Et al. (2012).
 
         Args:
             uu: dummy variable
@@ -764,4 +773,27 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         Returns:
             MGF value
         """
-        return np.exp(self.C(uu, texp) + self.D(uu, texp) * self.sigma)
+
+        zeta = uu - uu**2    # - zeta of the paper
+        uu_etc = self.rho * self.vov * np.sqrt(self.theta) * uu
+
+        gg = self.mr - (3/2)*uu_etc
+        dd = np.sqrt(gg**2 + 2*self.vov**2 * self.theta * zeta)
+        dd_m_gg = 2*self.vov**2 * self.theta * zeta / (dd + gg)   # dd - gg
+        avgexp = MathFuncs.avg_exp(-dd*texp)   # (1 - np.exp(-dd * texp)) / (dd*texp)
+
+        ### Calculation of C term
+        tmp = 1 - 0.5*dd_m_gg * avgexp * texp    ##  (2d - (d-g)(1-e^{-d tau})) / 2d
+        log_tmp = np.log(tmp)
+
+        C = -(self.mr - 0.5*uu_etc) * dd_m_gg * texp - (self.mr + 0.5*uu_etc) * log_tmp
+        term3_num = (2*self.vov**2 * self.theta * zeta) + dd_m_gg**2 * np.exp(-dd * texp) - 4 * dd**2 * avgexp
+        C -= (term3_num * dd_m_gg * texp / (2*dd) / tmp) / 4  # term3
+        ### End of Calculation of C term
+
+        ### Calculation of D term
+        D = 0.5 * avgexp / tmp * texp * zeta
+        ### End of Calculation of C term
+
+        return np.exp(C * (0.5/self.vov**2) - D * self.sigma)
+        # BSM = exp(-0.5*self.sigma**2*texp*uu*(1 - uu))
