@@ -56,7 +56,7 @@ class MathFuncs:
             value
         """
 
-        rv = np.ones_like(x, dtype=float)
+        rv = np.ones_like(x)
         np.divide(np.expm1(x),  x, out=rv, where=(x != 0.0))
         return rv
 
@@ -73,7 +73,7 @@ class MathFuncs:
         """
         assert np.all(x > -1.0)
 
-        rv = np.ones_like(x, dtype=float)
+        rv = np.ones_like(x)
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0))
         return rv
 
@@ -81,8 +81,8 @@ class MathFuncs:
     def avg_pow(x, a):
         """
         (int from 1 to (1+x) t^a dt) / x
-            = 1/(1+a) * ((1+x)^(1+a) - 1) / x
-
+            = [(1+x)^(1+a) - 1] / [(1+a)*x]   if a != -1
+            = log(1+x) / x                    if a = -1
         Args:
             x: argument
             a: exponent
@@ -93,8 +93,7 @@ class MathFuncs:
 
         assert np.all(x > -1.0)
         a1p = 1.0 + a
-        rv = np.ones(np.broadcast_shapes(np.shape(a1p), np.shape(x)), dtype=float)
-        np.divide(np.expm1(a1p * np.log1p(x)),  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
+        rv = np.expm1(a1p * np.log1p(x))   # rv = 1 when x = 0
+        np.divide(rv,  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0) & (a1p == 0.0))
-
         return rv
