@@ -97,3 +97,74 @@ class MathFuncs:
         np.divide(rv,  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0) & (a1p == 0.0))
         return rv
+
+
+class DistHelperLnShift:
+    """
+    Shifted lognormal distribution:
+        Y ~ mu [(1-lam) + lam * exp(sig*Z - sig^2/2)] and Z ~ N(0,1)
+
+    If lam=1, the distribution is reduced the lognormal distribution
+    """
+
+    mu = 1.0
+    sig = 0.0
+    lam = 1.0
+    _ww = 0.0  # := exp(sig^2) - 1 (normalized variance)
+
+    def __init__(self, sig=1.0, lam=1.0, mu=1.0):
+        self.sig = sig; self.lam = lam; self.mu = mu
+        self._ww = MathFuncs.avg_exp(sig ** 2) * sig**2
+
+    def mvsk(self):
+        """
+        mean, variance, skewness and ex-kurtosis
+
+        Returns:
+            (m, v, s, k)
+        """
+        var = (self.mu * self.lam)**2 * self._ww
+        skew = np.sqrt(self._ww) * (self._ww + 3)
+        exkur = self._ww * (16 + self._ww * (15 + self._ww * (6 + self._ww)))
+
+        return self.mu, var, skew, exkur
+
+    def fit(self, mvs, lam=None, validate=False):
+        """
+        Fits the parameter given mvs (mean, variance, skewness)
+        Args:
+            mvs: (m, v, s) If (m, v) is given, lam or self.lam is used. If (m, v, s), lam is calibrated
+            lam: lambda. Used only when (m, v) is given. Ignored when (m, v, s) is fully speficied.
+
+        Returns:
+            None
+        """
+
+        assert len(mvs) >= 2
+
+        self.mu = mvs[0]
+        coef_var_sq = mvs[1] / mvs[0]**2  # squared coefficient of variance
+
+        if len(mvs) == 2 or lam is not None:  # use (m, v) only
+            if lam is None:
+                # if lam is None, self.lam should be specified
+                assert self.lam is not None
+            else:
+                # if lam is specified, store it to self.lam
+                self.lam = lam
+
+            self._ww = coef_var_sq / self.lam**2
+            self.sig = np.sqrt(np.log1p(self._ww))
+        else:
+            assert len(mvs) > 2
+            s = mvs[2]
+            sqrt_w = 2*np.sinh(np.arccosh(1 + 0.5*s**2)/6)
+            self.lam = np.sqrt(coef_var_sq) / sqrt_w
+            self._ww = sqrt_w ** 2
+            self.sig = np.sqrt(np.log1p(self._ww))
+
+        if validate:
+            n = 2 if len(mvs) == 2 or lam is not None else 3
+            mvsk2 = self.mvsk()
+            for (i,v) in enumerate(mvs[:n]):
+                assert np.isclose(v, mvsk2[i])
