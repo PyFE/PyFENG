@@ -147,6 +147,7 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
 class SabrMixture(SabrMixtureABC):
     n_quad = None
     dist = 'ln'
+    lam = 5/6
 
     def n_quad_vovn(self, vovn):
         return self.n_quad or np.floor(3 + 4*vovn)
@@ -162,37 +163,46 @@ class SabrMixture(SabrMixtureABC):
             points and weights in column vector
         """
 
-        npt = self.n_quad_vovn(vovn)
-        zhat, ww = spsp.roots_hermitenorm(npt)
-        ww /= np.sqrt(2*np.pi)
+        #npt = self.n_quad_vovn(vovn)
+        npt = self.n_quad if np.isscalar(self.n_quad) else self.n_quad[0]
+        zhat, ww, mu = spsp.roots_hermitenorm(npt, mu=True)
+        ww /= mu
         zhat = zhat[:, None] - 0.5*vovn
         ww = ww[:, None]
         return zhat, ww
 
     def cond_avgvar(self, vovn, zhat):
 
-        m1, m2 = self.cond_avgvar_mnc4(vovn, zhat)
-        m2_m1sq_ratio = m2 / m1**2
+        if np.isscalar(self.n_quad):
+            m1, m2, *_ = self.cond_avgvar_mnc4(vovn, zhat)
+            m2_m1sq_ratio = m2 / m1**2
 
-        w2 = np.ones_like(zhat)
+            w2 = np.ones_like(zhat)
 
-        if self.dist.lower() == 'm1':
-            r_var = m1
-            r_vol = np.sqrt(r_var)
-        elif self.dist.lower() == 'ln':
-            r_var = m1 / np.sqrt(np.sqrt(m2_m1sq_ratio))
-            r_vol = np.sqrt(r_var)
-        elif self.dist.lower() == 'ig':  # inverse Gaussian
-            lam = m1 / (m2_m1sq_ratio - 1.0)
-            r_var = 1 - 1 / (8 * lam) * (1 - 9 / (2 * 8 * lam) * (1 - 25 / (6 * 8 * lam)))
-            r_var[lam < 100] = spsp.kv(0, lam[lam < 100]) / spsp.kv(-0.5, lam[lam < 100])
-            r_var = m1 * r_var**2
-            r_vol = np.sqrt(r_var)
+            if self.dist.lower() == 'm1':
+                r_var = m1
+                r_vol = np.sqrt(r_var)
+            elif self.dist.lower() == 'ln':
+                r_var = m1 / np.sqrt(np.sqrt(m2_m1sq_ratio))
+                r_vol = np.sqrt(r_var)
+            else:
+                ValueError(f'Unkown distribution: {self.dist}')
+
+            assert r_var.shape == w2.shape
+            return r_var, r_vol, w2
+
         else:
-            pass
+            m1, sig, ratio = self.cond_avgvar_lnshift_params(vovn, zhat, self.lam)
 
-        assert r_var.shape == w2.shape
-        return r_var, r_vol, w2
+            n2 = self.n_quad[1]
+            z2, w2, mu = spsp.roots_hermitenorm(n2, mu=True)
+            w2 /= mu
+
+            avgvar = m1 * (1 + ratio * np.expm1(sig*(z2 - 0.5*sig)))
+            r_vol = np.sqrt(avgvar)
+
+            return avgvar, r_vol, w2
+
 
     def cond_spot_sigma(self, texp, fwd):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
