@@ -214,8 +214,8 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
 
         m1 = m1f
         m2 = (m2f - m1f*cosh)/vovn**2
-        m3 = (0.75*m3f - 2*m2f*cosh + m1f*(cosh**2 + 0.25))/vovn**4/2
-        m4 = (0.5*m4f - 2.25*m3f*cosh + m2f*(3*cosh**2 + 0.5) - m1f*cosh*(cosh**2 + 0.75))/vovn**6/6
+        m3 = (3*m3f - 8*m2f*cosh + m1f*(4*cosh**2 + 1))/(8*vovn**4)
+        m4 = (2*m4f - 9*m3f*cosh + m2f*(12*cosh**2 + 2) - m1f*cosh*(4*cosh**2 + 3))/(24*vovn**6)
 
         if not remove_exp:
             m1 *= exp
@@ -226,26 +226,27 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return m1, m2, m3, m4
 
     @staticmethod
-    def cond_avgvar_displn_params(vovn, z, ratio=1.):
+    def cond_avgvar_lnshift_params(vovn, zhat, ratio=1.):
         """
         Find the prameters (mu, sigma, ratio) to fit moments
 
             Y ~ (1 - ratio) * mu + ratio * mu * exp(sigma * Z - sigma^2/2)
 
         Args:
-            vovn:
-            z:
-            ratio:  ratio for the lognormal distribution. 1.0 by default
+            vovn: vov * sqrt(texp)
+            zhat: Z - 0.5*vov
+            ratio: ratio for the lognormal distribution. 1.0 by default
 
         Returns:
-
+            (mean, sig, ratio)
         """
 
         # only ratio cares, so use remove_exp=True
-        m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
+        # but multiply exp(vovn * z) to m1 before returning
+        m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, zhat, remove_exp=True)
 
         vovn2 = vovn**2
-        var = np.where(vovn > 0.01, mnc2 - m1**2, vovn2/3*(1 + (4/15)*vovn2*(z**2 + 4)))
+        var = np.where(vovn > 0.01, mnc2 - m1 ** 2, vovn2 / 3 * (1 + (4/15) * vovn2 * (zhat ** 2 + 4)))
         # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
         # at vovn = 0.01 (z=1.),  3.333787675674493e-05  vs  3.333777777777778e-05
         var_over_m1sq = var/m1**2
@@ -258,7 +259,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         else:
             sigma = np.sqrt(np.log1p(var_over_m1sq/ratio**2))
 
-        return m1, sigma, ratio
+        return m1 * np.exp(vovn * zhat), sigma, ratio
 
 
     @staticmethod
