@@ -55,7 +55,7 @@ class TestSabr(unittest.TestCase):
         for k in list(range(1, 19)):
             m, df, rv = pf.SabrChoiWu2021P.init_benchmark(k)
             m._base_beta = 1.0  # For Paulot's BS volatility approximation
-            # print(f'Sheet {k:02d}: {ref}')
+            # print(f'Sheet {k:02d}: {ref}
             v1 = np.round(m.vol_for_price(**rv["args_pricing"]), 4)
             v2 = df["IV HL-P"].values
             np.testing.assert_allclose(v1, v2)
@@ -105,7 +105,7 @@ class TestSabr(unittest.TestCase):
 
             m1, v, s, k = m.avgvar_mvsk(vovn)
             mnc = sms_m.mvsk2mnc([m1, v, s, k])
-            cond_m1, cond_m2, cond_m3, cond_m4 = m.cond_avgvar_mnc4(vovn, zhat, False)
+            cond_m1, cond_m2, cond_m3, cond_m4 = m.cond_avgvar_mvsk(vovn, zhat, True)
 
             np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
             np.testing.assert_allclose(np.sum(cond_m2 * ww), mnc[1])
