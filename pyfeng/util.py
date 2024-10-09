@@ -131,6 +131,20 @@ class DistHelperLnShift:
 
         return self.mu, var_scaled, skew, exkur
 
+    def mc4(self):
+        """
+        First four central moments
+
+        Returns:
+            (m1, mc2, mc3, mc4)
+        """
+        m1, v, s, k = self.mvsk()
+        mc2 = v * m1**2
+        mc3 = s * mc2**1.5
+        mc4 = (k + 3.) * mc2**2
+
+        return m1, mc2, mc3, mc4
+
     def fit(self, mvs, lam=None):
         """
         Fits the parameter given mvs (mean, scaled variance, skewness)
