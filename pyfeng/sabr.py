@@ -223,25 +223,22 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         if mnc:
             return m1*exp, mnc2*exp**2, mnc3*exp**3, mnc4*exp**4
 
-        #vovn2 = vovn**2
-        #var = np.where(vovn > 0.01, mnc2 - m1**2, vovn2 / 3 * (1 + (4/15) * vovn2 * (zhat**2 + 4)))
-        ## vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
-        ## at vovn = 0.01 (z=1.),  3.333787675674493e-05  vs  3.333777777777778e-05
-        #var_over_m1sq = var/m1**2
-
-        #m2c_ = vovn**2 / 3 * (1 + (4 / 15) * vovn**2 * (zhat**2 + 4))
-        #m3c_ = (1 / 5) * vovn**4 * (2 + (748 + 141 * zhat**2) * vovn**2 / 189)
-        #s_ = (2 / 5) * 3 * np.sqrt(3) * vovn
-
         # Code from https://www.statsmodels.org/0.8.0/_modules/statsmodels/stats/moment_helpers.html#mnc2mvsk
         # mnc2mvsk in statsmodels behaves weidly when zhat is a column vector, so use the code here.
         mc2 = mnc2 - m1**2
         mc3 = mnc3 - (3 * m1 * mc2 + m1**3)  # 3rd central moment
         mc4 = mnc4 - (4 * m1 * mc3 + 6 * m1**2 * mc2 + m1**4)
 
-        var_scaled = np.divide(mc2, m1**2)
-        skew = np.divide(mc3, mc2**1.5)
-        exkur = np.divide(mc4, mc2**2) - 3.0
+        vovn2 = vovn**2
+        if vovn2 < 0.01:
+            # When vovn is small, calculation is unstable. so use expansions.
+            var_scaled = vovn2*(1/3 - (6 - zhat**2)/45*vovn2)
+            skew = np.sqrt(vovn2*(108/25 - (4/875)*(51*zhat**2 - 716)*vovn2))
+            exkur = vovn2 * (276/35 - (8/175)*(9*zhat**2 - 158)*vovn2)
+        else:
+            var_scaled = np.divide(mc2, m1**2)
+            skew = np.divide(mc3, mc2**1.5)
+            exkur = np.divide(mc4, mc2**2) - 3.0
 
         return m1*exp, var_scaled, skew, exkur
 
@@ -268,17 +265,6 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         sln.fit(mvs=[m1, var_scaled, skew], lam=ratio)
 
         return m1, sln.sig, sln.lam
-
-
-        #if ratio is None:
-        #    s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(var*np.sqrt(var))
-        #    sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
-        #    sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
-        #    ratio = np.sqrt(var_over_m1sq) / sqrt_w_m_1
-        #else:
-        #    sigma = np.sqrt(np.log1p(var_over_m1sq/ratio**2))
-
-        #return m1 * np.exp(vovn * zhat), sigma, ratio
 
 
     @staticmethod
@@ -332,11 +318,11 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
-        v = m2 * m**3 * vovn2   # * (ww-1)^3
+        v = vovn2 * m2 * m**3    # * (ww-1)^3
         # If vov2 -> 0, v = (4/3) vovn^2
 
         coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
-        s = np.sqrt(m) * vovn * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        s = vovn * np.sqrt(m) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
         # If vov2 -> 0, s = (4/5)*3*sqrt(3)*vov = 2.4*sqrt(3) ~ 4.15692*vov
 
         # Ex-kurtosis calculation
@@ -348,7 +334,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         coef = np.array([25, 175, 700, 2100, 5250, 11550, 23100, 42900, 75075, 125125, 200200,
                          309400, 461240, 660920, 907400, 1190280, 1483482, 1735734, 1857856,
                          1706848, 1246960, 583440]) / 225225  # O(x^22)
-        k = m * vovn2 * np.polyval(coef, ww) / m2**2
+        k = vovn2 * m * np.polyval(coef, ww) / m2**2
         # If vov2 -> 0, k = 368/35*3 vovn^2 ~ 31.542857 vovn^2
 
         return m, v, s, k
