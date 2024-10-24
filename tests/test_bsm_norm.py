@@ -55,7 +55,7 @@ class TestBsmMethods(unittest.TestCase):
             texp = np.random.uniform(0.1, 10)
             intr = np.random.uniform(0, 0.3)
             divr = np.random.uniform(0, 0.3)
-            cp = 1 if np.random.rand() > 0.5 else -1
+            cp = np.where(np.random.rand() > 0.5, 1, -1)
             is_fwd = np.random.rand() > 0.5
 
             m_bsm = pf.Bsm(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
@@ -82,6 +82,10 @@ class TestBsmMethods(unittest.TestCase):
             vega1 = m_bsm.vega(strike=strike, spot=spot, texp=texp, cp=cp)
             vega2 = m_bsm.vega_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
             self.assertAlmostEqual(vega1, vega2, delta=1e-3)
+
+            theta_anal = m_bsm.theta(strike=strike, spot=spot, texp=texp, cp=cp)
+            theta_num = m_bsm.theta_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
+            self.assertAlmostEqual(theta_anal, theta_num, delta=2e-3)
 
     def test_norm_iv_greeks(self):
         for k in range(100):

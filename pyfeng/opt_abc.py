@@ -319,7 +319,7 @@ class OptABC(abc.ABC):
         Returns:
             shock size
         """
-        return np.minimum(1 / 365.25, texp)  # one day
+        return np.minimum(1 / 3652.5, texp)  # 1/10 day
 
     def theta_numeric(self, strike, spot, texp, cp=1):
         """
@@ -334,11 +334,9 @@ class OptABC(abc.ABC):
         Returns:
             theta value
         """
-        dt = self._delta_shock(strike, spot, texp, cp)
-        theta = self.price(strike, spot, texp - dt, cp) - self.price(
-            strike, spot, texp, cp
-        )
-        theta /= dt
+        dt = self._delta_shock(strike, spot, texp, cp)/100
+        theta = self.price(strike, spot, texp - dt, cp) - self.price(strike, spot, texp + dt, cp)
+        theta /= 2*dt
         return theta
 
     def pdf_numeric(self, strike, spot, texp, cp=-1, h=0.001):
