@@ -53,9 +53,8 @@ class AmerLi2010QdPlus(OptABC):
         Returns:
             Exercise boundary (critical stock price)
         """
-        root = spopt.root(self.zero_func, x0=strike*np.ones_like(texp), args=(strike, texp, cp))
-        rv = root.x[0] if np.isscalar(texp) else root.x
-        return rv
+        root = spopt.newton(self.zero_func, x0=strike*np.ones_like(texp), args=(strike, texp, cp))
+        return root
 
     def zero_func(self, spot_bdd, strike, texp, cp=-1):
         """
@@ -91,7 +90,7 @@ class AmerLi2010QdPlus(OptABC):
         qqd_c0 = mm/qqd_sqrt * (df / hh - theta / self.intr / (strike - spot_bdd - p_euro) - df * qqd_prime / qqd_sqrt)
         qqd_c0 -= 0.5*(nn_m1 + qqd_sqrt)
 
-        zero = (1 - divf*spst.norm._cdf(-d1)) * spot_bdd + qqd_c0 * (strike - spot_bdd - p_euro)
+        zero = (1 - divf*spst.norm._cdf(-d1))*spot_bdd + qqd_c0*(strike - spot_bdd - p_euro)
         return zero
 
     def price(self, strike, spot, texp, cp=-1):
