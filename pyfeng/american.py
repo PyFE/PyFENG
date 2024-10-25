@@ -111,7 +111,7 @@ class AmerLi2010QdPlus(OptABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
         spot_bdd = self.exer_bdd(strike, texp, cp=cp)
 
-        if spot <= spot_bdd:
+        if np.all(spot <= spot_bdd):
             return strike - spot
 
         p_euro = self.bsm_model.price(strike, spot_bdd, texp, cp=cp)
@@ -130,5 +130,6 @@ class AmerLi2010QdPlus(OptABC):
         log = np.log(spot/spot_bdd)
         p_amer = self.bsm_model.price(strike, spot, texp, cp=cp) \
                  + (strike - spot_bdd - p_euro) / (1 - log*(c0 + b*log)) * np.exp(qqd*log)
+        p_amer = np.where(spot > spot_bdd, p_amer, strike - spot)
 
         return p_amer
