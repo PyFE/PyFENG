@@ -48,3 +48,5 @@ from .assetalloc import RiskParity
 
 # Other utilities
 from .mgf2mom import Mgf2Mom
+
+from .american import AmerLi2010QdPlus
