@@ -10,8 +10,9 @@ class AmerLi2010QdPlus(OptABC):
     Implementation of "initial guess" and QD+ of Li (2010)
 
     References:
-        - Li M (2010) Analytical approximations for the critical stock prices of American options: a performance comparison. Rev Deriv Res 13:75–99. https://doi.org/10.1007/s11147-009-9044-3
         - Andersen L, Lake M, Offengenden D (2016) High-performance American option pricing. JCF 39–87. https://doi.org/10.21314/JCF.2016.312
+        - Barone-Adesi G, Whaley RE (1987) Efficient Analytic Approximation of American Option Values. The Journal of Finance 42:301–320. https://doi.org/10.1111/j.1540-6261.1987.tb02569.x
+        - Li M (2010) Analytical approximations for the critical stock prices of American options: a performance comparison. Rev Deriv Res 13:75–99. https://doi.org/10.1007/s11147-009-9044-3
     """
 
     bsm_model = None
@@ -37,8 +38,11 @@ class AmerLi2010QdPlus(OptABC):
         nn_m1 = 2*(self.intr - self.divr) / self.sigma**2 - 1
         q_inf = -0.5 * (nn_m1 + np.sqrt(nn_m1**2 + 4*mm))
         s_inf = strike / (1 - 1/q_inf)
-        theta = strike/(s_inf - strike) * ((self.intr - self.divr)*texp + 2*self.sigma*np.sqrt(texp))
-        bdd = s0 + (s_inf - s0)*(1 - np.exp(-theta))
+
+        # The sign in front of 2 sigma sqrt(t) should be (-)
+        # Eq (8) in Li (2010) is wrong. See Eq. (33) in Barone-Adesi & Whaley (1987)
+        theta = strike/(s_inf - strike) * ((self.intr - self.divr)*texp - 2*self.sigma*np.sqrt(texp))
+        bdd = s_inf + (s0 - s_inf)*np.exp(-theta)
         return bdd
 
     def exer_bdd(self, strike, texp, cp=-1):
@@ -92,6 +96,21 @@ class AmerLi2010QdPlus(OptABC):
 
         zero = (1 - divf*spst.norm._cdf(-d1))*spot_bdd + qqd_c0*(strike - spot_bdd - p_euro)
         return zero
+
+    def integrand(self, strike, spot, texp, u, cp=-1):
+
+        assert np.any(u <= texp)
+
+        p_euro = self.bsm_model.price(strike, spot, texp, cp=cp)
+        spot_bdd = self.exer_bdd(strike, u, cp=cp)
+
+        fwd, df, divf = self._fwd_factor(spot, texp - u)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp - u), np.finfo(float).tiny)
+        d1 = np.log(fwd/spot_bdd)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
+        rv = self.intr*strike*df * spst.norm._cdf(-d2) - self.divr*spot*divf * spst.norm._cdf(-d1)
+        return rv
 
     def price(self, strike, spot, texp, cp=-1):
         """
