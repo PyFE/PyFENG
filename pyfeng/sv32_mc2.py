@@ -238,11 +238,20 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
         def laplace_cond(bb):
             return self.cond_avgvar_laplace(bb, dt, var_0, var_t)
 
-        eps = 1e-5
-        val_up = laplace_cond(eps)
-        val_dn = laplace_cond(-eps)
-        m1 = (val_dn - val_up) / (2*eps)
-        var = (val_dn + val_up - 2.0)/eps**2 - m1**2
+        #eps = 1e-5
+        #val_up = laplace_cond(eps)
+        #val_dn = laplace_cond(-eps)
+        #m1 = (val_dn - val_up) / (2*eps)
+        #var = (val_dn + val_up - 2.0)/eps**2 - m1**2
+
+        def cumgenfunc_cond(bb):
+            return np.log(self.cond_avgvar_laplace(-bb, dt, var_0, var_t))
+
+        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-3)
+        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-3)
+        if np.any(var < 0):
+            print(var)
+
         ln_sig = np.sqrt(np.log(1+var/m1**2))
 
         u_error = m1 + 5 * np.sqrt(np.fmax(var, 0))

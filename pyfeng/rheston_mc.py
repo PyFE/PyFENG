@@ -13,7 +13,7 @@ from . import sv_abc as sv
 from . import rheston
 
 
-class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
+class RoughHestonMcABC_Orig(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
     
     def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, intr=0.0, divr=0.0) -> None:
         """
@@ -62,7 +62,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
     def f(self, V_s):
         """
-        The drift term of the rough Heston model $f(V_s) = \kappa (\theta - V_s)$
+        The drift term of the rough Heston model $f(var_t) = \kappa (\theta - var_t)$
 
         Args:
             V_s: volatility at time s
@@ -74,7 +74,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
 
     def g(self, V_s):
         """
-        The diffusion term of the rough Heston model $g(V_s) = \kappa \epsilon * \sqrt(V_s)$
+        The diffusion term of the rough Heston model $g(var_t) = \kappa \epsilon * \sqrt(var_t)$
 
         Args:
             V_s: volatility at time s
