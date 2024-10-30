@@ -275,7 +275,9 @@ class Bsm(opt.OptAnalyticABC):
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
         theta = -0.5*spst.norm._pdf(d1)*fwd*self.sigma/np.sqrt(texp) \
-                - cp*self.intr*strike*spst.norm._cdf(cp*d2)
+                - cp*self.intr*strike*spst.norm._cdf(cp*d2) \
+                + cp*np.where(self.is_fwd, self.intr, self.divr)*fwd*spst.norm._cdf(cp*d1)
+
         theta *= df
         return theta
 
