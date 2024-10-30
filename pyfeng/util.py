@@ -93,7 +93,109 @@ class MathFuncs:
 
         assert np.all(x > -1.0)
         a1p = 1.0 + a
-        rv = np.expm1(a1p * np.log1p(x))   # rv = 1 when x = 0
-        np.divide(rv,  a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
+        rv = np.ones_like(x + a)   # rv = 1 when x = 0
+        np.divide(np.expm1(a1p * np.log1p(x)), a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0) & (a1p == 0.0))
         return rv
+
+
+class DistHelperLnShift:
+    """
+    Shifted lognormal distribution:
+        Y ~ mu [(1-lam) + lam * exp(sig*Z - sig^2/2)] and Z ~ N(0,1)
+
+    If lam=1, the distribution is reduced the lognormal distribution
+    """
+
+    mu = 1.0
+    sig = 0.0
+    lam = 1.0
+    validate = False
+    _ww = 0.0  # := exp(sig^2) - 1 (normalized variance)
+
+    def __init__(self, sig=1.0, lam=1.0, mu=1.0, validate=False):
+        self.sig = sig; self.lam = lam; self.mu = mu
+        self.validate = validate
+        self._ww = MathFuncs.avg_exp(sig ** 2) * sig**2
+
+    def mvsk(self):
+        """
+        mean, scaled var (var/mean^2), skewness and ex-kurtosis
+
+        Returns:
+            (m, v, s, k)
+        """
+        var_scaled = self.lam**2 * self._ww
+        skew = np.sqrt(self._ww) * (self._ww + 3)
+        exkur = self._ww * (16 + self._ww * (15 + self._ww * (6 + self._ww)))
+
+        return self.mu, var_scaled, skew, exkur
+
+    def mc4(self):
+        """
+        First four central moments
+
+        Returns:
+            (m1, mc2, mc3, mc4)
+        """
+        m1, v, s, k = self.mvsk()
+        mc2 = v * m1**2
+        mc3 = s * mc2**1.5
+        mc4 = (k + 3.) * mc2**2
+
+        return m1, mc2, mc3, mc4
+
+    def fit(self, mvs, lam=None):
+        """
+        Fits the parameter given mvs (mean, scaled variance, skewness)
+        Args:
+            mvs: (m, v, s) If (m, v) is given, lam or self.lam is used. If (m, v, s), lam is calibrated
+            lam: lambda. Used only when (m, v) is given. Ignored when (m, v, s) is fully speficied.
+
+        Returns:
+            None
+        """
+
+        assert len(mvs) >= 2
+
+        self.mu = mvs[0]
+
+        if len(mvs) == 2 or lam is not None:  # use (m, v) only
+            if lam is None:
+                # if lam is None, self.lam should be specified
+                assert self.lam is not None
+            else:
+                # if lam is specified, store it to self.lam
+                self.lam = lam
+
+            self._ww = mvs[1] / self.lam**2
+            self.sig = np.sqrt(np.log1p(self._ww))
+        else:
+            assert len(mvs) > 2
+            s = mvs[2]
+            sqrt_w = 2*np.sinh(np.arccosh(1 + 0.5*s**2)/6)
+            self.lam = np.sqrt(mvs[1]) / sqrt_w
+            self._ww = sqrt_w ** 2
+            self.sig = np.sqrt(np.log1p(self._ww))
+
+        if self.validate:
+            n = 2 if len(mvs) == 2 or lam is not None else 3
+            mvsk2 = self.mvsk()
+            for (i,v) in enumerate(mvs[:n]):
+                assert np.isclose(v, mvsk2[i])
+
+    def quad(self, n_quad):
+        """
+        Quadrature points and weights
+
+        Args:
+            n_quad: number of points
+
+        Returns:
+            (points, weights)
+        """
+
+        z, w, w_sum = spsp.roots_hermitenorm(n_quad, mu=True)
+        w /= w_sum  # 1/np.sqrt(2.0 * np.pi)
+        z = self.mu * (1 + self.lam * np.expm1(self.sig*(z - self.sig/2)))
+        return z, w

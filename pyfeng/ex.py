@@ -7,7 +7,6 @@ from .subord_bm import VarGammaQuad, ExpNigQuad
 from .sv_fft import RoughHestonFft
 
 # SABR / OUSV models for research
-from .sabr_int import SabrMixture
 from .sabr_mc import SabrMcCai2017Exact
 
 # Basket-Asian from ASP 2021

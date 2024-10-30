@@ -18,7 +18,7 @@ from . import opt_smile_abc as smile
 from . import bsm
 from . import norm
 from . import cev
-from .util import MathFuncs
+from .util import MathFuncs, DistHelperLnShift
 
 class SabrABC(smile.OptSmileABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
@@ -167,98 +167,104 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         return zz_xx
 
     @staticmethod
-    def cond_avgvar_mnc4(vovn, z, remove_exp=False):
+    def cond_avgvar_mfn(z, vovn_k):
+        assert vovn_k >= 0.0
+        if np.abs(vovn_k) > 0.01:
+            ncdf_diff = spst.norm.cdf(-np.abs(z) + vovn_k) - spst.norm.cdf(-np.abs(z) - vovn_k)
+            m = np.sqrt(np.pi / 2) / vovn_k * ncdf_diff * np.exp((z**2 + vovn_k**2) / 2)
+        else:
+            ## Alternative evaluation usign Hermite polynomial when vv is very small
+            ### coef = vv^(2n) / (n+1)!  for even n
+            # coef = np.array([1, 0, vv**2/6, 0, vv**4/120, 0, vv**6/5040, 0, vv**8/362880])
+            coef = vovn_k / np.arange(1, 8)  # from 1 to 7
+            coef[0] = 1.0
+            np.cumprod(coef, out=coef)
+            coef[1::2] = 0.0  # zero out even terms
+            m = hermeval(z, coef) * np.exp(vovn_k**2 / 2)
+
+        return m
+
+    @staticmethod
+    def cond_avgvar_mvsk(vovn, zhat, mnc=False):
         """
-        First 2 non-central (raw) momments (e.g., mean and M2) of the conditional average variance:
+        Mean, scaled variance, skewness, and ex-kurtosis of the conditional average variance.
 
         int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
              conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
 
-        True mean and M2 should be multiplied by sigma_0 and sigma_0^2, respectively.
         See Appendix B in Choi et al. (2019), Eqs. (B5) and (B6) in Kennedy et al. (2012)
 
         Args:
             vovn: vov * sqrt(T)
-            z: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
-            remove_exp: if True, return without multiplying exp(vovn * z). False by default.
+            zhat: log(sigma_T/sigma_0) / (vov*sqrt(T)) = Z_1 - (vovn/2)
+            mnc: if True, return (mean, mnc2, mnc3, mnc4)
 
         Returns:
-            Mean, M2, M3, M4
+            (mean, scaled var, skewness, ex-kurtosis) or (mean, mnc2, mnc3, mnc4)
 
         References:
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
             - Kennedy JE, Mitra S, Pham D (2012) On the Approximation of the SABR Model: A Probabilistic Approach. Applied Mathematical Finance 19:553–586. https://doi.org/10.1080/1350486X.2011.646523
         """
 
-        def m1ftn(vv):
-            assert vv >= 0.0
-            if np.abs(vv) > 0.01:
-                ncdf_diff = spst.norm.cdf(-np.abs(z) + vv) - spst.norm.cdf(-np.abs(z) - vv)
-                m = np.sqrt(np.pi/2) / vv * ncdf_diff * np.exp((z**2 + vv**2)/2)
-            else:
-                ## Alternative evaluation usign Hermite polynomial when vv is very small
-                ### coef = vv^(2n) / (n+1)!  for even n
-                # coef = np.array([1, 0, vv**2/6, 0, vv**4/120, 0, vv**6/5040, 0, vv**8/362880])
-                coef = vv/np.arange(1, 8)  # from 1 to 7
-                coef[0] = 1.0
-                np.cumprod(coef, out=coef)
-                coef[1::2] = 0.0  # zero out even terms
-                m = hermeval(z, coef) * np.exp(vv**2/2)
+        exp = np.exp(vovn * zhat)
+        cosh = (exp + 1./exp)/2
 
-            return m
+        m1 = SabrABC.cond_avgvar_mfn(zhat, vovn)
+        m2 = SabrABC.cond_avgvar_mfn(zhat, 2*vovn)
+        m3 = SabrABC.cond_avgvar_mfn(zhat, 3*vovn)
+        m4 = SabrABC.cond_avgvar_mfn(zhat, 4*vovn)
 
-        exp = np.exp(vovn * z)
-        cosh = (exp + 1./exp)/2.
+        #### non-central (raw) moments
+        mnc2 = (m2 - m1*cosh)/vovn**2
+        mnc3 = (3*m3 - 8*m2*cosh + m1*(4*cosh**2 + 1))/(8*vovn**4)
+        mnc4 = (2*m4 - 9*m3*cosh + m2*(12*cosh**2 + 2) - m1*cosh*(4*cosh**2 + 3))/(24*vovn**6)
 
-        m1f, m2f, m3f, m4f = m1ftn(vovn), m1ftn(2*vovn), m1ftn(3*vovn), m1ftn(4*vovn)
+        if mnc:
+            return m1*exp, mnc2*exp**2, mnc3*exp**3, mnc4*exp**4
 
-        m1 = m1f
-        m2 = (m2f - m1f*cosh)/vovn**2
-        m3 = (0.75*m3f - 2*m2f*cosh + m1f*(cosh**2 + 0.25))/vovn**4/2
-        m4 = (0.5*m4f - 2.25*m3f*cosh + m2f*(3*cosh**2 + 0.5) - m1f*cosh*(cosh**2 + 0.75))/vovn**6/6
+        # Code from https://www.statsmodels.org/0.8.0/_modules/statsmodels/stats/moment_helpers.html#mnc2mvsk
+        # mnc2mvsk in statsmodels behaves weidly when zhat is a column vector, so use the code here.
+        mc2 = mnc2 - m1**2
+        mc3 = mnc3 - (3 * m1 * mc2 + m1**3)  # 3rd central moment
+        mc4 = mnc4 - (4 * m1 * mc3 + 6 * m1**2 * mc2 + m1**4)
 
-        if not remove_exp:
-            m1 *= exp
-            m2 *= exp**2
-            m3 *= exp**3
-            m4 *= exp**4
+        vovn2 = vovn**2
+        if vovn2 < 0.01:
+            # When vovn is small, calculation is unstable. so use expansions.
+            var_scaled = vovn2*(1/3 - (6 - zhat**2)/45*vovn2)
+            skew = np.sqrt(vovn2*(108/25 - (4/875)*(51*zhat**2 - 716)*vovn2))
+            exkur = vovn2 * (276/35 - (8/175)*(9*zhat**2 - 158)*vovn2)
+        else:
+            var_scaled = np.divide(mc2, m1**2)
+            skew = np.divide(mc3, mc2**1.5)
+            exkur = np.divide(mc4, mc2**2) - 3.0
 
-        return m1, m2, m3, m4
+        return m1*exp, var_scaled, skew, exkur
 
     @staticmethod
-    def cond_avgvar_displn_params(vovn, z, ratio=1.):
+    def cond_avgvar_lnshift_params(vovn, zhat, ratio=1.):
         """
         Find the prameters (mu, sigma, ratio) to fit moments
 
             Y ~ (1 - ratio) * mu + ratio * mu * exp(sigma * Z - sigma^2/2)
 
         Args:
-            vovn:
-            z:
-            ratio:  ratio for the lognormal distribution. 1.0 by default
+            vovn: vov * sqrt(texp)
+            zhat: Z - 0.5*vov
+            ratio: ratio for the lognormal distribution. 1.0 by default
 
         Returns:
-
+            (mean, sig, ratio)
         """
 
         # only ratio cares, so use remove_exp=True
-        m1, mnc2, mnc3, mnc4 = SabrABC.cond_avgvar_mnc4(vovn, z, remove_exp=True)
+        # but multiply exp(vovn * z) to m1 before returning
+        m1, var_scaled, skew, exkur = SabrABC.cond_avgvar_mvsk(vovn, zhat)
+        sln = DistHelperLnShift(lam=ratio)
+        sln.fit(mvs=[m1, var_scaled, skew], lam=ratio)
 
-        vovn2 = vovn**2
-        var = np.where(vovn > 0.01, mnc2 - m1**2, vovn2/3*(1 + (4/15)*vovn2*(z**2 + 4)))
-        # vovn**2/3 is from Wolfram Alpha, but it is consistent with Chen et al
-        # at vovn = 0.01 (z=1.),  3.333787675674493e-05  vs  3.333777777777778e-05
-        var_over_m1sq = var/m1**2
-
-        if ratio is None:
-            s = (mnc3 - 3*m1*mnc2 + 2*m1**3)/(var*np.sqrt(var))
-            sqrt_w_m_1 = 2*np.sinh(np.arccosh(s*s/2 + 1)/6)  # sqrt(w-1)
-            sigma = np.sqrt(np.log1p(sqrt_w_m_1**2))
-            ratio = np.sqrt(var_over_m1sq) / sqrt_w_m_1
-        else:
-            sigma = np.sqrt(np.log1p(var_over_m1sq/ratio**2))
-
-        return m1, sigma, ratio
+        return m1, sln.sig, sln.lam
 
 
     @staticmethod
@@ -312,11 +318,11 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
-        v = m2 * m**3 * vovn2   # * (ww-1)^3
+        v = vovn2 * m2 * m**3    # * (ww-1)^3
         # If vov2 -> 0, v = (4/3) vovn^2
 
         coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
-        s = np.sqrt(m) * vovn * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        s = vovn * np.sqrt(m) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
         # If vov2 -> 0, s = (4/5)*3*sqrt(3)*vov = 2.4*sqrt(3) ~ 4.15692*vov
 
         # Ex-kurtosis calculation
@@ -328,7 +334,7 @@ class SabrABC(smile.OptSmileABC, abc.ABC):
         coef = np.array([25, 175, 700, 2100, 5250, 11550, 23100, 42900, 75075, 125125, 200200,
                          309400, 461240, 660920, 907400, 1190280, 1483482, 1735734, 1857856,
                          1706848, 1246960, 583440]) / 225225  # O(x^22)
-        k = m * vovn2 * np.polyval(coef, ww) / m2**2
+        k = vovn2 * m * np.polyval(coef, ww) / m2**2
         # If vov2 -> 0, k = 368/35*3 vovn^2 ~ 31.542857 vovn^2
 
         return m, v, s, k
@@ -419,7 +425,7 @@ class SabrHagan2002(SabrVolApproxABC):
             return 0.0
         fwd, _, _ = self._fwd_factor(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
-        betac2 = betac ** 2
+        betac2 = betac**2
 
         log_kk = np.log(fwd / strike)
         log_kk2 = log_kk * log_kk
@@ -427,9 +433,9 @@ class SabrHagan2002(SabrVolApproxABC):
 
         pre1 = pow_kk * (1 + betac2 / 24 * log_kk2 * (1 + betac2 / 80 * log_kk2))
 
-        term02 = (2 - 3 * rho2) / 24 * self.vov ** 2
+        term02 = (2 - 3 * rho2) / 24 * self.vov**2
         term11 = alpha * self.vov * self.rho * self.beta / 4 / pow_kk
-        term20 = (betac * alpha / pow_kk) ** 2 / 24
+        term20 = (betac * alpha / pow_kk)**2 / 24
 
         if self.approx_order == 0:
             vol = 1.0
@@ -545,7 +551,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
         if self.approx_order == 0 or self.is_atmvol:
             vol = 1.0
         else:
-            vol = 1.0 + texp * (2 - 3 * self.rho ** 2) / 24 * self.vov ** 2
+            vol = 1.0 + texp * (2 - 3 * self.rho**2) / 24 * self.vov**2
 
         zz = self.vov / self.sigma * (strike - fwd)
         hh = self._hh(zz, self.rho)
@@ -590,7 +596,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         zz = vov_over_alpha_safe * qq  # zeta = (vov/sigma0) q
         hh = self._hh(zz, self.rho)
         # term02: O(vov^2)
-        term02 = (2 - 3 * rho2) / 24 * self.vov ** 2
+        term02 = (2 - 3 * rho2) / 24 * self.vov**2
 
         # term11: O(alpha*vov)
         # C(k)-C(1)/(k-1). Notice that 1/beta comes from int_inv_locvol
@@ -641,7 +647,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         fwd = self.forward(spot, texp)
         alpha, betac, rhoc, rho2, _ = self._variables(fwd, texp)
         hh = self._hh(-self.vov / (alpha * betac), self.rho)
-        t0 = 0.5 / (betac * alpha * hh) ** 2
+        t0 = 0.5 / (betac * alpha * hh)**2
         return t0
 
 
@@ -749,10 +755,10 @@ class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
 
             ind = abs(eta2_m_1) <= eps
             gg1[ind] += (
-                eta[ind] / num_t1[ind] * (1 - eta2_m_1[ind] / num_t1[ind] ** 2 / 3)
+                eta[ind] / num_t1[ind] * (1 - eta2_m_1[ind] / num_t1[ind]**2 / 3)
             )
             gg2[ind] += (
-                eta[ind] / num_t2[ind] * (1 - eta2_m_1[ind] / num_t2[ind] ** 2 / 3)
+                eta[ind] / num_t2[ind] * (1 - eta2_m_1[ind] / num_t2[ind]**2 / 3)
             )
 
             gg_diff = self.rho * self.beta / (rhoc * betac) * (gg2 - gg1)

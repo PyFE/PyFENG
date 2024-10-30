@@ -3,9 +3,9 @@ import scipy.special as spsp
 
 
 def GHQ(n_quad, loc=0.0, scale=1.0):
-    z, w = spsp.roots_hermitenorm(n_quad)
+    z, w, w_sum = spsp.roots_hermitenorm(n_quad, mu=True)
+    w /= w_sum  # 1/np.sqrt(2.0 * np.pi)
     z = scale * z + loc
-    w *= 0.3989422804014326779399  # 1/np.sqrt(2.0 * np.pi)
     return z, w
 
 

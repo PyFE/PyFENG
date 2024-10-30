@@ -5,7 +5,7 @@ import scipy.special as spsp
 import scipy.stats as spst
 import scipy.integrate as spint
 from . import opt_smile_abc as smile
-from .util import MathFuncs
+from .util import MathFuncs, DistHelperLnShift
 
 
 class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
@@ -65,19 +65,20 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         assert np.isclose(np.sum(ww), 1)
 
         # apply if beta > 0
-        if self.beta > 0:
-            ind = (fwd_ratio*ww > 1e-16)
-        else:
-            ind = (fwd_ratio*ww > -999)
+        #if self.beta > 0:
+        #    ind = (fwd_ratio*ww > 1e-16)
+        #else:
+        #    ind = (fwd_ratio*ww > -999)
 
-        fwd_ratio = np.expand_dims(fwd_ratio[ind], -1)
-        vol_ratio = np.expand_dims(vol_ratio[ind], -1)
-        ww = np.expand_dims(ww[ind], -1)
+        n_dim = ww.ndim
+        fwd_ratio = np.expand_dims(fwd_ratio, -1)
+        vol_ratio = np.expand_dims(vol_ratio, -1)
+        ww = np.expand_dims(ww, -1)
 
         base_model = self.base_model(alpha * vol_ratio)
         base_model.is_fwd = True
         price_vec = base_model.price(kk, fwd_ratio, texp, cp=cp)
-        price = fwd * np.sum(price_vec * ww, axis=0)
+        price = fwd * np.sum(price_vec * ww, axis=tuple(range(n_dim)))
         return price
 
     def mass_zero(self, spot, texp, log=False, mu=0):
@@ -147,6 +148,7 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
 class SabrMixture(SabrMixtureABC):
     n_quad = None
     dist = 'ln'
+    sln_lam = 5 / 6
 
     def n_quad_vovn(self, vovn):
         return self.n_quad or np.floor(3 + 4*vovn)
@@ -162,37 +164,40 @@ class SabrMixture(SabrMixtureABC):
             points and weights in column vector
         """
 
-        npt = self.n_quad_vovn(vovn)
-        zhat, ww = spsp.roots_hermitenorm(npt)
-        ww /= np.sqrt(2*np.pi)
+        #npt = self.n_quad_vovn(vovn)
+        npt = self.n_quad if np.isscalar(self.n_quad) else self.n_quad[0]
+        zhat, ww, mu = spsp.roots_hermitenorm(npt, mu=True)
+        ww /= mu
         zhat = zhat[:, None] - 0.5*vovn
         ww = ww[:, None]
         return zhat, ww
 
     def cond_avgvar(self, vovn, zhat):
 
-        m1, m2 = self.cond_avgvar_mnc4(vovn, zhat)
-        m2_m1sq_ratio = m2 / m1**2
+        if np.isscalar(self.n_quad):
+            m1, var_scaled, *_ = self.cond_avgvar_mvsk(vovn, zhat)
 
-        w2 = np.ones_like(zhat)
+            w2 = np.ones_like(zhat)
+            if self.dist.lower() == 'm1':
+                r_var = m1
+                r_vol = np.sqrt(r_var)
+            elif self.dist.lower() == 'ln':
+                r_var = m1 / np.sqrt(np.sqrt(1 + var_scaled))
+                r_vol = np.sqrt(r_var)
+            else:
+                ValueError(f'Unkown distribution: {self.dist}')
 
-        if self.dist.lower() == 'm1':
-            r_var = m1
-            r_vol = np.sqrt(r_var)
-        elif self.dist.lower() == 'ln':
-            r_var = m1 / np.sqrt(np.sqrt(m2_m1sq_ratio))
-            r_vol = np.sqrt(r_var)
-        elif self.dist.lower() == 'ig':  # inverse Gaussian
-            lam = m1 / (m2_m1sq_ratio - 1.0)
-            r_var = 1 - 1 / (8 * lam) * (1 - 9 / (2 * 8 * lam) * (1 - 25 / (6 * 8 * lam)))
-            r_var[lam < 100] = spsp.kv(0, lam[lam < 100]) / spsp.kv(-0.5, lam[lam < 100])
-            r_var = m1 * r_var**2
-            r_vol = np.sqrt(r_var)
+            assert r_var.shape == w2.shape
+            return r_var, r_vol, w2
+
         else:
-            pass
+            m1, sig, ratio = self.cond_avgvar_lnshift_params(vovn, zhat, self.sln_lam)
+            sln = DistHelperLnShift(mu=m1, sig=sig, lam=ratio)
+            avgvar, w2 = sln.quad(self.n_quad[1])
+            r_vol = np.sqrt(avgvar)
 
-        assert r_var.shape == w2.shape
-        return r_var, r_vol, w2
+            return avgvar, r_vol, w2
+
 
     def cond_spot_sigma(self, texp, fwd):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
@@ -211,9 +216,9 @@ class SabrMixture(SabrMixtureABC):
             fwd_ratio = rho_alpha * ((exp_plus2 - 1)/self.vov - 0.5*rho_alpha*texp*r_var)
             np.exp(fwd_ratio, out=fwd_ratio)
         else:
-            fwd_ratio = 1.0
+            ValueError(f'Unsupported beta={self.beta}')
 
-        return fwd_ratio.flatten(), r_vol.flatten(), w0123.flatten()
+        return fwd_ratio, r_vol, w0123
 
 
 class SabrNormAnalytic(sabr.SabrABC):

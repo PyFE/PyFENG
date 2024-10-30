@@ -1,4 +1,4 @@
-from .util import MathConsts, MathFuncs
+from .util import MathConsts, MathFuncs, DistHelperLnShift
 
 # the order is sensitive because of `price_barrier` method. Put it before .bsm
 from .norm import Norm
@@ -12,7 +12,7 @@ from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, CgmyFft, ExpNigFft,
 
 # SABR/NSVh related models
 from .sabr import SabrHagan2002, SabrNormVolApprox, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P
-from .sabr_int import SabrUncorrChoiWu2021, SabrNormAnalytic, SabrNormEllipeInt
+from .sabr_int import SabrUncorrChoiWu2021, SabrNormAnalytic, SabrNormEllipeInt, SabrMixture
 from .sabr_mc import SabrMcTimeDisc
 from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 
