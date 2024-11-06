@@ -199,3 +199,60 @@ class DistHelperLnShift:
         w /= w_sum  # 1/np.sqrt(2.0 * np.pi)
         z = self.mu * (1 + self.lam * np.expm1(self.sig*(z - self.sig/2)))
         return z, w
+
+
+class ChebInterp:
+    """
+    Chebyshev interpolator at the Chebyshev nodes of thd 2nd kind, x_k = cos(k/(n-1) pi) for k = 0, ..., n-1
+
+    """
+    inc = False
+    coef = []
+    x = []
+
+    def __init__(self, n_pts, inc=False):
+        """
+
+        Args:
+            n_pts: number of points
+            inc: True if x_k is increasing, i.e., x_k = -cos(k/(n-1) pi). False by default.
+
+        """
+        self.inc = inc
+        self.x = (-1 if inc else 1) * np.cos(np.pi * np.arange(n_pts) / (n_pts - 1))
+
+    def fit(self, y):
+        """
+        Fit Chebyshev interpolator
+
+        Args:
+            y: y values at x_k = cos(k/(n-1) pi) for k = 0, ..., n-1
+        """
+        n = len(y)
+        assert n == len(self.x)
+
+        if self.inc:
+            y = np.flip(y)
+
+        coef = np.fft.rfft(np.concatenate((y, y[-2:0:-1]))).real / (n-1)
+        coef[[0, -1]] /= 2
+        self.coef = coef
+
+    def eval(self, x):
+        """
+        Interplate at x using the fitted coefficients.
+        `numpy.polynomial.chebyshev.chebval` uses Clenshaw recursion algorithm.
+
+        Args:
+            x: values to evaluate
+
+        References:
+            - https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html
+
+        Returns:
+            Interpolated y values at x
+        """
+
+        ###
+        y = np.polynomial.chebyshev.chebval(x, self.coef)
+        return y
