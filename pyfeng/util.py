@@ -205,7 +205,16 @@ class ChebInterp:
     """
     Chebyshev interpolator at the Chebyshev nodes of thd 2nd kind, x_k = cos(k/(n-1) pi) for k = 0, ..., n-1
 
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> interp = pf.ChebInterp(n=8, inc=True)
+        >>> y = np.exp(interp.x)
+        >>> interp.fit(y)
+        >>> y2 = interp.eval(interp.x)
+        >>> np.max(np.abs(y - y2))
     """
+
     inc = False
     coef = []
     x = []
