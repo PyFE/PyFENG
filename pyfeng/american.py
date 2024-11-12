@@ -14,16 +14,6 @@ class AmerOptExerBddABC(OptABC):
         super().__init__(sigma, *args, **kwargs)
         self.bsm_model = Bsm(sigma, *args, **kwargs)
 
-    def integrand(self, strike, spot, texp, u, bdd, cp=-1):
-
-        assert np.any(u <= texp)
-        assert cp < 0
-
-        fwd, df, divf = self._fwd_factor(spot, texp - u)
-        d1, d2 = self.bsm_model.d12(bdd, spot, texp - u)
-        rv = self.intr*strike*df * spst.norm._cdf(-d2) - self.divr*spot*divf * spst.norm._cdf(-d1)
-        return rv
-
 
 class AmerOptLi2010QdPlus(AmerOptExerBddABC):
     """
@@ -154,18 +144,39 @@ class AmerOptLi2010QdPlus(AmerOptExerBddABC):
 
 
 class AmerOptAndersen2015Hp(AmerOptExerBddABC):
+    """
+    Implementation of Andersen, et al. (2016), referred to as HPAOP.
+
+    References:
+        - Andersen L, Lake M, Offengenden D (2016) High-performance American option pricing. JCF 39–87. https://doi.org/10.21314/JCF.2016.312
+
+    """
 
     tmax, n_col, n_int, n_iter = 0., 0, 0, 0
     zero_func = AmerOptLi2010QdPlus.zero_func
     exer_bdd_qdp = AmerOptLi2010QdPlus.exer_bdd
 
-    use_partial_jacobi = False
+    n_iter_pj = False
 
     ti = []
     interp = None
+    interp_log = True
 
-    def set_num_params(self, tmax=3., n_col=8, n_int=16, n_iter=5, use_partial_jacobi=False):
+    def set_num_params(self, tmax=3., n_col=8, n_int=16, n_iter=5, n_iter_pj=1, interp_log=True):
+        """
+        Sets numberical parameters
 
+        Args:
+            tmax: max time of the exercise boundary
+            n_col: # of collocation (Chebyshev interpolation) nodes
+            n_int: # of integral node
+            n_iter: # of fixed point iterations
+            n_iter_pj: # of fixed point iterations with partial Jacobi
+            interp_log: interpolate log(B(t)/B(tmax))^2
+
+        Returns:
+
+        """
         self.tmax = tmax
         self.n_iter = n_iter
         self.interp = ChebInterp(n_col, xlim=(0, 1))
@@ -173,14 +184,51 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
         self.bdd_t0 = np.fmin(1, self.intr/self.divr)
         self.bdd_ti = np.full_like(self.ti, self.bdd_t0)
 
-        self.use_partial_jacobi = use_partial_jacobi
+        self.interp_log = interp_log
+        self.n_iter_pj = n_iter_pj
 
+        self.n_int = n_int
         zz, ww = spsp.roots_legendre(n_int)
         zz[:] = (1.0 + zz)/2; ww /= 2
         uu = (1 - zz**2)
         self.uu = uu; self.zz = zz; self.ww = ww
 
         self.u_ki = self.ti * self.uu[:, None]
+
+    def interp_fit(self):
+        if self.interp_log:
+            self.interp.fit(np.concatenate([[0.0], np.log(self.bdd_ti / self.bdd_t0)**2]))
+        else:
+            self.interp.fit(np.concatenate([[self.bdd_t0], self.bdd_ti]))
+
+    def interp_eval(self, uu):
+        if self.interp_log:
+            return self.bdd_t0 * np.exp(-np.sqrt(np.fmax(0.0, self.interp.eval(np.sqrt(uu / self.tmax)))))
+        else:
+            return self.interp.eval(np.sqrt(uu / self.tmax))
+
+    def integrand(self, spot, texp, u, bdd, cp=-1):
+        """
+        The integrand for American option in Eq. (4) of HPAO for unit strike = 1
+
+        Args:
+            spot: spot price
+            texp: time to expiry
+            u: integral variable
+            bdd: exercise boundary values at u
+            cp:
+
+        Returns:
+
+        """
+
+        assert np.any(u <= texp)
+        assert cp < 0
+
+        fwd, df, divf = self._fwd_factor(spot, texp - u)
+        d1, d2 = self.bsm_model.d12(bdd, spot, texp - u)
+        rv = self.intr * df * spst.norm._cdf(-d2) - self.divr * spot * divf * spst.norm._cdf(-d1)
+        return rv
 
 
     def FPA_K123(self, cp=-1):
@@ -195,7 +243,7 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
         """
 
         assert cp < 0
-        bdd_u = self.interp.eval(np.sqrt(self.u_ki / self.tmax))
+        bdd_u = self.interp_eval(self.u_ki)
 
         fwd, df, divf = self._fwd_factor(1.0, self.u_ki)
         d1, d2 = self.bsm_model.d12(strike=bdd_u, spot=self.bdd_ti, texp=self.ti - self.u_ki)
@@ -240,34 +288,50 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
     def fit_bdd(self, cp=-1):
 
         self.bdd_ti = self.exer_bdd_qdp(self.ti, cp=-1)
-        print('Initial:', np.round(self.bdd_ti, 3))
-        self.interp.fit(np.concatenate([[self.bdd_t0], self.bdd_ti]))
+        self.interp_fit()
 
         for m in range(self.n_iter):
-            N, D, Np = self.FPA_ND(prime=(m == 0) & self.use_partial_jacobi)
+            N, D, Np = self.FPA_ND(prime=(m < self.n_iter_pj))
 
             bdd_new = np.exp(-(self.intr - self.divr)*self.ti) * N / D
 
             if Np is None:
                 self.bdd_ti = bdd_new
             else:
+                print('Using Partial Jacobi', m)
                 self.bdd_ti += (bdd_new - self.bdd_ti) / (1 + bdd_new / self.bdd_ti * Np / N * (bdd_new - self.bdd_ti))
-            print(m, ': ', np.round(self.bdd_ti, 3))
 
-            self.interp.fit(np.concatenate([[self.bdd_t0], self.bdd_ti]))
+            self.interp_fit()
 
-    def price(self, strike, spot, texp, cp=-1):
+    def price(self, strike, spot, texp, cp=-1, n_int=None):
+        """
 
+        Args:
+            strike:
+            spot:
+            texp:
+            cp:
+            n_int: number of integral nodes (`p` in HPAOP)
+
+        Returns:
+
+        """
         assert cp < 0
         assert texp <= self.tmax
 
-        #fwd, df, divf = self._fwd_factor(spot, texp)
-        #spot_bdd = self.exer_bdd(strike, texp, cp=cp)
+        n_int = self.n_int if n_int is None else n_int
 
-        u_k = texp * self.uu
-        bdd_u = strike * self.interp.eval(np.sqrt(u_k / self.tmax))
+        zz, ww = spsp.roots_legendre(n_int)
+        zz[:] = (1.0 + zz)/2; ww /= 2
+        u_k = texp * (1 - zz**2)
+        bdd_u = self.interp_eval(u_k)
 
         p_euro = self.bsm_model.price(strike, spot, texp, cp=cp)
-        int = 2*texp * np.sum(self.zz * self.integrand(strike, spot, texp, u_k, bdd_u, cp=cp) * self.ww)
-        return p_euro + int
+        spot_strike = spot/strike
+        if np.isscalar(spot_strike):
+            int = 2*texp * np.sum(zz * ww * self.integrand(spot_strike, texp, u_k, bdd_u, cp=cp))
+        else:
+            int = 2*texp * np.sum(zz * ww * self.integrand(spot_strike[:, None], texp, u_k, bdd_u, cp=cp), axis=1)
+
+        return p_euro + strike * int
 
