@@ -208,27 +208,28 @@ class ChebInterp:
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> interp = pf.ChebInterp(n=8, inc=True)
+        >>> interp = pf.ChebInterp(n=8, xlim=(0,1))
         >>> y = np.exp(interp.x)
         >>> interp.fit(y)
         >>> y2 = interp.eval(interp.x)
         >>> np.max(np.abs(y - y2))
     """
 
-    inc = False
     coef = []
     x = []
+    xlim = []
 
-    def __init__(self, n_pts, inc=False):
+    def __init__(self, n_pts, xlim=(1, -1)):
         """
 
         Args:
             n_pts: number of points
-            inc: True if x_k is increasing, i.e., x_k = -cos(k/(n-1) pi). False by default.
+            xlim: (x1, x2), the range of x
 
         """
-        self.inc = inc
-        self.x = (-1 if inc else 1) * np.cos(np.pi * np.arange(n_pts) / (n_pts - 1))
+        self.xlim = xlim
+        z = np.cos(np.pi * np.arange(n_pts) / (n_pts - 1))
+        self.x = (xlim[0] + xlim[1] + (xlim[0] - xlim[1])*z)/2
 
     def fit(self, y):
         """
@@ -240,8 +241,8 @@ class ChebInterp:
         n = len(y)
         assert n == len(self.x)
 
-        if self.inc:
-            y = np.flip(y)
+        #if self.xlim[1] > self.xlim[0]:
+        #    y = np.flip(y)
 
         coef = np.fft.rfft(np.concatenate((y, y[-2:0:-1]))).real / (n-1)
         coef[[0, -1]] /= 2
@@ -263,5 +264,6 @@ class ChebInterp:
         """
 
         ###
-        y = np.polynomial.chebyshev.chebval(x, self.coef)
+        z = (2*x - self.xlim[0] - self.xlim[1])/(self.xlim[0] - self.xlim[1])
+        y = np.polynomial.chebyshev.chebval(z, self.coef)
         return y

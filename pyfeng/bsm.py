@@ -61,6 +61,17 @@ class Bsm(opt.OptAnalyticABC):
         price *= cp*disc_fac
         return price
 
+    def d12(self, strike, spot, texp):
+
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        d1 = np.log(fwd/strike)/sigma_std
+        d2 = d1 - 0.5*sigma_std
+        d1 += 0.5*sigma_std
+
+        return d1, d2
+
     @staticmethod
     def d1sigma(d1, logk):
         sig = np.array(np.sqrt(d1**2 + 2*logk) + np.abs(d1))
