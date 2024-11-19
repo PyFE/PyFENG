@@ -14,6 +14,9 @@ class AmerOptExerBddABC(OptABC):
         super().__init__(sigma, *args, **kwargs)
         self.bsm_model = Bsm(sigma, *args, **kwargs)
 
+    def exer_bdd_t0(self, cp=-1):
+        return np.fmin(1, self.intr/np.fmax(self.divr, np.finfo(float).tiny))
+
 
 class AmerOptLi2010QdPlus(AmerOptExerBddABC):
     """
@@ -37,7 +40,7 @@ class AmerOptLi2010QdPlus(AmerOptExerBddABC):
         Returns:
             Exercise boundary (critical stock price)
         """
-        s0 = np.fmin(1, self.intr/np.fmax(self.divr, np.finfo(float).tiny))
+        s0 = self.exer_bdd_t0(cp)
         mm = 2*self.intr / self.sigma**2
         nn_m1 = 2*(self.intr - self.divr) / self.sigma**2 - 1
         q_inf = -0.5 * (nn_m1 + np.sqrt(nn_m1**2 + 4*mm))
@@ -61,7 +64,7 @@ class AmerOptLi2010QdPlus(AmerOptExerBddABC):
         Returns:
             Exercise boundary (critical stock price)
         """
-        root = spopt.newton(self.zero_func, x0=np.ones_like(texp), args=(texp, cp))
+        root = spopt.newton(self.zero_func, x0=np.full_like(texp, self.exer_bdd_t0(), dtype=float), args=(texp, cp))
         return root
 
     def zero_func(self, spot_bdd, texp, cp=-1):
@@ -80,7 +83,7 @@ class AmerOptLi2010QdPlus(AmerOptExerBddABC):
         """
 
         fwd, df, divf = self._fwd_factor(spot_bdd, texp)
-
+        print(spot_bdd)
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
         d1 = np.log(fwd)/sigma_std
         d1 += 0.5*sigma_std
@@ -181,7 +184,7 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
         self.n_iter = n_iter
         self.interp = ChebInterp(n_col, xlim=(0, 1))
         self.ti = tmax * (self.interp.x[1:])**2  # ti is increasing: ti[0] > 0, ti[-1] = texp
-        self.bdd_t0 = np.fmin(1, self.intr/self.divr)
+        self.bdd_t0 = self.exer_bdd_t0(cp=-1)
         self.bdd_ti = np.full_like(self.ti, self.bdd_t0)
 
         self.interp_log = interp_log
@@ -198,12 +201,14 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
     def interp_fit(self):
         if self.interp_log:
             self.interp.fit(np.concatenate([[0.0], np.log(self.bdd_ti / self.bdd_t0)**2]))
+            #self.interp.fit(np.concatenate([[0.0], np.log(self.bdd_ti / self.bdd_t0)]))
         else:
             self.interp.fit(np.concatenate([[self.bdd_t0], self.bdd_ti]))
 
     def interp_eval(self, uu):
         if self.interp_log:
             return self.bdd_t0 * np.exp(-np.sqrt(np.fmax(0.0, self.interp.eval(np.sqrt(uu / self.tmax)))))
+            #return self.bdd_t0 * np.exp(self.interp.eval(np.sqrt(uu / self.tmax)))
         else:
             return self.interp.eval(np.sqrt(uu / self.tmax))
 
@@ -323,7 +328,7 @@ class AmerOptAndersen2015Hp(AmerOptExerBddABC):
 
         zz, ww = spsp.roots_legendre(n_int)
         zz[:] = (1.0 + zz)/2; ww /= 2
-        u_k = texp * (1 - zz**2)
+        u_k = texp * (1-zz**2)
         bdd_u = self.interp_eval(u_k)
 
         p_euro = self.bsm_model.price(strike, spot, texp, cp=cp)
