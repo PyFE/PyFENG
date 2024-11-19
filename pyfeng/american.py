@@ -83,7 +83,7 @@ class AmerOptLi2010QdPlus(AmerOptExerBddABC):
         """
 
         fwd, df, divf = self._fwd_factor(spot_bdd, texp)
-        print(spot_bdd)
+
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
         d1 = np.log(fwd)/sigma_std
         d1 += 0.5*sigma_std
