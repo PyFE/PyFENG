@@ -50,3 +50,8 @@ from .assetalloc import RiskParity
 from .mgf2mom import Mgf2Mom
 
 from .american import AmerLi2010QdPlus
+
+#Jump Difussion Model
+from .jump_diffusion import JumpDiffusion
+
+
