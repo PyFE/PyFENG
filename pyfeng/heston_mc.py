@@ -3,7 +3,6 @@ import numpy as np
 import scipy.stats as spst
 import scipy.interpolate as spinterp
 from scipy import special as spsp
-from scipy.misc import derivative
 import functools
 from . import sv_abc as sv
 from . import heston
@@ -502,12 +501,14 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         See Also:
             cond_avgvar_mv
         """
-        # conditional Cumulant Generating Fuction
-        def cumgenfunc_cond(aa):
-            return np.log(self.cond_avgvar_mgf(aa, dt, var_0, var_t))
 
-        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-5)
-        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-5)
+        dx = 1e-5
+        # conditional Cumulant Generating Fuction
+        f1 = np.log(self.cond_avgvar_mgf(-dx, dt, var_0, var_t))
+        f2 = np.log(self.cond_avgvar_mgf(0.0, dt, var_0, var_t))
+        f3 = np.log(self.cond_avgvar_mgf(dx, dt, var_0, var_t))
+        m1 = (f3 - f1)/(2*dx)
+        var = (f3 + f1 - 2*f2)/(dx**2)
         return m1, var
 
     def x1star_avgvar_mv_asymp(self, dt, kk=0):
