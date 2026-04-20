@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyfeng"
+version = "0.3.0"
+description = "Python Financial Engineering"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Jaehyuk Choi", email = "pyfe@eml.cc" }
+]
+keywords = ["finance", "derivatives", "options", "stochastic volatility", "quantitative finance"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Operating System :: OS Independent",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+]
+
+[project.urls]
+Homepage = "https://github.com/PyFE/PyFENG"
+Documentation = "https://pyfeng.readthedocs.io/"
+"Bug Tracker" = "https://github.com/PyFE/PyFENG/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyfeng*"]
+
+[tool.setuptools.package-data]
+pyfeng = ["data/*.xlsx"]
