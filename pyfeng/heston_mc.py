@@ -123,7 +123,7 @@ class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (variance after dt, average variance during dt)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def cond_spot_sigma(self, texp, var_0):
         tobs = self.tobs(texp)

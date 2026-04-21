@@ -360,7 +360,7 @@ class SabrVolApproxABC(SabrABC):
         Returns:
             equivalent volatility
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)

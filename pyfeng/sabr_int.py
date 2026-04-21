@@ -46,7 +46,7 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
     @abc.abstractmethod
     def cond_spot_sigma(self, texp, fwd):
         # return (fwd, vol, weight) each 1d array
-        return NotImplementedError
+        raise NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)

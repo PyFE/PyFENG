@@ -69,7 +69,7 @@ class OptMaABC(opt.OptABC, abc.ABC):
         Returns:
             option price
         """
-        return NotImplementedError
+        raise NotImplementedError
 
 
 class BsmSpreadKirk(OptMaABC):

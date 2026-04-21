@@ -90,7 +90,7 @@ class OptABC(abc.ABC):
         Returns:
             option price
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def impvol_brentq(self, price, strike, spot, texp, cp=1, setval=False):
         """
@@ -415,7 +415,7 @@ class OptAnalyticABC(OptABC):
         Returns:
             vanilla option price
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         if self.THROW_NEGATIVE_TEXP:
@@ -439,7 +439,7 @@ class OptAnalyticABC(OptABC):
         Returns:
             delta value
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     @abc.abstractmethod
     def gamma(self, strike, spot, texp, cp=1):
@@ -455,7 +455,7 @@ class OptAnalyticABC(OptABC):
         Returns:
             gamma value
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     @abc.abstractmethod
     def vega(self, strike, spot, texp, cp=1):
@@ -471,7 +471,7 @@ class OptAnalyticABC(OptABC):
         Returns:
             vega value
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     @abc.abstractmethod
     def theta(self, strike, spot, texp, cp=1):
@@ -487,7 +487,7 @@ class OptAnalyticABC(OptABC):
         Returns:
             theta value
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     @abc.abstractmethod
     def cdf(self, strike, spot, texp, cp=-1):
@@ -503,6 +503,6 @@ class OptAnalyticABC(OptABC):
         Returns:
             CDF value
         """
-        return NotImplementedError
+        raise NotImplementedError
 
 

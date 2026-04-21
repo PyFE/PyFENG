@@ -301,7 +301,7 @@ class OusvMcABC(OusvABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (final vol, average var, average vol)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def vol_step(self, dt, vol_0, zn=None, nz_theta=True):
         """
