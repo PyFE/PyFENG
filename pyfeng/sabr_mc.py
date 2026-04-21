@@ -48,7 +48,7 @@ class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (sigma after dt, average variance during dt)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def draw_log_return(self, dt, sigma_0, sigma_t, avgvar):
         """

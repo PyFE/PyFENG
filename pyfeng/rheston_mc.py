@@ -496,5 +496,5 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
         return np.mean(price_, axis=1)
     
     def return_var_realized(self, texp, cond):
-        return NotImplementedError
+        raise NotImplementedError
         

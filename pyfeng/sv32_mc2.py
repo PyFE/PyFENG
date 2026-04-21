@@ -35,7 +35,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         Returns:
             (var_t, avgvar)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     @staticmethod
     def iv_complex(nu, zz):

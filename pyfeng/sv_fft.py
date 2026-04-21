@@ -29,7 +29,7 @@ class FftABC(opt.OptABC, abc.ABC):
         Returns:
             MGF value at uu
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def charfunc_logprice(self, x, texp):
         """

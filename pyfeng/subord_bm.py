@@ -26,7 +26,7 @@ class SubordBmABC(sv.SvABC):
 
     @abc.abstractmethod
     def quad(self, texp, vov):
-        return NotImplementedError
+        raise NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)

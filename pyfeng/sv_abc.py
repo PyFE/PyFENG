@@ -216,7 +216,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         Returns: (forward, volatility)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
 
     def price(self, strike, spot, texp, cp=1):
@@ -242,7 +242,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
     @abc.abstractmethod
     def return_var_realized(self, texp, cond):
-        return NotImplementedError
+        raise NotImplementedError
 
     def price_var_opt(self, strike, texp, cp=1):
         """
@@ -323,7 +323,7 @@ class SvMixtureABC(smile.OptSmileABC, abc.ABC):
 
         Returns: (spot, volatility, weight)
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def price(self, strike, spot, texp, cp=1):
 
