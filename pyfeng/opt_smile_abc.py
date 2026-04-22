@@ -6,6 +6,50 @@ from . import opt_abc as opt
 import scipy.stats as spst
 
 
+class OptSmilePricerABC(opt.PricerABC, abc.ABC):
+    """
+    Pricer-side mixin that adds ``vol_smile()`` to any concrete class that
+    also inherits a ModelABC subclass.
+
+    This is the target base for the model/pricer split.  The legacy
+    ``OptSmileABC`` below (which also inherits ModelABC via OptABC) is kept
+    for backward compatibility during migration.
+    """
+
+    def _m_smile(self, model="bsm", is_fwd=None):
+        if is_fwd is None:
+            is_fwd = self.is_fwd
+        if model.lower() == "bsm":
+            base_model = bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+        elif model.lower() == "norm":
+            base_model = norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+        else:
+            base_model = None
+        return base_model
+
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
+        """
+        Equivalent volatility smile for a given model
+
+        Args:
+            strike: strike price
+            spot: spot price
+            texp: time to expiry
+            cp: 1/-1 for call/put option
+            model: {'bsm', 'norm'} 'bsm' (by default) for Black-Scholes-Merton, 'norm' for Bachelier
+
+        Returns:
+            volatility smile under the specified model
+        """
+        base_model = self._m_smile(model)
+        if cp is None:
+            fwd = self.forward(spot, texp)
+            cp = np.where(strike > fwd, 1, -1)  # make option out-of-the-money
+        price = self.price(strike, spot, texp, cp=cp)
+        vol = base_model.impvol(price, strike, spot, texp, cp=cp)
+        return vol
+
+
 class OptSmileABC(opt.OptABC, abc.ABC):
     """
     Abstract class to model with volatility smile

@@ -4,12 +4,21 @@ import numpy as np
 import scipy.optimize as sopt
 
 
-class OptABC(abc.ABC):
+class ModelABC(abc.ABC):
+    """
+    Abstract base class for the *model* (parameter) side of option pricing.
+
+    Holds model parameters and the forward/discount-factor helpers that depend
+    on them. Deliberately has no ``price()`` method — that lives in PricerABC.
+
+    Concrete classes should inherit both ModelABC (or a subclass) and PricerABC
+    (or a subclass), e.g.::
+
+        class HestonFft(HestonModelABC, FftABC): ...
+    """
+
     sigma, intr, divr = None, 0.0, 0.0
     is_fwd = False
-
-    IMPVOL_TOL = 1e-10
-    IMPVOL_MAXVOL = 99.99
 
     def __init__(self, sigma, intr=0.0, divr=0.0, is_fwd=False):
         """
@@ -26,15 +35,14 @@ class OptABC(abc.ABC):
 
     def params_kw(self):
         """
-        Model parameters in dictionary
+        Model parameters as a dictionary.
         """
-        params = {
+        return {
             "sigma": self.sigma,
             "intr": self.intr,
             "divr": self.divr,
             "is_fwd": self.is_fwd,
         }
-        return params
 
     def params_hash(self):
         dct = self.params_kw()
@@ -42,7 +50,7 @@ class OptABC(abc.ABC):
 
     def forward(self, spot, texp):
         """
-        Forward price
+        Forward price.
 
         Args:
             spot: spot price
@@ -58,7 +66,7 @@ class OptABC(abc.ABC):
 
     def _fwd_factor(self, spot, texp):
         """
-        Forward, discount factor, dividend factor
+        Forward price, discount factor, and dividend factor.
 
         Args:
             spot: spot (or forward) price
@@ -75,6 +83,23 @@ class OptABC(abc.ABC):
             divf = np.exp(-self.divr * np.array(texp))
             fwd = np.array(spot) * divf / df
         return fwd, df, divf
+
+
+class PricerABC(abc.ABC):
+    """
+    Abstract base class for the *pricer* side of option pricing.
+
+    Defines the pricing interface: abstract ``price()``, implied-vol solvers,
+    and numeric Greeks. Model parameters live in ModelABC; any concrete class
+    must inherit both.
+
+    Note: methods such as ``impvol_brentq`` and the numeric Greeks call
+    ``self._fwd_factor()`` and ``self.price()``, which are supplied by ModelABC
+    and the concrete pricer respectively at runtime.
+    """
+
+    IMPVOL_TOL = 1e-10
+    IMPVOL_MAXVOL = 99.99
 
     @abc.abstractmethod
     def price(self, strike, spot, texp, cp=1):
@@ -323,7 +348,7 @@ class OptABC(abc.ABC):
 
     def theta_numeric(self, strike, spot, texp, cp=1):
         """
-        Option model thegta (sensitivity to time-to-maturity) by finite difference
+        Option model theta (sensitivity to time-to-maturity) by finite difference
 
         Args:
             strike: strike price
@@ -390,9 +415,20 @@ class OptABC(abc.ABC):
     theta = theta_numeric
 
 
+class OptABC(ModelABC, PricerABC):
+    """
+    Backward-compatible combination of ModelABC and PricerABC.
+
+    All existing code that subclasses OptABC continues to work unchanged.
+    New code should prefer inheriting ModelABC and PricerABC (or their
+    subclasses) explicitly.
+    """
+    pass
+
+
 class OptAnalyticABC(OptABC):
     """
-    Option model with analytic price and greeks are available
+    Option model with analytic price and Greeks available.
     """
 
     THROW_NEGATIVE_TEXP = False
@@ -504,5 +540,3 @@ class OptAnalyticABC(OptABC):
             CDF value
         """
         raise NotImplementedError
-
-
