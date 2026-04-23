@@ -9,6 +9,7 @@ derivative pricing.
 ## Implemented Models 
   * Black-Scholes-Merton (BSM) and displaced BSM models:
     * Analytic option price, Greeks, and implied volatility.
+    * Cosine-FT option pricing.
   * Bachelier (Normal) model
     * Analytic option price, Greeks, and implied volatility.
   * Constant-elasticity-of-variance (CEV) model
@@ -23,6 +24,10 @@ derivative pricing.
   * Heston model
     * FFT option pricing.
     * Almost exact MC simulation by Glasserman & Kim and Choi & Kwok.
+    * Cosine-FT option pricing. 
+  * Variance Gamma (VG) model
+    * FFT option pricing.
+    * Cosine-FT option pricing.
   * Schobel-Zhu (OUSV) model
     * FFT option pricing.
     * Almost exact MC simulation by Choi
