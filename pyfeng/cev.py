@@ -1,5 +1,3 @@
-import abc
-
 import scipy.stats as spst
 import scipy.special as spsp
 import numpy as np
@@ -7,31 +5,13 @@ from . import opt_abc as opt
 from . import opt_smile_abc as smile
 from . import sv_abc as sv
 from .util import MathFuncs
+from .param import CevParam
 
 
-class CevAbc(smile.OptSmileABC, abc.ABC):
-    model_type = "Cev"
-    beta = 0.5
+class CevAbc(CevParam, smile.OptSmileABC):
+    pass
 
-    def __init__(self, sigma, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility
-            beta: elasticity parameter. 0.5 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.beta = beta
-
-    def params_kw(self):
-        params = super().params_kw()
-        extra = {"beta": self.beta}
-        return {**params, **extra}  # Py 3.9, params | extra
-
-
-class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
+class Cev(CevAbc, opt.OptAnalyticABC, smile.MassZeroABC):
     """
     Constant Elasticity of Variance (CEV) model.
 

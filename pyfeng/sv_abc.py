@@ -4,53 +4,10 @@ import os
 import pandas as pd
 from . import bsm
 from . import opt_smile_abc as smile
+from .param import SvParam
 
 
-class SvABC(smile.OptSmileABC, abc.ABC):
-
-    model_type: str = NotImplementedError
-    var_process: bool = NotImplementedError
-    vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
-
-    def __init__(
-        self,
-        sigma,
-        vov=0.01,
-        rho=0.0,
-        mr=0.01,
-        theta=None,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-    ):
-        """
-        Args:
-            sigma: model volatility or variance at t=0.
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            mr: mean-reversion speed (kappa)
-            theta: long-term mean of volatility or variance. If None, same as sigma
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-
-        self.vov = vov
-        self.rho = rho
-        self.mr = mr
-        self.theta = sigma if theta is None else theta
-
-    def params_kw(self):
-        params1 = super().params_kw()
-        params2 = {
-            "vov": self.vov,
-            "rho": self.rho,
-            "mr": self.mr,
-            "theta": self.theta,
-        }
-        return {**params1, **params2}
+class SvABC(SvParam, smile.OptSmileABC):
 
     @classmethod
     def init_benchmark(cls, set_no=None):

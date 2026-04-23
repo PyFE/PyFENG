@@ -2,90 +2,10 @@ import abc
 import copy
 import numpy as np
 import scipy.optimize as sopt
+from .param import ParamABC
 
 
-class ModelABC(abc.ABC):
-    """
-    Abstract base class for the *model* (parameter) side of option pricing.
-
-    Holds model parameters and the forward/discount-factor helpers that depend
-    on them. Deliberately has no ``price()`` method — that lives in PricerABC.
-
-    Concrete classes should inherit both ModelABC (or a subclass) and PricerABC
-    (or a subclass), e.g.::
-
-        class HestonFft(HestonModelABC, FftABC): ...
-    """
-
-    sigma, intr, divr = None, 0.0, 0.0
-    is_fwd = False
-
-    def __init__(self, sigma, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        self.sigma = sigma
-        self.intr = intr
-        self.divr = divr
-        self.is_fwd = is_fwd
-
-    def params_kw(self):
-        """
-        Model parameters as a dictionary.
-        """
-        return {
-            "sigma": self.sigma,
-            "intr": self.intr,
-            "divr": self.divr,
-            "is_fwd": self.is_fwd,
-        }
-
-    def params_hash(self):
-        dct = self.params_kw()
-        return hash((frozenset(dct.keys()), frozenset(dct.values())))
-
-    def forward(self, spot, texp):
-        """
-        Forward price.
-
-        Args:
-            spot: spot price
-            texp: time to expiry
-
-        Returns:
-            forward price
-        """
-        if self.is_fwd:
-            return np.array(spot)
-        else:
-            return np.array(spot) * np.exp((self.intr - self.divr) * np.array(texp))
-
-    def _fwd_factor(self, spot, texp):
-        """
-        Forward price, discount factor, and dividend factor.
-
-        Args:
-            spot: spot (or forward) price
-            texp: time to expiry
-
-        Returns:
-            (forward, discounting factor, dividend factor)
-        """
-        df = np.exp(-self.intr * np.array(texp))
-        if self.is_fwd:
-            divf = 1
-            fwd = np.array(spot)
-        else:
-            divf = np.exp(-self.divr * np.array(texp))
-            fwd = np.array(spot) * divf / df
-        return fwd, df, divf
-
-
-class PricerABC(abc.ABC):
+class OptABC(abc.ABC):
     """
     Abstract base class for the *pricer* side of option pricing.
 
@@ -415,18 +335,7 @@ class PricerABC(abc.ABC):
     theta = theta_numeric
 
 
-class OptABC(ModelABC, PricerABC):
-    """
-    Backward-compatible combination of ModelABC and PricerABC.
-
-    All existing code that subclasses OptABC continues to work unchanged.
-    New code should prefer inheriting ModelABC and PricerABC (or their
-    subclasses) explicitly.
-    """
-    pass
-
-
-class OptAnalyticABC(OptABC):
+class OptAnalyticABC(ParamABC, OptABC):
     """
     Option model with analytic price and Greeks available.
     """

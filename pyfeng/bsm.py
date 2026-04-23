@@ -7,8 +7,9 @@ from . import opt_abc as opt
 from . import norm
 from . import opt_smile_abc as smile
 from .util import MathFuncs, MathConsts
+from .param import SigmaParam
 
-class Bsm(opt.OptAnalyticABC):
+class Bsm(SigmaParam, opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
 

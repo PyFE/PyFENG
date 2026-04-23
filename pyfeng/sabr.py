@@ -19,34 +19,11 @@ from . import bsm
 from . import norm
 from . import cev
 from .util import MathFuncs, DistHelperLnShift
+from .param import SabrParam
 
-class SabrABC(smile.OptSmileABC, abc.ABC):
-    vov, beta, rho = 0.0, 1.0, 0.0
-    model_type = "SABR"
-    var_process = False
+class SabrABC(SabrParam, smile.OptSmileABC):
     #### vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
     _base_beta = None
-
-    def __init__(self, sigma, vov=0.1, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            beta: elasticity parameter. 1.0 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.vov = vov
-        self.rho = rho
-        self.beta = beta
-
-    def params_kw(self):
-        params = super().params_kw()
-        extra = {"vov": self.vov, "beta": self.beta, "rho": self.rho}
-        return {**params, **extra}  # Py 3.9, params | extra
 
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta

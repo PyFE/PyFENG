@@ -11,9 +11,10 @@ import scipy.special as spsp
 from . import opt_abc as opt
 from . import bsm
 from .util import MathFuncs, MathConsts
+from .param import SigmaParam
 
 
-class Norm(opt.OptAnalyticABC):
+class Norm(SigmaParam, opt.OptAnalyticABC):
     """
     Bachelier (normal) model for option pricing.
     Underlying price is assumed to follow arithmetic Brownian motion.

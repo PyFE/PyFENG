@@ -3,9 +3,9 @@ import scipy.stats as spst
 import scipy.optimize as spopt
 from .bsm import Bsm
 from .opt_abc import OptABC
+from .param import SigmaParam
 
-
-class AmerLi2010QdPlus(OptABC):
+class AmerLi2010QdPlus(SigmaParam, OptABC):
     """
     Implementation of "initial guess" and QD+ of Li (2010)
 
