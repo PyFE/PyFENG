@@ -10,6 +10,9 @@ from .gamma import InvGam, InvGauss
 # FFT related models
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, CgmyFft, ExpNigFft, Sv32Fft, GarchFftWuMaWang2012
 
+# COS related models
+from .sv_cos import BsmCos, VarGammaCos, HestonCos
+
 # SABR/NSVh related models
 from .sabr import SabrHagan2002, SabrNormVolApprox, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P
 from .sabr_int import SabrUncorrChoiWu2021, SabrNormAnalytic, SabrNormEllipeInt, SabrMixture

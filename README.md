@@ -22,10 +22,13 @@ derivative pricing.
     * Analytic option pricing.
   * Heston model
     * FFT option pricing.
+    * COS (Fourier-Cosine) option pricing — Fang & Oosterlee (2008).
     * Almost exact MC simulation by Glasserman & Kim and Choi & Kwok.
   * Schobel-Zhu (OUSV) model
     * FFT option pricing.
     * Almost exact MC simulation by Choi
+  * Variance Gamma (VG) model
+    * COS (Fourier-Cosine) option pricing — analytic VG cumulants.
   * Rough volatility models
     * Rough Heston MC by Ma & Wu
 
@@ -68,6 +71,17 @@ m.price(strike=[90, 95, 100], spot=100, texp=1.2, cp=[-1,1,1])
 ```
 array([[ 5.75927238,  7.38869609,  5.52948546],
        [16.812035  , 18.83878533, 17.10541288]])
+```
+
+`In [3]:`
+```python
+# Heston model priced with the Fourier-Cosine (COS) method — Fang & Oosterlee (2008)
+m = pf.HestonCos(sigma=0.0175, vov=0.5751, mr=1.5768, rho=-0.5711, theta=0.0398)
+m.price(strike=np.array([80, 90, 100, 110, 120]), spot=100, texp=1.0)
+```
+`Out [3]:`
+```
+array([20.6262..., 11.5673...,  5.7852...,  2.3876...,  0.8438...])
 ```
 
 ## Author
