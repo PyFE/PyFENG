@@ -1,4 +1,5 @@
 import abc
+import warnings
 import numpy as np
 import scipy.integrate as scint
 from . import sv_abc as sv
@@ -273,7 +274,7 @@ class OusvUncorrBallRoma1994(OusvABC):
     def price(self, strike, spot, texp, cp=1):
 
         if not np.isclose(self.rho, 0.0):
-            print(f"Pricing ignores rho = {self.rho}.")
+            warnings.warn(f"Pricing ignores rho = {self.rho}.")
 
         avgvar, _ = self.avgvar_mv(texp, self.sigma)
 

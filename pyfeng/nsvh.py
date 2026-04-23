@@ -1,4 +1,5 @@
 import abc
+import warnings
 import os
 import pandas as pd
 import numpy as np
@@ -29,7 +30,7 @@ class NsvhABC(smile.OptSmileABC, abc.ABC):
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
+            warnings.warn(f"Ignoring beta = {beta}.")
         self.lam = lam
         self.vov = vov
         self.rho = rho
@@ -268,7 +269,7 @@ class Nsvh1(NsvhABC):
             return (w + 1 - term1) * (w + 1 + 0.5 * term1)**2 - beta1
 
         assert f_beta1(w_min) >= 0
-        # print(w_min, f_beta1(w_min), w_max, f_beta1(w_max))
+
 
         # root finding for w = np.exp(S) = np.exp(vov^2 texp)
         w_root = spop.brentq(f_beta1, w_min, w_max)

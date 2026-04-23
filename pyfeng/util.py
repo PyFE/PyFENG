@@ -71,7 +71,8 @@ class MathFuncs:
         Returns:
 
         """
-        assert np.all(x > -1.0)
+        if not np.all(x > -1.0):
+            raise ValueError("x must be greater than -1.0.")
 
         rv = np.ones_like(x)
         np.divide(np.log1p(x),  x, out=rv, where=(x != 0.0))
@@ -91,7 +92,8 @@ class MathFuncs:
 
         """
 
-        assert np.all(x > -1.0)
+        if not np.all(x > -1.0):
+            raise ValueError("x must be greater than -1.0.")
         a1p = 1.0 + a
         rv = np.ones_like(x + a)   # rv = 1 when x = 0
         np.divide(np.expm1(a1p * np.log1p(x)), a1p * x, out=rv, where=(x != 0.0) & (a1p != 0.0))
@@ -156,14 +158,16 @@ class DistHelperLnShift:
             None
         """
 
-        assert len(mvs) >= 2
+        if len(mvs) < 2:
+            raise ValueError("mvs must have at least 2 elements (mean and variance).")
 
         self.mu = mvs[0]
 
         if len(mvs) == 2 or lam is not None:  # use (m, v) only
             if lam is None:
                 # if lam is None, self.lam should be specified
-                assert self.lam is not None
+                if self.lam is None:
+                    raise ValueError("lam must be specified when mvs has only 2 elements.")
             else:
                 # if lam is specified, store it to self.lam
                 self.lam = lam
@@ -171,7 +175,8 @@ class DistHelperLnShift:
             self._ww = mvs[1] / self.lam**2
             self.sig = np.sqrt(np.log1p(self._ww))
         else:
-            assert len(mvs) > 2
+            if len(mvs) <= 2:
+                raise ValueError("mvs must have more than 2 elements when lam is not specified.")
             s = mvs[2]
             sqrt_w = 2*np.sinh(np.arccosh(1 + 0.5*s**2)/6)
             self.lam = np.sqrt(mvs[1]) / sqrt_w
@@ -182,7 +187,8 @@ class DistHelperLnShift:
             n = 2 if len(mvs) == 2 or lam is not None else 3
             mvsk2 = self.mvsk()
             for (i,v) in enumerate(mvs[:n]):
-                assert np.isclose(v, mvsk2[i])
+                if not np.isclose(v, mvsk2[i]):
+                    raise ValueError(f"Moment validation failed at index {i}: expected {v}, got {mvsk2[i]}.")
 
     def quad(self, n_quad):
         """

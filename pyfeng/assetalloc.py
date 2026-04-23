@@ -1,4 +1,5 @@
 import abc
+import warnings
 import numpy as np
 import scipy.stats as spst
 import scipy.optimize as spop
@@ -40,7 +41,8 @@ class AssetAllocABC(abc.ABC):
                              + (1 - cor) * np.eye(self.n_asset)
                 self.rho = cor
             else:
-                assert cor.shape == (self.n_asset, self.n_asset)
+                if cor.shape != (self.n_asset, self.n_asset):
+                    raise ValueError(f"cor must have shape ({self.n_asset}, {self.n_asset}), got {cor.shape}.")
                 self.cor_m = cor
                 if self.n_asset == 2:
                     self.rho = cor[0, 1]
@@ -64,7 +66,8 @@ class AssetAllocABC(abc.ABC):
         elif np.isscalar(longshort):
             self.longshort = np.full(self.n_asset, np.sign(longshort), dtype=np.int8)  # long-only
         else:
-            assert self.n_asset == len(longshort)
+            if self.n_asset != len(longshort):
+                raise ValueError(f"longshort length {len(longshort)} does not match n_asset={self.n_asset}.")
             self.longshort = np.sign(longshort, dtype=np.int8)  # long-only
 
 
@@ -121,8 +124,10 @@ class RiskParity(AssetAllocABC):
         if budget is None:
             self.budget = np.full(self.n_asset, 1 / self.n_asset)
         else:
-            assert self.n_asset == len(budget)
-            assert np.isclose(np.sum(budget), 1)
+            if self.n_asset != len(budget):
+                raise ValueError(f"budget length {len(budget)} does not match n_asset={self.n_asset}.")
+            if not np.isclose(np.sum(budget), 1):
+                raise ValueError(f"budget must sum to 1, got {np.sum(budget)}.")
             self.budget = np.array(budget)
 
     @classmethod
@@ -142,7 +147,8 @@ class RiskParity(AssetAllocABC):
         ev[:n_asset-zero_ev] = np.random.uniform(size=n_asset - zero_ev)
         ev *= n_asset / np.sum(ev)
         cor = spst.random_correlation.rvs(ev, tol=1e-11)
-        assert np.allclose(np.diag(cor), 1)
+        if not np.allclose(np.diag(cor), 1):
+            raise ValueError("Correlation matrix diagonal must be all ones.")
 
         m = cls(cov=cor)
         return m
@@ -261,7 +267,7 @@ class RiskParity(AssetAllocABC):
         sol = spop.root(self._newton_val, w_init, (cor, self.budget), jac=self._newton_jacobian, tol=tol)
         # assert sol.success
         if not sol.success:
-            print("Newton Failed.")
+            warnings.warn("Newton solver failed to converge.")
 
         ww = sol.x / self.sigma
         ww /= np.sum(ww)

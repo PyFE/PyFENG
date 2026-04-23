@@ -1,4 +1,5 @@
 import abc
+import warnings
 import numpy as np
 import scipy.stats as spst
 import scipy.interpolate as spinterp
@@ -679,7 +680,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         xx = np.insert(xx, 0, 0)
         cdf = np.insert(cdf, 0, 0)
         rv = spinterp.interp1d(cdf, xx, kind='linear')
-        print(f'Tabulated icdf for gamma shape={shape}')
+        warnings.warn(f"Tabulated icdf for gamma shape={shape}.")
         return rv
 
     def draw_eta(self, dt, var_0, var_t):

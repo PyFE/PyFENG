@@ -7,6 +7,7 @@ Created on Tue Oct 10
 
 import abc
 import copy
+import warnings
 import os
 import pandas as pd
 import numpy as np
@@ -518,7 +519,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
+            warnings.warn(f"Ignoring beta = {beta}.")
         self.is_atmvol = is_atmvol
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 

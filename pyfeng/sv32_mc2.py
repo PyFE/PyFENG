@@ -71,7 +71,7 @@ class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
         References:
             * https://functions.wolfram.com/Bessel-TypeFunctions/BesselI/20/ShowAll.html
         """
-        print(nu, zz)
+        # Debug: print(nu, zz)
         p0 = np.power(zz/2, nu) / spsp.gamma(nu + 1)
         #psi_1 = np.full_like(zz, spsp.polygamma(1, nu + 1), dtype=float)
         psi_1 = spsp.polygamma(1, nu + 1)
