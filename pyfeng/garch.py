@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 from . import sv_abc as sv
 from . import bsm
@@ -63,7 +64,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
     def price(self, strike, spot, texp, cp=1):
 
         if not np.isclose(self.rho, 0.0):
-            print(f"Pricing ignores rho = {self.rho}.")
+            warnings.warn(f"Pricing ignores rho = {self.rho}.")
 
         avgvar, var = self.avgvar_mv(texp, self.sigma)
 

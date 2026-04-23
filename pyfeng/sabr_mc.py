@@ -1,5 +1,6 @@
 import math
 import abc
+import warnings
 import numpy as np
 import scipy.optimize as spop
 import scipy.stats as spst
@@ -376,7 +377,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         uu = spst.norm.cdf(zz)
         ln_m, m2 = self.cond_avgvar_mv(vovn, np.log(sigma_t) / vovn)
         ln_sig = np.sqrt(np.log(m2 / ln_m ** 2))
-        print(sigma_t, '\n', ln_sig, '\n', uu)
+        # Debug: print(sigma_t, '\n', ln_sig, '\n', uu)
 
         def obj_func(z):
             x = ln_m * np.exp(ln_sig * (z - ln_sig / 2))

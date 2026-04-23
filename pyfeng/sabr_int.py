@@ -1,4 +1,5 @@
 import abc
+import warnings
 import numpy as np
 from . import sabr
 import scipy.special as spsp
@@ -58,7 +59,7 @@ class SabrMixtureABC(sabr.SabrABC, smile.MassZeroABC, abc.ABC):
         kk = strike / fwd
 
         fwd_ratio, vol_ratio, ww = self.cond_spot_sigma(texp, fwd)
-        # print(f'E(F) = {np.sum(fwd_ratio * ww)}')
+
 
         if self.correct_fwd:
             fwd_ratio /= np.sum(fwd_ratio*ww)
@@ -249,7 +250,7 @@ class SabrNormAnalytic(sabr.SabrABC):
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
+            warnings.warn(f"Ignoring beta = {beta}.")
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
@@ -322,7 +323,7 @@ class SabrNormEllipeInt(sabr.SabrABC):
         """
         # Make sure beta = 0
         if beta is not None and not np.isclose(beta, 0.0):
-            print(f"Ignoring beta = {beta}...")
+            warnings.warn(f"Ignoring beta = {beta}.")
         super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     @staticmethod
