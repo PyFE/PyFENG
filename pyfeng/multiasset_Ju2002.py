@@ -4,6 +4,7 @@ Created on Wed Apr 28 09:08:29 2021
 
 @author: Yuze, Lantian
 """
+import warnings
 from . import multiasset as ma
 from . import opt_abc as opt
 import numpy as np
@@ -330,10 +331,9 @@ class BsmContinuousAsianJu2002(opt.OptABC):
     def price(self, strike, spot, texp, cp=1):
 
         if np.isscalar(spot) == False:
-            print("spot should not be array")
-            return 0
+            raise ValueError("spot must be a scalar.")
         elif np.isscalar(self.divr) == False:
-            print("dividend should not be array")
+            raise ValueError("dividend (divr) must be a scalar.")
             return 0
         else:
             g = self.intr - self.divr

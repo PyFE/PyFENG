@@ -75,8 +75,8 @@ class TestBsmMethods(unittest.TestCase):
             delta2 = m_bsm.delta_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
             self.assertAlmostEqual(delta1, delta2, delta=1e-4)
 
-            gamma1 = m_bsm.delta(strike=strike, spot=spot, texp=texp, cp=cp)
-            gamma2 = m_bsm.delta_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
+            gamma1 = m_bsm.gamma(strike=strike, spot=spot, texp=texp, cp=cp)
+            gamma2 = m_bsm.gamma_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
             self.assertAlmostEqual(gamma1, gamma2, delta=1e-4)
 
             vega1 = m_bsm.vega(strike=strike, spot=spot, texp=texp, cp=cp)

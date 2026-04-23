@@ -38,7 +38,7 @@ class OptMaABC(opt.OptABC, abc.ABC):
 
         if self.n_asset == 1:
             if cor is not None:
-                print(f"Ignoring cor={cor} for a single asset")
+                warnings.warn(f"Ignoring cor={cor} for a single asset.")
             self.rho = None
             self.cor_m = np.array([[1.0]])
         elif np.isscalar(cor):
@@ -47,7 +47,8 @@ class OptMaABC(opt.OptABC, abc.ABC):
             ) * np.eye(self.n_asset)
             self.rho = cor
         else:
-            assert cor.shape == (self.n_asset, self.n_asset)
+            if cor.shape != (self.n_asset, self.n_asset):
+                raise ValueError(f"cor must have shape ({self.n_asset}, {self.n_asset}), got {cor.shape}.")
             self.cor_m = cor
             if self.n_asset == 2:
                 self.rho = cor[0, 1]
@@ -91,7 +92,8 @@ class BsmSpreadKirk(OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd1 = fwd[..., 0] - np.minimum(strike, 0)
         fwd2 = fwd[..., 1] + np.maximum(strike, 0)
@@ -122,7 +124,8 @@ class BsmSpreadBjerksund2014(OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd1 = fwd[..., 0]
         fwd2 = fwd[..., 1]
@@ -181,7 +184,8 @@ class NormBasket(OptMaABC):
         elif np.isscalar(weight):
             self.weight = np.ones(self.n_asset) * weight
         else:
-            assert len(weight) == self.n_asset
+            if len(weight) != self.n_asset:
+                raise ValueError(f"weight length {len(weight)} does not match n_asset={self.n_asset}.")
             self.weight = np.array(weight)
 
     @classmethod
@@ -202,7 +206,8 @@ class NormBasket(OptMaABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd @ self.weight
         vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
@@ -234,7 +239,8 @@ class BsmBasketLevy1992(NormBasket):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd * self.weight
         m1 = np.sum(fwd_basket, axis=-1)
@@ -266,7 +272,8 @@ class BsmBasketMilevsky1998(NormBasket):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd * self.weight
         m1 = np.sum(fwd_basket, axis=-1)
@@ -306,7 +313,8 @@ class BsmMax2(OptMaABC):
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         sig_std = sig * np.sqrt(texp)
         spd_rho = np.sqrt(np.dot(sig, sig) - 2 * self.rho * sig[0] * sig[1])
@@ -350,7 +358,8 @@ class BsmMax2(OptMaABC):
                 spst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m)
             )
 
-            assert term1 + term2 + term3 >= strike[k]
+            if term1 + term2 + term3 < strike[k]:
+                raise ValueError(f"Pricing error: lower bound violated at strike[{k}]={strike[k]}.")
             price[k] = term1 + term2 + term3 - strike[k]
 
             if cp[k] < 0:
@@ -385,7 +394,8 @@ class BsmBasket1Bm(opt.OptABC):
         elif np.isscalar(weight):
             self.weight = np.ones(self.n_asset) * weight
         else:
-            assert len(weight) == self.n_asset
+            if len(weight) != self.n_asset:
+                raise ValueError(f"weight length {len(weight)} does not match n_asset={self.n_asset}.")
             self.weight = np.array(weight)
         super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
 
@@ -401,7 +411,8 @@ class BsmBasket1Bm(opt.OptABC):
         strike: strike prices. scalar or (n_asset, )
         """
 
-        assert np.all(fac * std >= 0.0)
+        if not np.all(fac * std >= 0.0):
+            raise ValueError("fac * std must be non-negative for all assets.")
         log = np.min(fac) > 0  # Basket if log=True, spread if otherwise.
         scalar_output = np.isscalar(np.sum(fac * std, axis=-1) - strike)
         strike = np.atleast_1d(strike)
@@ -442,7 +453,7 @@ class BsmBasket1Bm(opt.OptABC):
             )
             x[ind] -= y / dy
             if len(y) == 0:
-                print(ind, y_vec, y)
+                warnings.warn(f"Implied vol solver: unexpected empty residual at ind={ind}.")
             y_err_max = np.amax(np.abs(y))
             if y_err_max < BsmBasket1Bm.IMPVOL_TOL:
                 break
@@ -457,7 +468,8 @@ class BsmBasket1Bm(opt.OptABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd * self.weight
         sigma_std = self.sigma * np.sqrt(texp)
@@ -576,7 +588,8 @@ class BsmBasketJsu(NormBasket):
 
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
-        assert fwd.shape[-1] == self.n_asset
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd @ self.weight
 
