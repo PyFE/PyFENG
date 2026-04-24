@@ -5,8 +5,8 @@ Created on Thu Oct 31 17:09:29 2019
 """
 
 import math
+import warnings
 import numpy as np
-
 
 class Mgf2Mom:
     """
@@ -68,9 +68,14 @@ class Mgf2Mom:
 
         This function is modified based on algo3_mu which uses for loop.
         '''
+
+        if n < 2:
+            warnings.warn("n must be >= 2. Setting n=2.", UserWarning)
+            n = 2
+
         # Step 1:
         # pre-compute mu_1 and mu_2 with alpha=1 and l=1
-        mu_1 = self.moment_raw(1, alpha=1, l=1)
+        mu_1 = self.moment_raw(1, alpha=1, l=2)
         mu_2 = self.moment_raw(2, alpha=1.0/mu_1, l=1)
 
         # Step 2:
