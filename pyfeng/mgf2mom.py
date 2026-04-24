@@ -45,11 +45,7 @@ class Mgf2Mom:
             l = self.l
 
         r_n = self.radius(n, l=l)
-        denominator = 2.0 * n * l * (alpha*r_n) ** n
-        coef_ = math.factorial(n) / denominator
-
-        part1 = self.mgf(alpha*r_n).real
-        part2 = (-1) ** n * self.mgf(-alpha*r_n).real
+        mgf = self.mgf(alpha*r_n*np.array([1.0, -1.0])).real
 
         #calc part3
         kk = np.arange(1, n*l)
@@ -58,7 +54,7 @@ class Mgf2Mom:
         #calc the value
         part3 = np.sum(np.real(self.mgf(alpha*r_n * np.exp(power1)) * np.exp(power2)))
 
-        mu_n = coef_ * (part1 + part2 + 2.0 * part3)
+        mu_n = math.factorial(n) / (2*n*l*(alpha*r_n)**n) * (mgf[0] + (-1)**n * mgf[1] + 2.0 * part3)
         return mu_n
 
     def moments(self, n):
