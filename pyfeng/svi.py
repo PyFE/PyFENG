@@ -10,7 +10,7 @@ class Svi(smile.OptSmileABC):
     References
         - Gatheral J, Jacquier A (2013) Arbitrage-free SVI volatility surfaces. arXiv:12040646 [q-fin]
     """
-
+    model_type = "Svi"
     vov, rho, smooth, shift = 0.4, -0.4, 0.1, 0.0
 
     def __init__(self, sigma=0.04, vov=0.4, rho=-0.4, smooth=0.1, shift=0.0, intr=0.0, divr=0.0, is_fwd=False):

@@ -2,14 +2,14 @@ import numpy as np
 import abc
 import os
 import pandas as pd
+from typing import ClassVar
 from . import bsm
 from . import opt_smile_abc as smile
 
 
 class SvABC(smile.OptSmileABC, abc.ABC):
 
-    model_type: str = NotImplementedError
-    var_process: bool = NotImplementedError
+    var_process: ClassVar[bool]
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
 
     def __init__(

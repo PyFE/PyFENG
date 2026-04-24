@@ -15,6 +15,7 @@ class AmerLi2010QdPlus(OptABC):
         - Li M (2010) Analytical approximations for the critical stock prices of American options: a performance comparison. Rev Deriv Res 13:75–99. https://doi.org/10.1007/s11147-009-9044-3
     """
 
+    model_type = "Bsm"
     bsm_model = None
 
     def __init__(self, sigma, *args, **kwargs):
