@@ -28,6 +28,8 @@ class Bsm(opt.OptAnalyticABC):
                [16.812035  , 17.10541288, 14.10354768]])
     """
 
+    model_type = "Bsm"
+
     @staticmethod
     def price_formula(strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False):
         """
@@ -592,6 +594,8 @@ class BsmDisp(smile.OptSmileABC, Bsm):
                [0.20977955, 0.20461468, 0.20025691, 0.19652101, 0.19327567],
                [0.2       , 0.2       , 0.2       , 0.2       , 0.2       ]])
     """
+
+    model_type = "BsmDisp"
 
     beta = 1  # equivalent to Black-Scholes
     pivot = 0

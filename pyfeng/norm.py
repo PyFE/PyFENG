@@ -32,6 +32,8 @@ class Norm(opt.OptAnalyticABC):
                [18.67164469, 17.95246828, 13.98027179]])
     """
 
+    model_type = "Norm"
+
     # Coefficients for _impvol_Choi2009
     _POLY_NU = [
         1.266458051348246e4,
