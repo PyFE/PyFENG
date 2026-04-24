@@ -7,18 +7,46 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Base Classes:
+
+   opt_abc
+   sv_abc
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Single-Asset Models:
 
    bsm
-   cev
    norm
+   cev
+   svi
    nsvh
    sabr
    sabr_int
+   sabr_mc
+   heston
    sv_fft
-   gamma
+   ousv
+   garch
+   rheston
+   sv32
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Multi-Asset and Path-Dependent Models:
+
    multiasset
    multiasset_mc
+   asian
+   american
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Utilities:
+
+   gamma
+   subord_bm
+   mgf2mom
    assetalloc
 
 Indices and tables
