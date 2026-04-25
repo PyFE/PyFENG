@@ -56,7 +56,7 @@ class InvGam(smile.OptSmileABC):
         """
 
         fwd = self.forward(spot, texp)
-        alpha = 1 / (np.exp(self.sigma ** 2 * texp) - 1) + 2
+        alpha = 1 / np.expm1(self.sigma ** 2 * texp) + 2
         beta = (alpha - 1) * fwd
         return alpha, beta
 
@@ -96,7 +96,7 @@ class InvGauss(smile.OptSmileABC):
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        sig2_inv = np.exp(self.sigma ** 2 * texp) - 1
+        sig2_inv = np.expm1(self.sigma ** 2 * texp)
         ig = spst.invgauss(mu=sig2_inv, scale=1 / sig2_inv)
         kk = strike / fwd
         price = np.where(
@@ -108,7 +108,7 @@ class InvGauss(smile.OptSmileABC):
 
     def cdf(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        sig2_inv = np.exp(self.sigma ** 2 * texp) - 1
+        sig2_inv = np.expm1(self.sigma ** 2 * texp)
         ig = spst.invgauss(mu=sig2_inv, scale=1 / sig2_inv)
         x = strike / fwd
         cdf = np.where(cp > 0, ig.sf(x), ig.cdf(x))

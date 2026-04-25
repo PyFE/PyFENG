@@ -118,9 +118,9 @@ class VarGammaFft(sv.SvABC, FftABC):
 
     def mgf_logprice(self, uu, texp):
         volvar = self.vov*self.sigma**2
-        mu = np.log(1 - self.theta*self.vov - 0.5*volvar)  # /self.vov
+        mu = np.log1p(self.theta*self.vov - 0.5*volvar)  # /self.vov
         # CF: rv = 1j*mu*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
-        rv = mu*uu - np.log(1 + (-self.theta*self.vov - 0.5*volvar*uu)*uu)
+        rv = mu*uu - np.log1p((-self.theta*self.vov - 0.5*volvar*uu)*uu)
         np.exp(texp/self.vov*rv, out=rv)
         return rv
 
@@ -645,7 +645,7 @@ class Sv32Fft(sv.SvABC, FftABC):
         beta = 1 + 2*delta
 
         mr_new = self.mr * self.theta
-        XX = 2*mr_new/(self.vov**2 * self.sigma)/(np.exp(mr_new * texp) - 1)
+        XX = 2*mr_new/(self.vov**2 * self.sigma)/np.expm1(mr_new * texp)
 
         #ret = spsp.gamma(beta - alpha) * spsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
         # we use log version because of large argument of np.exp()

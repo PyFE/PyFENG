@@ -8,6 +8,7 @@ import warnings
 from . import multiasset as ma
 from . import opt_abc as opt
 import numpy as np
+from .util import MathFuncs
 import scipy.stats as spst
 
 
@@ -338,16 +339,11 @@ class BsmContinuousAsianJu2002(opt.OptABC):
         else:
             g = self.intr - self.divr
             gt = g * texp
-            u1 = spot * (np.exp(gt) - 1) / g / texp
+            u1 = spot * MathFuncs.avg_exp(gt)
+            g2 = 2 * g + self.sigma ** 2
             u2 = (
-                2
-                * spot ** 2
-                * (
-                    (np.exp((2 * g + self.sigma ** 2) * texp) - 1)
-                    / (2 * g + self.sigma ** 2)
-                    - (np.exp(gt) - 1) / g
-                )
-                / texp
+                2 * spot ** 2
+                * (MathFuncs.avg_exp(g2 * texp) - MathFuncs.avg_exp(gt))
                 / texp
                 / (g + self.sigma ** 2)
             )

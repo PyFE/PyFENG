@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 from . import sv_abc as sv
 from . import bsm
+from .util import MathFuncs
 
 
 class HestonABC(sv.SvABC, abc.ABC):
@@ -36,7 +37,7 @@ class HestonABC(sv.SvABC, abc.ABC):
 
     def var_mv(self, dt, var0=None):
         """
-        Mean and variance of the variance V(t+dt) given V(0) = var_0
+        Mean and variance of the variance V(t+dt) given V(t) = var_0
 
         Args:
             var0: initial variance
@@ -48,10 +49,11 @@ class HestonABC(sv.SvABC, abc.ABC):
         if var0 is None:
             var0 = self.sigma
 
-        e_mr = np.exp(-self.mr*dt)
+        mr_t = self.mr*dt
+        e_mr = np.exp(-mr_t)
         m = self.theta + (var0 - self.theta)*e_mr
-        s2 = var0*e_mr + self.theta*(1 - e_mr)/2
-        s2 *= self.vov**2*(1 - e_mr)/self.mr
+        avg = MathFuncs.avg_exp(-mr_t)
+        s2 = self.vov**2 * dt * avg * (var0*e_mr + self.theta*mr_t*avg/2)
         return m, s2
 
     def avgvar_mv(self, texp, var0=None):
@@ -75,7 +77,7 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         mr_t = self.mr*texp
         e_mr = np.exp(-mr_t)
-        phi = (1 - e_mr)/mr_t
+        phi = MathFuncs.avg_exp(-mr_t)
         x0 = var0 - self.theta
         mean = self.theta + x0*phi
         var = (self.theta - 2*x0*e_mr) + (var0 - 2.5*self.theta + (var0 - self.theta/2)*e_mr)*phi
@@ -102,9 +104,8 @@ class HestonABC(sv.SvABC, abc.ABC):
 
         ### continuously monitored fair strike (same as mean of avgvar)
         mr_t = self.mr*texp
-        e_mr_t = np.exp(-mr_t)
         x0 = var0 - self.theta
-        strike = self.theta + x0*(1 - e_mr_t)/mr_t
+        strike = self.theta + x0*MathFuncs.avg_exp(-mr_t)
 
         if not np.all(np.isclose(dt, 0.0)):
             ### adjustment for discrete monitoring
@@ -112,12 +113,12 @@ class HestonABC(sv.SvABC, abc.ABC):
             e_mr_h = np.exp(-mr_h)
 
             tmp = self.theta - 2*(self.intr - self.divr)
-            strike += tmp*dt/4 * (tmp + 2*x0*(1 - e_mr_t)/mr_t)
+            strike += tmp*dt/4 * (tmp + 2*x0*MathFuncs.avg_exp(-mr_t))
 
             tmp = self.vov / self.mr
-            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - (1-e_mr_h)/mr_h)
-            strike += x0 * tmp * (tmp/2 - self.rho) * (1 - e_mr_t)/mr_t * (1 + mr_h/(1 - 1/e_mr_h))
-            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * (1 - e_mr_t**2)/(8*mr_t) * (1-e_mr_h)/(1+e_mr_h)
+            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - MathFuncs.avg_exp(-mr_h))
+            strike += x0 * tmp * (tmp/2 - self.rho) * MathFuncs.avg_exp(-mr_t) * (1 + mr_h/(1 - 1/e_mr_h))
+            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * MathFuncs.avg_exp(-2*mr_t)/4 * (1-e_mr_h)/(1+e_mr_h)
 
         return strike
 

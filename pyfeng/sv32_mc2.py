@@ -243,7 +243,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
         val_dn = laplace_cond(-eps)
         m1 = (val_dn - val_up) / (2*eps)
         var = (val_dn + val_up - 2.0)/eps**2 - m1**2
-        ln_sig = np.sqrt(np.log(1+var/m1**2))
+        ln_sig = np.sqrt(np.log1p(var/m1**2))
 
         u_error = m1 + 5 * np.sqrt(np.fmax(var, 0))
         h = np.pi / u_error
@@ -324,7 +324,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             shape = mean / scale
             avgvar[idx] = scale * self.rng_spawn[1].standard_gamma(shape=shape)
         elif dist.lower() == 'ln':
-            scale = np.sqrt(np.log(1 + var / mean ** 2))
+            scale = np.sqrt(np.log1p(var/mean**2))
             avgvar[idx] = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {dist}.")
