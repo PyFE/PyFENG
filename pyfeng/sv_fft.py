@@ -191,7 +191,7 @@ class VarGammaFft(sv.SvABC, FftABC):
                 f"(sigma={self.sigma}, vov={self.vov}, theta={self.theta}). "
                 f"Reduce |theta|, vov, or sigma."
             )
-        self._mgf1_correction = np.log(arg)  # = omega * vov, reused in every mgf_logprice call
+        self._mgf1_correction = -np.log(arg)  # = kappa(1)*vov = -omega*vov; reused in every mgf_logprice call
 
     def mgf_logprice(self, uu, texp):
         """
@@ -207,9 +207,11 @@ class VarGammaFft(sv.SvABC, FftABC):
             \\right]\\right).
 
         The first term inside the brackets is the martingale correction
-        :math:`u \\cdot \\omega\\nu` (precomputed as ``self._mgf1_correction``);
-        the second is the raw cumulant generating function of the VG increment,
-        evaluated with ``np.log1p`` for numerical stability.
+        :math:`u \\cdot \\omega\\nu`; the second is the raw CGF of the VG
+        increment evaluated with ``np.log1p`` for numerical stability.
+        ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{VG}}(1)\\nu = -\\omega\\nu`
+        (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
+        term is ``-self._mgf1_correction * uu``.
 
         Args:
             uu: MGF argument (scalar or array). Real values give the MGF;
@@ -221,8 +223,8 @@ class VarGammaFft(sv.SvABC, FftABC):
             MGF value(s) at ``uu``, same shape as ``uu``.
         """
         volvar = self.vov*self.sigma**2
-        # CF: rv = 1j*self._mgf_logprice_1*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
-        rv = self._mgf1_correction * uu - np.log1p((-self.theta * self.vov - 0.5 * volvar * uu) * uu)
+        # CF: rv = 1j*self._mgf1_correction*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
+        rv = -self._mgf1_correction * uu - np.log1p((-self.theta * self.vov - 0.5 * volvar * uu) * uu)
         np.exp(texp/self.vov*rv, out=rv)
         return rv
 
@@ -309,7 +311,7 @@ class ExpNigFft(sv.SvABC, FftABC):
                 f"(sigma={self.sigma}, vov={self.vov}, theta={self.theta}). "
                 f"Reduce |theta|, vov, or sigma."
             )
-        self._mgf1_correction = np.sqrt(arg) - 1.0  # = omega * vov, reused in every mgf_logprice call
+        self._mgf1_correction = 1.0 - np.sqrt(arg)  # = kappa(1)*vov = -omega*vov; reused in every mgf_logprice call
 
     def mgf_logprice(self, uu, texp):
         """
@@ -324,10 +326,13 @@ class ExpNigFft(sv.SvABC, FftABC):
                 + 1 - \\sqrt{1 - 2\\theta\\nu u - \\sigma^2\\nu u^2}
             \\right]\\right).
 
-        The first term is the martingale correction :math:`\\omega\\nu\\cdot u`
-        (precomputed as ``self._mgf1_correction``); the second is the raw CGF
-        of the NIG increment. The martingale condition :math:`\\text{MGF}(1) = 1`
-        is satisfied by construction: both terms cancel exactly at :math:`u = 1`.
+        The first term is the martingale correction :math:`\\omega\\nu\\cdot u`;
+        the second is the raw CGF of the NIG increment.
+        ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{NIG}}(1)\\nu = -\\omega\\nu`
+        (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
+        term is ``-self._mgf1_correction * uu``.  The martingale condition
+        :math:`\\mathrm{MGF}(1) = 1` is satisfied by construction: both terms
+        cancel exactly at :math:`u = 1`.
 
         Args:
             uu: MGF argument (scalar or array). Real values give the MGF;
@@ -339,8 +344,8 @@ class ExpNigFft(sv.SvABC, FftABC):
             MGF value(s) at ``uu``, same shape as ``uu``.
         """
         volvar = self.vov*self.sigma**2
-        rv = self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.vov - volvar * uu) * uu)
-        # CF: rv = 1j*self._mgf_logprice_1*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
+        rv = -self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.vov - volvar * uu) * uu)
+        # CF: rv = 1j*self._mgf1_correction*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
         np.exp(texp/self.vov*rv, out=rv)
         return rv
 
@@ -856,40 +861,138 @@ class Sv32Fft(sv.SvABC, FftABC):
 
 
 class CgmyFft(smile.OptSmileABC, FftABC):
+    """
+    CGMY model option pricing with FFT.
+
+    The CGMY process (Carr, Geman, Madan, Yor) is a four-parameter pure-jump
+    Lévy process whose Lévy measure is
+
+    .. math::
+
+        \\nu(dx) = C\\left[
+            \\frac{e^{-Mx}}{x^{1+Y}}\\,\\mathbf{1}_{x>0}
+            + \\frac{e^{Gx}}{|x|^{1+Y}}\\,\\mathbf{1}_{x<0}
+        \\right]dx.
+
+    The per-unit-time cumulant generating function (CGF) is
+
+    .. math::
+
+        \\kappa(u) = C\\,\\Gamma(-Y)
+            \\left[(M-u)^Y - M^Y + (G+u)^Y - G^Y\\right],
+        \\quad -G < u < M,
+
+    and the martingale correction is :math:`\\omega = -\\kappa(1)`, so that
+    :math:`E[S_T] = F_T`.
+
+    **Parameters:**
+
+    * ``C`` (:math:`C > 0`): overall activity / scale of the jump measure.
+    * ``G`` (:math:`G > 0`): exponential decay rate of the left tail
+      (negative jumps); larger ``G`` ⟹ thinner left tail.
+    * ``M`` (:math:`M > 1`): exponential decay rate of the right tail
+      (positive jumps); ``M > 1`` is required for the martingale correction
+      :math:`\\kappa(1)` to be finite.
+    * ``Y`` (:math:`Y < 2`): fine-structure index.
+      :math:`Y < 0` — finite activity (compound Poisson);
+      :math:`Y \\in [0,1)` — infinite activity, finite variation;
+      :math:`Y \\in [1,2)` — infinite variation.
+
+    Note:
+        The :math:`\\Gamma(-Y)` factor is singular at :math:`Y = 0, 1, 2, \\ldots`;
+        these integer values require special limiting treatment.
+
+    References:
+        - Carr P, Geman H, Madan DB, Yor M (2002) The Fine Structure of Asset
+          Returns: An Empirical Investigation. Journal of Business 75:305–332.
+          https://doi.org/10.1086/338705
+        - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY
+          Process and Option Pricing. Journal of Futures Markets 34:1095–1121.
+          https://doi.org/10.1002/fut.21647
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(80, 121, 10)
+        >>> m = pf.CgmyFft(C=1.0, G=5.0, M=10.0, Y=0.5)
+        >>> m.price(strike, 100, 1.0)
+    """
 
     C, G, M, Y = 1., 1., 1., 0.
 
     def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Args:
+            C: overall activity level (:math:`C > 0`).
+            G: left-tail decay rate (:math:`G > 0`).
+            M: right-tail decay rate (:math:`M > 1`).
+            Y: fine-structure index (:math:`Y < 2`).
+            intr: interest rate (domestic).
+            divr: dividend / convenience yield (foreign interest rate).
+            is_fwd: if ``True``, treat ``spot`` as forward price.
+
+        Raises:
+            ValueError: if any of ``C ≤ 0``, ``G ≤ 0``, ``M ≤ 1``, or
+                ``Y ≥ 2`` is violated.
+        """
         super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)  # self.sigma = C
         self.C, self.G, self.M, self.Y = C, G, M, Y
 
+        if C <= 0:
+            raise ValueError(f"C = {C} must be positive.")
+        if G <= 0:
+            raise ValueError(f"G = {G} must be positive.")
+        if M <= 1:
+            raise ValueError(
+                f"M = {M} must be greater than 1 for the martingale "
+                f"correction kappa(1) to be finite."
+            )
+        if Y >= 2:
+            raise ValueError(f"Y = {Y} must be less than 2.")
+
+        # Precompute parameter-only constants reused in every mgf_logprice call
+        self._gam_Y_C = spsp.gamma(-Y) * self.C
+        self._M_pow_Y = np.power(M, Y)
+        self._G_pow_Y = np.power(G, Y)
+        # = kappa(1) / _gam_Y_C  (= -omega / _gam_Y_C)
+        self._mgf1_correction = np.power(M - 1., Y) - self._M_pow_Y + np.power(G + 1., Y) - self._G_pow_Y
+
     def mgf_logprice(self, uu, texp):
         """
-        MGF of log price of CGMY from Eq (19) from Ballotta and Kyriakou (2014)
+        MGF of log price under the CGMY model.
+
+        The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
+
+        .. math::
+
+            \\exp\\!\\Bigl(T\\,\\bigl[\\kappa(u) + \\omega\\, u\\bigr]\\Bigr)
+
+        where :math:`\\kappa(u) = C\\,\\Gamma(-Y)[(M-u)^Y - M^Y + (G+u)^Y - G^Y]`
+        is the CGF and :math:`\\omega = -\\kappa(1)` is the martingale correction.
+        ``self._mgf1_correction`` stores :math:`\\kappa(1)/[C\\,\\Gamma(-Y)]`
+        (the raw-CGF factor at :math:`u=1`; precomputed as ``_mgf1_correction``
+        and scaled by the fused constant ``_gam_Y_C`` :math:`= C\\,\\Gamma(-Y)`),
+        so the correction term in the exponent is
+        :math:`-\\text{\_gam\_Y\_C}\\cdot\\text{\_mgf1\_correction}\\cdot u\\cdot T = \\omega\\,u\\,T`.
+        The martingale condition :math:`\\text{MGF}(1) = 1` holds because
+        :math:`\\kappa(1) + \\omega = 0` by construction.
 
         Args:
-            uu: dummy variable
-            texp: time to expiry
+            uu: MGF argument (scalar or array). Real values give the MGF;
+                purely imaginary values ``uu = 1j * xi`` give the characteristic
+                function. Must satisfy :math:`-G < \\operatorname{Re}(u) < M`.
+            texp: time to expiry.
 
         Returns:
-            MGF value at uu
+            MGF value(s) at ``uu``, same shape as ``uu``.
 
         References:
-            - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY Process and Option Pricing. Journal of Futures Markets 34:1095–1121. https://doi.org/10.1002/fut.21647
+            - Eq (19) in Ballotta L, Kyriakou I (2014) Monte Carlo Simulation
+              of the CGMY Process and Option Pricing. Journal of Futures Markets
+              34:1095–1121. https://doi.org/10.1002/fut.21647
         """
-        gam_Y = spsp.gamma(-self.Y)
-        M_pow_Y = np.power(self.M, self.Y)
-        G_pow_Y = np.power(self.G, self.Y)
-
-        rv = self.C * gam_Y * (
-                np.power(self.M - uu, self.Y) - M_pow_Y
-                + np.power(self.G + uu, self.Y) - G_pow_Y
-        )
-        mu = - self.C * gam_Y * (
-            np.power(self.M - 1., self.Y) - M_pow_Y
-            + np.power(self.G + 1., self.Y) - G_pow_Y
-        )
-        np.exp(texp*(mu*uu + rv), out=rv)
+        rv = np.power(self.M - uu, self.Y) - self._M_pow_Y + np.power(self.G + uu, self.Y) - self._G_pow_Y
+        np.exp(self._gam_Y_C * texp * (-self._mgf1_correction*uu + rv), out=rv)
         return rv
 
 
