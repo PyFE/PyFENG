@@ -338,14 +338,13 @@ class BsmContinuousAsianJu2002(opt.OptABC):
         else:
             g = self.intr - self.divr
             gt = g * texp
-            u1 = spot * (np.exp(gt) - 1) / g / texp
+            u1 = spot * np.expm1(gt)/g / texp
             u2 = (
                 2
                 * spot ** 2
                 * (
                     (np.exp((2 * g + self.sigma ** 2) * texp) - 1)
-                    / (2 * g + self.sigma ** 2)
-                    - (np.exp(gt) - 1) / g
+                    / (2 * g + self.sigma ** 2) - np.expm1(gt)/g
                 )
                 / texp
                 / texp
