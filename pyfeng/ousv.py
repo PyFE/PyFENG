@@ -4,6 +4,7 @@ import numpy as np
 import scipy.integrate as scint
 from . import sv_abc as sv
 from . import bsm
+from .util import MathFuncs
 
 #### Use of RN generation spawn:
 # 0: simulation of sigma: vol_step()
@@ -40,8 +41,7 @@ class OusvABC(sv.SvABC, abc.ABC):
             vol0 = vol0 - self.theta
 
         mr_t = self.mr * texp
-        e_mr = np.exp(-mr_t)
-        phi = (1 - e_mr)/mr_t
+        phi = MathFuncs.avg_exp(-mr_t)
         m = vol0 * phi
 
         if nz_theta:
@@ -71,7 +71,7 @@ class OusvABC(sv.SvABC, abc.ABC):
 
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = (1 - e_mr)/mr_t
+        phi = MathFuncs.avg_exp(-mr_t)
         phi2 = (1 + e_mr)/2 * phi
         vv = vol0**2 * phi2 + 0.5*(self.vov**2/self.mr)*(1 - phi2)
 
@@ -94,7 +94,7 @@ class OusvABC(sv.SvABC, abc.ABC):
         """
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = (1 - e_mr)/mr_t
+        phi = MathFuncs.avg_exp(-mr_t)
         phi2 = (1 + e_mr)/2 * phi
         sinh = np.sinh(mr_t)
         cosh = np.cosh(mr_t)

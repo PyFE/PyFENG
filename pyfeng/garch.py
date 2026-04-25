@@ -2,6 +2,7 @@ import warnings
 import numpy as np
 from . import sv_abc as sv
 from . import bsm
+from .util import MathFuncs
 
 #### Use of RN generation spawn:
 # 0: simulation of variance (gamma/ncx2/normal)
@@ -43,7 +44,7 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         e_mr = np.exp(-mr_t)
 
         # Eq (12) of Barone-Adesi et al. (2005)
-        M1 = theta + (var0 - theta)*(1 - e_mr)/mr_t
+        M1 = theta + (var0 - theta)*MathFuncs.avg_exp(-mr_t)
 
         term1 = vov2 - mr
         term2 = vov2 - 2*mr
