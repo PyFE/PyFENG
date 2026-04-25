@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.special as spsp
+from statsmodels.stats.moment_helpers import cum2mc
 
 class MathConsts:
     """
@@ -282,3 +283,69 @@ class DistHelperLnShift:
         w /= w_sum  # 1/np.sqrt(2.0 * np.pi)
         z = self.mu * (1 + self.lam * np.expm1(self.sig*(z - self.sig/2)))
         return z, w
+
+
+class StatFuncs:
+
+    def gramcharA_coefs(
+            cumuls: np.ndarray,
+            sigma: float | None = None,
+    ) -> tuple[np.ndarray, float]:
+        """
+        Gram-Charlier A series coefficients in terms of standardised variable z.
+
+        The expansion is:
+            f(z) = phi(z) * sum_n  c[n] * He_{n+1}(z)
+
+        where z = (x - mu) / sigma and phi(z) is the standard normal density.
+
+        Convention: cumuls[k] = cumul_{k+1}, k = 0, ..., m-1
+            cumuls[0] = cumul_1  (mean,     absorbed into mu)
+            cumuls[1] = cumul_2  (variance, used for sigma)
+            cumuls[2] = cumul_3  (skewness driver)
+            ...
+
+        Output: c[k] = tilde_c_{k+1}, k = 0, ..., m-1
+            c[0] = 0                           (c_1, centering)
+            c[1] = 0                           (c_2, centering)
+            c[2] = cumul_3 / (6 sigma^3)       (c_3)
+            c[3] = cumul_4 / (24 sigma^4)      (c_4)
+            ...
+            c[k] = cumul_{k+1} / ((k+1)! sigma^{k+1})
+
+        Parameters
+        ----------
+        cumuls : np.ndarray, shape (m,)
+            Cumulants. cumuls[k] = cumul_{k+1}.
+        sigma  : float or None
+            Defaults to sqrt(cumuls[1]) = sqrt(cumul_2).
+
+        Returns
+        -------
+        c     : np.ndarray, shape (m,)
+            Gram-Charlier coefficients in z-space.
+        sigma : float
+            Sigma actually used.
+        """
+
+        m = len(cumuls)
+
+        # --- Resolve sigma ---
+        if sigma is None:
+            if cumuls[1] <= 0:
+                raise ValueError(f"cumul_2 = cumuls[1] = {cumuls[1]} must be positive.")
+            sigma = np.sqrt(cumuls[1])
+
+        # --- sigma powers: sigma_pow[k] = sigma^{-(k+1)} ---
+        cumul_std = np.cumprod(np.full(m, 1/sigma))
+        # --- Standardised excess cumulants for cum2mc ---
+        cumul_std[0:2] = 0.0
+        cumul_std[2:] *= cumuls[2:]
+
+        # --- B[k] = 1/(k+1)! ---
+        c = 1.0/np.cumprod(np.arange(1, m + 1, dtype=float))
+        # --- Bell polynomials via cum2mc: returns [B_1, ..., B_m] ---
+        # --- c[k] = B[k] / (k+1)!  (no sigma division in z-space) ---
+        c *= np.array(cum2mc(cumul_std))
+
+        return c, sigma
