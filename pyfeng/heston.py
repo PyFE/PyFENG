@@ -37,7 +37,7 @@ class HestonABC(sv.SvABC, abc.ABC):
 
     def var_mv(self, dt, var0=None):
         """
-        Mean and variance of the variance V(t+dt) given V(0) = var_0
+        Mean and variance of the variance V(t+dt) given V(t) = var_0
 
         Args:
             var0: initial variance
@@ -49,10 +49,11 @@ class HestonABC(sv.SvABC, abc.ABC):
         if var0 is None:
             var0 = self.sigma
 
-        e_mr = np.exp(-self.mr*dt)
+        mr_t = self.mr*dt
+        e_mr = np.exp(-mr_t)
         m = self.theta + (var0 - self.theta)*e_mr
-        s2 = var0*e_mr + self.theta*(1 - e_mr)/2
-        s2 *= self.vov**2 * dt * MathFuncs.avg_exp(-self.mr*dt)
+        avg = MathFuncs.avg_exp(-mr_t)
+        s2 = self.vov**2 * dt * avg * (var0*e_mr + self.theta*mr_t*avg/2)
         return m, s2
 
     def avgvar_mv(self, texp, var0=None):
