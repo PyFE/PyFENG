@@ -27,7 +27,7 @@ from .heston_mc import (
 
 from .rheston_mc import RoughHestonMcMaWu2022
 
-from .ousv import OusvUncorrBallRoma1994, OusvMcTimeDisc, OusvMcChoi2023KL
+from .ousv import OusvUncorrBallRoma1994, OusvMcTimeDisc, OusvMcChoi2025KL
 from .svi import Svi
 
 from .multiasset import (

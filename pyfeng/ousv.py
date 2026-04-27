@@ -499,21 +499,71 @@ class OusvMcTimeDisc(OusvMcABC):
         return vol_t, avgvar, avgvol
 
 
-class OusvMcChoi2023KL(OusvMcABC):
+class OusvMcChoi2025KL(OusvMcABC):
+    """
+    Exact Monte Carlo simulation for the OUSV model using Karhunen–Loève (KL) expansions.
+
+    The stochastic volatility σ_t follows an Ornstein–Uhlenbeck (OU) process:
+
+        dS_t / S_t = r dt + σ_t (ρ dZ_t + √(1-ρ²) dW_t)
+        dσ_t = κ(θ - σ_t) dt + ξ dZ_t
+
+    where κ (`mr`) is the mean-reversion speed, θ (`theta`) the long-term equilibrium
+    volatility, ξ (`vov`) the volatility of volatility, and ρ (`rho`) the
+    price–volatility correlation.
+
+    The volatility path is expressed as an infinite sine series via the KL expansion
+    of the OU bridge process (Eq. (11) of the reference):
+
+        σ_t = θ + σ̄₀ e^{-κt} + σ̂_T sinh(κt)/sinh(κT)
+              + ξ√T Σ_{n=1}^∞ a_n sin(nπt/T) Z_n,
+
+    where a_n = √(2 / ((κT)² + (nπ)²)) and Z_n are i.i.d. standard normals.
+
+    This representation allows the time integrals of volatility (U_{0,T}) and
+    variance (V_{0,T}), which are the sufficient statistics for pricing via
+    conditional simulation, to be computed analytically as finite sums of
+    independent normal random variables. The first L = `n_sin` sine terms are
+    sampled explicitly; the truncated tail is approximated by four normal
+    random variables (G_L, P_L, Q_L, R_L) whose joint covariance is given
+    analytically (Eqs. (13)–(17) of the reference).
+
+    The method is several hundred times faster than the numerical Fourier-inversion
+    approach of Li and Wu (2019). Variance is further reduced by conditional
+    Monte Carlo simulation and a martingale-preserving control variate.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.OusvMcChoi2025KL(sigma=0.2, vov=0.1, mr=4, rho=-0.7, theta=0.2)
+        >>> m.set_num_params(n_path=100000, dt=None, rn_seed=42, n_sin=4)
+        >>> m.price(np.arange(80, 121, 10), spot=100, texp=1)
+
+    References:
+        - Choi J (2025) Exact simulation scheme for the Ornstein–Uhlenbeck driven
+          stochastic volatility model with the Karhunen–Loève expansions.
+          Operations Research Letters 60:107280.
+          https://doi.org/10.1016/j.orl.2025.107280
+    """
 
     n_sin = 2
 
     def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2):
         """
-        Set MC parameters
+        Set Monte Carlo parameters.
 
         Args:
-            n_path: number of paths
-            dt: time step for Euler/Milstein steps
-            rn_seed: random number seed
-            antithetic: antithetic
+            n_path: number of simulation paths
+            dt: time step size. If None (default), the entire period [0, T] is
+                simulated in a single exact step (no discretization error).
+            rn_seed: random number seed for reproducibility
+            antithetic: if True (default), use antithetic variates for variance reduction
+            n_sin: number of sine terms L in the KL expansion (must be a positive
+                even integer). Higher values reduce the truncation error at the
+                cost of slightly more computation. Default is 2.
         """
-        assert n_sin % 2 == 0
+        if n_sin % 2 != 0:
+            raise ValueError(f"n_sin must be an even integer, got {n_sin}.")
         self.n_sin = n_sin
 
         super().set_num_params(n_path, dt, rn_seed, antithetic)
@@ -521,15 +571,27 @@ class OusvMcChoi2023KL(OusvMcABC):
     @classmethod
     def _a2sum(cls, mr_t, ns=0, odd=None):
         """
-        sum_{n=ns+1}^\infty a_n^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+        Tail sum Σ_{n=ns+1}^∞ a_n²  where  a_n = √(2 / ((κT)² + (nπ)²)).
+
+        Used when pre-specified normal variates `zn` are passed to `cond_states_step`.
+        In that case the tail quadratic contribution Σ_{n>L} a_n² (Z_n² - 1) is
+        replaced by its correction term −Σ_{n>L} a_n² = −`_a2sum(mr_t, ns=L)`,
+        so that the combined result Σ_{n=1}^L a_n² Z_n² − Σ_{n=1}^∞ a_n²
+        is computed correctly (see in-code comment "`-r_m` is the correction to
+        include only `an2 @ z_sin**2`").
+
+        The closed-form for the full sum (ns=0) is:
+            Σ a_n² = (κT / tanh(κT) - 1) / (κT)²
 
         Args:
-            mr_t: mean reversion * time step
-            ns: number of truncated terms. Must be an even number
-            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of leading terms already summed explicitly (must be even).
+                Returns the tail sum from n=ns+1 onward.
+            odd: None sums all terms; odd=1 sums odd-indexed terms only;
+                 odd=2 sums even-indexed terms only.
 
         Returns:
-            sum
+            tail sum value (scalar)
         """
         if odd == 2:  # even
             rv = cls._a2sum(mr_t / 2) / 2**2
@@ -555,15 +617,24 @@ class OusvMcChoi2023KL(OusvMcABC):
     @classmethod
     def _a2overn2sum(cls, mr_t, ns=0, odd=None):
         """
-        sum_{n=ns+1}^\infty a_n^2 / (n pi)^2  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+        Tail sum Σ_{n=ns+1}^∞ a_n² / (nπ)²  where  a_n = √(2 / ((κT)² + (nπ)²)).
+
+        This is f_L in Eq. (13) of the reference. It gives the variance of G_L,
+        the truncated-tail contribution to Ũ_{0,T} from odd-indexed sine terms:
+            Var(G_L) = f̃_L  (odd-index tail of this sum).
+
+        The closed-form for the full sum (ns=0) is:
+            Σ a_n²/(nπ)² = (1/3 - (κT/tanh(κT) - 1)/(κT)²) / (κT)²
 
         Args:
-            mr_t: mean reversion * time step
-            ns: number of truncated terms. Must be an even number
-            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of leading terms already summed explicitly (must be even).
+                Returns the tail sum from n=ns+1 onward.
+            odd: None sums all terms; odd=1 sums odd-indexed terms only (f̃_L);
+                 odd=2 sums even-indexed terms only.
 
         Returns:
-            sum
+            tail sum value (scalar)
         """
 
         if odd == 2:  # even
@@ -590,15 +661,25 @@ class OusvMcChoi2023KL(OusvMcABC):
     @classmethod
     def _a4sum(cls, mr_t, ns=0, odd=None):
         """
-        sum_{n=ns+1}^\infty a_n^4  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+        Tail sum Σ_{n=ns+1}^∞ a_n⁴  where  a_n = √(2 / ((κT)² + (nπ)²)).
+
+        This is c_L in Eq. (13) of the reference. It determines:
+          - Var(R_L) = 2 c_L  (variance of the quadratic correction term)
+          - Cov(G_L, P_L) = c̃_L  (cross-covariance between tail G and P, odd terms)
+        used in the sampling scheme of Eq. (16).
+
+        The closed-form for the full sum (ns=0) is:
+            Σ a_n⁴ = (κT/tanh(κT) + (κT)²/sinh²(κT) - 2) / (κT)⁴
 
         Args:
-            mr_t: mean reversion * time step
-            ns: number of truncated terms. Must be an even number
-            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of leading terms already summed explicitly (must be even).
+                Returns the tail sum from n=ns+1 onward.
+            odd: None sums all terms; odd=1 sums odd-indexed terms only (c̃_L);
+                 odd=2 sums even-indexed terms only.
 
         Returns:
-            sum
+            tail sum value (scalar)
         """
 
         if odd == 2:  # even
@@ -625,15 +706,24 @@ class OusvMcChoi2023KL(OusvMcABC):
     @classmethod
     def _a6sum(cls, mr_t, ns=0, odd=None):
         """
-        sum_{n=ns+1}^\infty a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+        Tail sum Σ_{n=ns+1}^∞ a_n⁶  where  a_n = √(2 / ((κT)² + (nπ)²)).
+
+        Auxiliary sum used internally to compute `_a6n2sum` via the identity
+            Σ (nπ)² a_n⁶ = 2 Σ a_n⁴ - (κT)² Σ a_n⁶.
+
+        The closed-form for the full sum (ns=0) is:
+            Σ a_n⁶ = (3κT/tanh(κT) + (3 + 2κT/tanh(κT))(κT)²/sinh²(κT) - 8)
+                     / (2(κT)⁶)
 
         Args:
-            mr_t: mean reversion * time step
-            ns: number of truncated terms. Must be an even number
-            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of leading terms already summed explicitly (must be even).
+                Returns the tail sum from n=ns+1 onward.
+            odd: None sums all terms; odd=1 sums odd-indexed terms only;
+                 odd=2 sums even-indexed terms only.
 
         Returns:
-            sum
+            tail sum value (scalar)
         """
 
         if odd == 2:  # even
@@ -661,15 +751,24 @@ class OusvMcChoi2023KL(OusvMcABC):
     @classmethod
     def _a6n2sum(cls, mr_t, ns=0, odd=None):
         """
-        sum_{n=ns+1}^\infty (n pi)^2 a_n^6  where  a_n = sqrt(2 / (mr_t^2 + (n*pi)^2))
+        Tail sum Σ_{n=ns+1}^∞ (nπ)² a_n⁶  where  a_n = √(2 / ((κT)² + (nπ)²)).
+
+        This is g_L in Eq. (13) of the reference. It determines the variances of
+        the truncated-tail contributions P_L (odd) and Q_L (even) to Ṽ_{0,T}:
+            Var(P_L) = g̃_L (odd-index tail),   Var(Q_L) = ğ_L (even-index tail).
+
+        Computed via the identity (see Appendix B of the reference):
+            Σ (nπ)² a_n⁶ = 2 Σ a_n⁴ - (κT)² Σ a_n⁶.
 
         Args:
-            mr_t: mean reversion * time step
-            ns: number of truncated terms. Must be an even number
-            odd: sum all terms if None (default), odd terms only if odd=1, or even terms only if odd=2.
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of leading terms already summed explicitly (must be even).
+                Returns the tail sum from n=ns+1 onward.
+            odd: None sums all terms; odd=1 sums odd-indexed terms only (g̃_L);
+                 odd=2 sums even-indexed terms only (ğ_L).
 
         Returns:
-            sum
+            tail sum value (scalar)
         """
 
         if odd == 2:  # even
@@ -695,16 +794,40 @@ class OusvMcChoi2023KL(OusvMcABC):
 
     def cond_states_step(self, dt, vol_0, nz_theta=True, zn=None):
         """
-        Final volatility (sigma), average variance and volatilityu over dt given vol_0
+        Exact simulation of (σ_T, V_{0,T}, U_{0,T}) over one time step dt.
+
+        Samples the triplet of sufficient statistics for the OUSV model using the
+        KL expansion with L = `n_sin` explicit sine terms. The truncated tail
+        (n > L) is approximated by four normal random variables G_L, P_L, Q_L, R_L
+        whose joint distribution is given analytically in Eqs. (15)–(17) of the
+        reference:
+
+          - G_L ~ N(0, f̃_L) (odd-term tail of Ũ_{0,T}, correlated with P_L)
+          - P_L ~ N(0, g̃_L) (odd-term tail of Ṽ_{0,T})
+          - Q_L ~ N(0, ğ_L) (even-term tail of Ṽ_{0,T}, independent of G_L, P_L)
+          - R_L ≈ √(c_L) (W₄² - 1)   (quadratic correction, Eq. (17))
+
+        Here f̃_L, g̃_L, ğ_L, and c_L are the tail sums computed by `_a2overn2sum`,
+        `_a6n2sum` (odd/even), and `_a4sum`, respectively (see Eq. (13)).
 
         Args:
-            dt: time-to-expiry
-            vol_0: initial volatility
-            zn: normal RVs to specify in the (1+n_sin, n_path) format. None by default.
-            nz_theta: non-zero theta. True by default. If False, assume theta=0 making computation simpler.
+            dt: time step size T
+            vol_0: initial volatility σ_0 (scalar or array of shape (n_path,))
+            nz_theta: if True (default), include the long-term mean θ (non-zero theta).
+                      If False, assumes θ = 0 for a simpler computation.
+            zn: pre-specified normal random variables of shape (1 + n_sin, n_path).
+                Row 0 is used for σ_T; rows 1: are the Z_n sine coefficients.
+                If None (default), random variates are drawn internally.
 
         Returns:
-            (final vol, average var, average vol)
+            tuple (vol_t, vv_t, uu_t):
+                - vol_t: terminal volatility σ_T, shape (n_path,)
+                - vv_t: average variance V_{0,T} = (1/T) ∫₀ᵀ σ_t² dt, shape (n_path,)
+                - uu_t: average volatility U_{0,T} = (1/T) ∫₀ᵀ σ_t dt, shape (n_path,)
+
+        References:
+            - Choi J (2025) Eqs. (12), (15)–(18). Operations Research Letters 60:107280.
+              https://doi.org/10.1016/j.orl.2025.107280
         """
 
         mr_t = self.mr * dt
@@ -781,6 +904,21 @@ class OusvMcChoi2023KL(OusvMcABC):
         return vol_t, vv_t, uu_t
 
     def unexplained_var_ratio(self, mr_t, ns=None):
+        """
+        Fraction of variance in Ṽ_{0,T} not explained by the first `ns` sine terms.
+
+        Computed as c̃_L / c_0 = Σ_{n=ns+1}^∞ a_n⁴ / Σ_{n=1}^∞ a_n⁴, where
+        c_L = `_a4sum(mr_t, ns=ns)` is the tail of the a_n⁴ series (Eq. (13)).
+        A value close to 0 indicates that `ns` sine terms capture most of the
+        variance, so the truncation error is small.
+
+        Args:
+            mr_t: κT = mean-reversion speed × time step
+            ns: number of explicit sine terms L. If None, uses `self.n_sin`.
+
+        Returns:
+            unexplained variance ratio in [0, 1]
+        """
 
         if ns is None:
             ns = self.n_sin
@@ -795,13 +933,31 @@ class OusvMcChoi2023KL(OusvMcABC):
 
     def vol_path_sin(self, tobs, zn=None):
         """
-        vol path composed of sin terms
+        Simulate the full volatility path σ_t using the KL sine-series expansion.
+
+        Constructs the path according to Eq. (11) of the reference:
+
+            σ_t = θ + σ̄₀ e^{-κt} + σ̂_T sinh(κt)/sinh(κT)
+                  + ξ√T Σ_{n=1}^L a_n sin(nπt/T) Z_n
+
+        where σ̄₀ = σ_0 - θ, σ̂_T is the centered terminal value, and
+        a_n = √(2/((κT)² + (nπ)²)). Only the L = `n_sin` explicit sine terms
+        are included (no tail correction).
+
         Args:
-            tobs: observation time (n_time, )
-            zn: specified normal rvs to use (n_sin + 1, n_path). None by default
+            tobs: observation times in [0, T], shape (n_time,). The last element
+                  is taken as T.
+            zn: pre-specified normal random variables of shape (n_sin + 1, n_path).
+                Row 0 is used for the terminal value σ_T (via `vol_step`);
+                rows 1: are the Z_n sine coefficients. If None (default),
+                variates are drawn internally using `rng_spawn[2]`.
 
         Returns:
-            vol path (n_time, n_path)
+            volatility path of shape (n_time, n_path)
+
+        References:
+            - Choi J (2025) Eq. (11). Operations Research Letters 60:107280.
+              https://doi.org/10.1016/j.orl.2025.107280
         """
         dt = tobs[-1]
         mr_t = self.mr * dt
