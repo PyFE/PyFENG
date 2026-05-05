@@ -71,7 +71,7 @@ array([[ 5.75927238,  7.38869609,  5.52948546],
 ```
 
 ## Author
-* Prof. [Jaehyuk Choi](https://jaehyukchoi.net/phbs_en) (Peking University HSBC Business School). Email: pyfe@eml.cc
+* Prof. [Jaehyuk Choi](https://www.math.columbia.edu/mafn/learn-more/) (Columbia University MAFN Program Director). Email: pyfe@eml.cc
 
 ## Related Projects
 * __Commercial versions (implemented and optimized in C/C++)__ for some models are available. Email the author at pyfe@eml.cc.
