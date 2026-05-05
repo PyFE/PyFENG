@@ -682,8 +682,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, opt.MassZeroABC):
         kk = strike / fwd  # standardized strike
 
         # explicitly make np.array even if args are all scalar or list
-        if isinstance(kk, float):
-            kk = np.array([kk])
+        scalar_output = np.isscalar(kk)
+        kk = np.atleast_1d(kk)
 
         ## Eq 32 (leading order)
         vov_over_alpha_safe = self.vov / np.maximum(alpha, np.finfo(float).eps)
@@ -795,7 +795,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, opt.MassZeroABC):
 
         # order0 = (z_base' / z_base) * hh
         vol *= alpha * np.power(fwd, vol_betac) * qq_ratio * hh
-        return vol[0] if vol.size == 1 else vol
+        return vol.item() if scalar_output else vol
 
 
 class SabrLorig2017(SabrVolApproxABC):

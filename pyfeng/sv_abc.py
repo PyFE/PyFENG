@@ -238,7 +238,7 @@ class CondMcBsmABC(opt.OptABC, abc.ABC):
         price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp[:, None])
         price = spot * np.mean(price_grid, axis=1)
 
-        return price[0] if scalar_output else price
+        return price.item() if scalar_output else price
 
     @abc.abstractmethod
     def return_var_realized(self, texp, cond):
@@ -348,4 +348,4 @@ class SvMixtureABC(opt.OptABC, abc.ABC):
         price_vec = base_model.price(kk, spot_cond, texp=texp, cp=cp)
         price = spot * np.sum(price_vec * ww, axis=0)
 
-        return price[0] if scalar_output else price
+        return price.item() if scalar_output else price

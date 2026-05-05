@@ -201,7 +201,7 @@ class Norm(opt.OptAnalyticABC):
     def cdf(self, strike, spot, texp, cp=1):
 
         fwd = self.forward(spot, texp)
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
         cdf = spst.norm._cdf(cp * d)  # formula according to wikipedia
         return cdf
@@ -211,7 +211,7 @@ class Norm(opt.OptAnalyticABC):
         # cp is not used
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         gamma = df * spst.norm._pdf(d) / sigma_std  # formula according to wikipedia
@@ -223,7 +223,7 @@ class Norm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
 
         # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
@@ -235,7 +235,7 @@ class Norm(opt.OptAnalyticABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         sigma_std = self.sigma * np.sqrt(texp)
-        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).tiny)
+        d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).eps)
 
         if opt_type.lower() == "asset":
             price = df * (cp * fwd * spst.norm._cdf(cp * d) + sigma_std * spst.norm._pdf(d))
@@ -262,7 +262,7 @@ class Norm(opt.OptAnalyticABC):
             volatility smile under the specified model
         """
         if model.lower() == "norm":
-            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
+            return np.full(np.broadcast_shapes(np.shape(strike), np.shape(spot), np.shape(texp)), self.sigma)
         if model.lower() == "bsm":
             if cp is None:
                 fwd = self.forward(spot, texp)
@@ -284,7 +284,7 @@ class Norm(opt.OptAnalyticABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
         strike2 = strike if strike2 is None else strike2
 
-        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d2 = (fwd - strike2) / sigma_std
 
         price = cp * (fwd - strike) * spst.norm._cdf(cp * d2) + sigma_std * spst.norm._pdf(d2)

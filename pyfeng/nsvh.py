@@ -435,7 +435,7 @@ class NsvhGaussQuad(NsvhABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
         rho2 = self.rho**2
         rhoc = np.sqrt(1.0 - rho2)
-        vovn = self.vov * np.sqrt(np.maximum(texp, np.finfo(float).tiny))
+        vovn = self.vov * np.sqrt(np.maximum(texp, np.finfo(float).eps))
 
         ### axis 1: nodes of x,y,z , get the weight of z,v
         z_value, z_weight = spsp.roots_hermitenorm(self.n_quad[0])
