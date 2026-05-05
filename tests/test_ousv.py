@@ -70,8 +70,8 @@ class TestOusvKL(unittest.TestCase):
             zn = np.random.normal(size=(n_sin + 1, n_path))
             vol_path = m.vol_path_sin(t_grid * texp, zn)
 
-            avgvol_simp = np.trapz(vol_path, dx=1, axis=0) / n_step
-            avgvar_simp = np.trapz(vol_path**2, dx=1, axis=0) / n_step
+            avgvol_simp = np.trapezoid(vol_path, dx=1, axis=0) / n_step
+            avgvar_simp = np.trapezoid(vol_path**2, dx=1, axis=0) / n_step
             sig_t, avgvar, avgvol = m.cond_states_step(texp, m.sigma, zn=zn)
 
             assert np.all(np.isclose(1, vol_path[-1, :]/sig_t))
