@@ -262,7 +262,7 @@ class Norm(opt.OptAnalyticABC):
             volatility smile under the specified model
         """
         if model.lower() == "norm":
-            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
+            return np.full(np.broadcast_shapes(np.shape(strike), np.shape(spot), np.shape(texp)), self.sigma)
         if model.lower() == "bsm":
             if cp is None:
                 fwd = self.forward(spot, texp)

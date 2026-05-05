@@ -154,7 +154,7 @@ class OptABC(abc.ABC):
         model.sigma = self.IMPVOL_MAXVOL
         p_max = model.price(kk, 1, texp, cp)
 
-        scalar_output = np.isscalar(price) & np.isscalar(p_min)
+        scalar_output = np.isscalar(price) and np.isscalar(p_min)
         ones_like = np.ones_like(np.atleast_1d(price + p_min))
 
         sigma = np.empty(ones_like.shape).flatten()
