@@ -34,7 +34,7 @@ class AmerLi2010QdPlus(OptABC):
         Returns:
             Exercise boundary (critical stock price)
         """
-        s0 = strike * np.fmin(1, self.intr/np.fmax(self.divr, np.finfo(float).tiny))
+        s0 = strike * np.fmin(1, self.intr/np.fmax(self.divr, np.finfo(float).eps))
         mm = 2*self.intr / self.sigma**2
         nn_m1 = 2*(self.intr - self.divr) / self.sigma**2 - 1
         q_inf = -0.5 * (nn_m1 + np.sqrt(nn_m1**2 + 4*mm))
@@ -78,7 +78,7 @@ class AmerLi2010QdPlus(OptABC):
 
         fwd, df, divf = self._fwd_factor(spot_bdd, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
@@ -106,7 +106,7 @@ class AmerLi2010QdPlus(OptABC):
         spot_bdd = self.exer_bdd(strike, u, cp=cp)
 
         fwd, df, divf = self._fwd_factor(spot, texp - u)
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp - u), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp - u), np.finfo(float).eps)
         d1 = np.log(fwd/spot_bdd)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std

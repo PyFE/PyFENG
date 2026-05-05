@@ -50,7 +50,7 @@ class Bsm(opt.OptAnalyticABC):
         disc_fac = np.exp(-texp*intr)
         fwd = np.array(spot)*(1.0 if is_fwd else np.exp(-texp*divr)/disc_fac)
 
-        sigma_std = np.maximum(np.array(sigma)*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(np.array(sigma)*np.sqrt(texp), np.finfo(float).eps)
 
         # don't directly compute d1 just in case sigma_std is infty
         d1 = np.log(fwd/strike)/sigma_std
@@ -143,7 +143,7 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
@@ -166,7 +166,7 @@ class Bsm(opt.OptAnalyticABC):
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
@@ -194,7 +194,7 @@ class Bsm(opt.OptAnalyticABC):
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
@@ -221,7 +221,7 @@ class Bsm(opt.OptAnalyticABC):
         """
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
@@ -234,7 +234,7 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
@@ -246,7 +246,7 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d2 = np.log(fwd/strike)/sigma_std
         d2 -= 0.5*sigma_std
         cdf = spst.norm._cdf(cp*d2)  # formula according to wikipedia
@@ -256,7 +256,7 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d1 += 0.5*sigma_std
 
@@ -269,7 +269,7 @@ class Bsm(opt.OptAnalyticABC):
 
         fwd, df, divf = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
@@ -467,7 +467,7 @@ class Bsm(opt.OptAnalyticABC):
         strike2 = strike if strike2 is None else strike2
         fwd, df, _ = self._fwd_factor(spot, texp)
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).tiny)
+        sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike2)/sigma_std
         d2 = d1 - 0.5*sigma_std
         d1 += 0.5*sigma_std
