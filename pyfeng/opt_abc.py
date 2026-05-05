@@ -2,8 +2,8 @@ import abc
 import copy
 import numpy as np
 import scipy.optimize as sopt
+import scipy.stats as spst
 from typing import ClassVar
-
 
 class OptABC(abc.ABC):
     model_type: ClassVar[str]
@@ -416,6 +416,51 @@ class OptABC(abc.ABC):
         cdf = np.sign(cp)*(price[0] - price[1]) / (2*h)
         return cdf
 
+    def _m_smile(self, model="bsm", is_fwd=None):
+        """
+        Construct a base BSM or Bachelier model instance for smile conversion.
+
+        Args:
+            model: {'bsm', 'norm'}
+            is_fwd: if None, use self.is_fwd
+
+        Returns:
+            Bsm or Norm model instance (sigma=None), or None for unknown model
+        """
+        from . import bsm, norm  # lazy imports to avoid circular dependency
+        if is_fwd is None:
+            is_fwd = self.is_fwd
+        if model.lower() == "bsm":
+            return bsm.Bsm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+        elif model.lower() == "norm":
+            return norm.Norm(None, intr=self.intr, divr=self.divr, is_fwd=is_fwd)
+        else:
+            return None
+
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
+        """
+        Equivalent volatility smile for a given model.
+
+        Computes option prices via ``self.price()`` and inverts them to
+        implied volatility under the requested base model.
+
+        Args:
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            cp: 1/-1 for call/put. If None, OTM convention is used.
+            model: {'bsm', 'norm'} base model for implied vol inversion
+
+        Returns:
+            implied volatility smile
+        """
+        base_model = self._m_smile(model)
+        if cp is None:
+            fwd = self.forward(spot, texp)
+            cp = np.where(strike > fwd, 1, -1)  # OTM convention
+        price = self.price(strike, spot, texp, cp=cp)
+        return base_model.impvol(price, strike, spot, texp, cp=cp)
+
     # create aliases
     delta = delta_numeric
     gamma = gamma_numeric
@@ -541,3 +586,65 @@ class OptAnalyticABC(OptABC):
         raise NotImplementedError
 
 
+class MassZeroABC(OptABC, abc.ABC):
+    """
+    Implied volatility asymptotics of De Marco et al. (2017) given the positive mass at zero.
+
+    References:
+          - De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737. https://doi.org/10.1137/14098065X
+    """
+
+    @abc.abstractmethod
+    def mass_zero(self, spot, texp, log=False):
+        """
+        Probability mass absorbed at the zero boundary (K=0)
+
+        Args:
+            spot: spot (or forward) price
+            texp: time to expiry
+            log: log value if True
+
+        Returns:
+            (log) probability mass at zero
+        """
+        raise NotImplementedError
+
+    def vol_from_mass_zero(self, strike, spot, texp, mass=None):
+        """
+        Implied volatility from positive mass at zero from DMHJ (2017)
+        If mass is given, use the given value. If None (by default), compute model implied value.
+
+        Args:
+            strike: strike price
+            spot: spot (or forward) price
+            texp: time to expiry
+            mass: probability mass at zero (None by default)
+
+        Returns:
+            implied BSM volatility
+
+        References:
+              De Marco, S., Hillairet, C., & Jacquier, A. (2017). Shapes of Implied Volatility with
+              Positive Mass at Zero. SIAM Journal on Financial Mathematics, 8(1), 709–737.
+              https://doi.org/10.1137/14098065X
+        """
+
+        # Perhaps we should return Nan for k >= 1
+        if mass is None:
+            mass = self.mass_zero(spot, texp)
+
+        fwd = self.forward(spot, texp)
+        kk = strike / fwd
+        tmp = np.sqrt(2 * np.abs(np.log(kk)))
+        leading = tmp / np.sqrt(texp)
+
+        qq = spst.norm.ppf(mass)
+        vol = 1 + (qq + 0.5 * ((2 + qq ** 2) + qq / tmp) / tmp) / tmp
+        vol *= leading
+        return vol
+
+    def price_from_mass_zero(self, strike, spot, texp, cp=1, mass=None):
+        vol = self.vol_from_mass_zero(strike, spot, texp, mass=mass)
+        base_model = bsm.Bsm(vol)
+        price = base_model.price(strike, spot, texp, cp=cp)
+        return price

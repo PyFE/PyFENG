@@ -4,10 +4,10 @@ import os
 import pandas as pd
 from typing import ClassVar
 from . import bsm
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 
 
-class SvABC(smile.OptSmileABC, abc.ABC):
+class SvABC(opt.OptABC, abc.ABC):
 
     var_process: ClassVar[bool]
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
@@ -100,7 +100,7 @@ class SvABC(smile.OptSmileABC, abc.ABC):
             return m, df_val, param_dict
 
 
-class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
+class CondMcBsmABC(opt.OptABC, abc.ABC):
     """
     Abstract Class for conditional Monte-Carlo method for BSM-based stochastic volatility models
     """
@@ -298,7 +298,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         return price
 
-class SvMixtureABC(smile.OptSmileABC, abc.ABC):
+class SvMixtureABC(opt.OptABC, abc.ABC):
     """
     Abstract Class for BS-mixture model for the BSM-based stochastic volatility models
     """

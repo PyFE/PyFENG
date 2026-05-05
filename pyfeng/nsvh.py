@@ -7,10 +7,10 @@ import scipy.stats as spst
 import scipy.special as spsp
 import scipy.optimize as spop
 
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 from .util import MathFuncs, MathConsts
 
-class NsvhABC(smile.OptSmileABC, abc.ABC):
+class NsvhABC(opt.OptABC, abc.ABC):
     beta = 0.0  ## should be fixed as 0
     vov, rho, lam = 0.0, 0.0, 0.0
     model_type = "Nsvh"
@@ -41,7 +41,7 @@ class NsvhABC(smile.OptSmileABC, abc.ABC):
         extra = {"vov": self.vov, "lam": self.lam, "rho": self.rho}
         return {**params, **extra}  # Py 3.9, params | extra
 
-    def vol_smile(self, strike, spot, texp, cp=1, model=None):
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         return super().vol_smile(strike, spot, texp, cp=cp, model="norm")
 
     @classmethod

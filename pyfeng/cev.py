@@ -4,12 +4,11 @@ import scipy.stats as spst
 import scipy.special as spsp
 import numpy as np
 from . import opt_abc as opt
-from . import opt_smile_abc as smile
 from . import sv_abc as sv
 from .util import MathFuncs
 
 
-class CevAbc(smile.OptSmileABC, abc.ABC):
+class CevAbc(opt.OptABC, abc.ABC):
     model_type = "Cev"
     beta = 0.5
 
@@ -31,7 +30,7 @@ class CevAbc(smile.OptSmileABC, abc.ABC):
         return {**params, **extra}  # Py 3.9, params | extra
 
 
-class Cev(opt.OptAnalyticABC, CevAbc, smile.MassZeroABC):
+class Cev(opt.OptAnalyticABC, CevAbc, opt.MassZeroABC):
     """
     Constant Elasticity of Variance (CEV) model.
 

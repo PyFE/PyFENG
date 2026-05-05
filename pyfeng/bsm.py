@@ -5,7 +5,6 @@ import warnings
 
 from . import opt_abc as opt
 from . import norm
-from . import opt_smile_abc as smile
 from .util import MathFuncs, MathConsts
 
 class Bsm(opt.OptAnalyticABC):
@@ -428,7 +427,7 @@ class Bsm(opt.OptAnalyticABC):
 
     impvol = impvol_log
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -436,14 +435,14 @@ class Bsm(opt.OptAnalyticABC):
             strike: strike price
             spot: spot price
             texp: time to expiry
-            cp: 1/-1 for call/put option
+            cp: 1/-1 for call/put option. If None, OTM convention is used.
             model: {'bsm' (default), 'norm-approx', 'norm-grunspan', 'norm'}
 
         Returns:
             volatility smile under the specified model
         """
         if model.lower() == "bsm":
-            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
+            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp)
         if model.lower() == "norm":
             if cp is None:
                 fwd = self.forward(spot, texp)
@@ -573,7 +572,7 @@ class Bsm(opt.OptAnalyticABC):
         return var, skew, exkurt
 
 
-class BsmDisp(smile.OptSmileABC, Bsm):
+class BsmDisp(Bsm):
     """
     Displaced Black-Scholes-Merton model for option pricing. Displaced price,
 
@@ -692,7 +691,7 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             self.sigma = sigma
         return sigma
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -725,7 +724,8 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             vol = self.sigma_disp*(fwdd/fwd)*np.sqrt(kkd/kk)
             vol *= (1 + lnkd**2/24) / (1 + lnk**2/24) * (1 + vol**2*texp/24) / (1 + self.sigma**2*texp/24)
         else:
-            vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
+            # Use the generic OptABC price-inversion, not Bsm.vol_smile's flat-sigma shortcut
+            vol = opt.OptABC.vol_smile(self, strike, spot, texp, model=model, cp=cp)
 
         return vol
 
