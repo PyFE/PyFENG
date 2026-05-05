@@ -427,7 +427,7 @@ class Bsm(opt.OptAnalyticABC):
 
     impvol = impvol_log
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 
@@ -435,14 +435,14 @@ class Bsm(opt.OptAnalyticABC):
             strike: strike price
             spot: spot price
             texp: time to expiry
-            cp: 1/-1 for call/put option
+            cp: 1/-1 for call/put option. If None, OTM convention is used.
             model: {'bsm' (default), 'norm-approx', 'norm-grunspan', 'norm'}
 
         Returns:
             volatility smile under the specified model
         """
         if model.lower() == "bsm":
-            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp) * np.ones_like(cp)
+            return self.sigma * np.ones_like(strike) * np.ones_like(spot) * np.ones_like(texp)
         if model.lower() == "norm":
             if cp is None:
                 fwd = self.forward(spot, texp)
@@ -691,7 +691,7 @@ class BsmDisp(Bsm):
             self.sigma = sigma
         return sigma
 
-    def vol_smile(self, strike, spot, texp, cp=1, model="bsm"):
+    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
         Equivalent volatility smile for a given model
 

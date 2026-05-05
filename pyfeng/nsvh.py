@@ -41,7 +41,7 @@ class NsvhABC(opt.OptABC, abc.ABC):
         extra = {"vov": self.vov, "lam": self.lam, "rho": self.rho}
         return {**params, **extra}  # Py 3.9, params | extra
 
-    def vol_smile(self, strike, spot, texp, cp=1, model=None):
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         return super().vol_smile(strike, spot, texp, cp=cp, model="norm")
 
     @classmethod
