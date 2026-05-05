@@ -11,7 +11,6 @@ from . import opt_smile_abc as smile
 from . import ousv
 from . import heston
 from . import rheston
-from .util import MathFuncs
 
 class FftABC(opt.OptABC, abc.ABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -1083,10 +1082,10 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         gg = self.mr - (3/2)*uu_etc
         dd = np.sqrt(gg**2 + 2*self.vov**2 * self.theta * zeta)
         dd_m_gg = 2*self.vov**2 * self.theta * zeta / (dd + gg)   # dd - gg
-        avgexp = MathFuncs.avg_exp(-dd*texp)   # (1 - np.exp(-dd * texp)) / (dd*texp)
+        avgexp = -np.expm1(-dd*texp) / dd
 
         ### Calculation of C term
-        tmp = 1 - 0.5*dd_m_gg * avgexp * texp    ##  (2d - (d-g)(1-e^{-d tau})) / 2d
+        tmp = 1 - 0.5*dd_m_gg * avgexp    ##  (2d - (d-g)(1-e^{-d tau})) / 2d
         log_tmp = np.log(tmp)
 
         C = -(self.mr - 0.5*uu_etc) * dd_m_gg * texp - (self.mr + 0.5*uu_etc) * log_tmp
@@ -1095,7 +1094,7 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         ### End of Calculation of C term
 
         ### Calculation of D term
-        D = 0.5 * avgexp / tmp * texp * zeta
+        D = 0.5 * avgexp / tmp * zeta
         ### End of Calculation of C term
 
         return np.exp(C * (0.5/self.vov**2) - D * self.sigma)
