@@ -224,6 +224,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
         kk = strike / spot
         scalar_output = np.isscalar(kk)
         kk = np.atleast_1d(kk)
+        cp = np.atleast_1d(cp)
 
         fwd_cond, sigma_cond = self.cond_spot_sigma(texp, self.sigma)
 
@@ -234,8 +235,7 @@ class CondMcBsmABC(smile.OptSmileABC, abc.ABC):
 
         sigma = np.sqrt(self.sigma) if self.var_process else self.sigma
         base_model = self.base_model(sigma * sigma_cond)
-        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp)
-
+        price_grid = base_model.price(kk[:, None], fwd_cond, texp=texp, cp=cp[:, None])
         price = spot * np.mean(price_grid, axis=1)
 
         return price[0] if scalar_output else price
