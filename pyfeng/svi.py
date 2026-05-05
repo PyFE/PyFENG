@@ -1,9 +1,9 @@
 import numpy as np
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 from . import bsm
 
 
-class Svi(smile.OptSmileABC):
+class Svi(opt.OptABC):
     """
     Stochastic Volatility-inspired (SVI) model by Gatheral.
 

@@ -15,13 +15,13 @@ import scipy.optimize as spop
 from scipy import stats as spst
 from numpy.polynomial.hermite_e import hermeval
 
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 from . import bsm
 from . import norm
 from . import cev
 from .util import MathFuncs, DistHelperLnShift
 
-class SabrABC(smile.OptSmileABC, abc.ABC):
+class SabrABC(opt.OptABC, abc.ABC):
     vov, beta, rho = 0.0, 1.0, 0.0
     model_type = "SABR"
     var_process = False
@@ -560,7 +560,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
         return vol
 
 
-class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
+class SabrChoiWu2021H(SabrVolApproxABC, opt.MassZeroABC):
     """
     The CEV volatility approximation of the SABR model based on Theorem 1 of Choi & Wu (2019)
 
@@ -652,7 +652,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, smile.MassZeroABC):
         return t0
 
 
-class SabrChoiWu2021P(SabrChoiWu2021H, smile.MassZeroABC):
+class SabrChoiWu2021P(SabrChoiWu2021H, opt.MassZeroABC):
     """
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 

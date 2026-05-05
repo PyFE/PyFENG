@@ -7,10 +7,10 @@ import scipy.stats as spst
 import scipy.special as spsp
 import scipy.optimize as spop
 
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 from .util import MathFuncs, MathConsts
 
-class NsvhABC(smile.OptSmileABC, abc.ABC):
+class NsvhABC(opt.OptABC, abc.ABC):
     beta = 0.0  ## should be fixed as 0
     vov, rho, lam = 0.0, 0.0, 0.0
     model_type = "Nsvh"

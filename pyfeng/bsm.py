@@ -5,7 +5,6 @@ import warnings
 
 from . import opt_abc as opt
 from . import norm
-from . import opt_smile_abc as smile
 from .util import MathFuncs, MathConsts
 
 class Bsm(opt.OptAnalyticABC):
@@ -573,7 +572,7 @@ class Bsm(opt.OptAnalyticABC):
         return var, skew, exkurt
 
 
-class BsmDisp(smile.OptSmileABC, Bsm):
+class BsmDisp(Bsm):
     """
     Displaced Black-Scholes-Merton model for option pricing. Displaced price,
 
@@ -725,7 +724,8 @@ class BsmDisp(smile.OptSmileABC, Bsm):
             vol = self.sigma_disp*(fwdd/fwd)*np.sqrt(kkd/kk)
             vol *= (1 + lnkd**2/24) / (1 + lnk**2/24) * (1 + vol**2*texp/24) / (1 + self.sigma**2*texp/24)
         else:
-            vol = super().vol_smile(strike, spot, texp, model=model, cp=cp)
+            # Use the generic OptABC price-inversion, not Bsm.vol_smile's flat-sigma shortcut
+            vol = opt.OptABC.vol_smile(self, strike, spot, texp, model=model, cp=cp)
 
         return vol
 

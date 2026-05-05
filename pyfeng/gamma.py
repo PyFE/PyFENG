@@ -1,9 +1,9 @@
 import scipy.stats as spst
 import numpy as np
-from . import opt_smile_abc as smile
+from . import opt_abc as opt
 
 
-class InvGam(smile.OptSmileABC):
+class InvGam(opt.OptABC):
     """
     Option pricing model with the inverse gamma (reciprocal gamma) distribution.
 
@@ -75,7 +75,7 @@ class InvGam(smile.OptSmileABC):
         return cdf
 
 
-class InvGauss(smile.OptSmileABC):
+class InvGauss(opt.OptABC):
     """
     Option pricing model with the inverse Gaussian (IG) distribution.
 

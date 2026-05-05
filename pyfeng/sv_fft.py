@@ -7,7 +7,6 @@ import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
 from . import sv_abc as sv
-from . import opt_smile_abc as smile
 from . import ousv
 from . import heston
 from . import rheston
@@ -859,7 +858,7 @@ class Sv32Fft(sv.SvABC, FftABC):
         return ret
 
 
-class CgmyFft(smile.OptSmileABC, FftABC):
+class CgmyFft(FftABC):
     """
     CGMY model option pricing with FFT.
 
