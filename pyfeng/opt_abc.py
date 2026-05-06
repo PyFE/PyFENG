@@ -4,76 +4,13 @@ import numpy as np
 import scipy.optimize as sopt
 import scipy.stats as spst
 from typing import ClassVar
+from .params import BaseParams
 
-class OptABC(abc.ABC):
+class OptABC(BaseParams, abc.ABC):
     model_type: ClassVar[str]
-    sigma, intr, divr = None, 0.0, 0.0
-    is_fwd = False
 
     IMPVOL_TOL = 1e-10
     IMPVOL_MAXVOL = 99.99
-
-    def __init__(self, sigma, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        self.sigma = sigma
-        self.intr = intr
-        self.divr = divr
-        self.is_fwd = is_fwd
-
-    def params_kw(self):
-        """
-        Model parameters in dictionary
-        """
-        params = {
-            "sigma": self.sigma,
-            "intr": self.intr,
-            "divr": self.divr,
-            "is_fwd": self.is_fwd,
-        }
-        return params
-
-    def params_hash(self):
-        dct = self.params_kw()
-        return hash((frozenset(dct.keys()), frozenset(dct.values())))
-
-    @classmethod
-    def from_param(cls, other):
-        """
-        Create a new instance by copying parameters from another model parameters of the same type.
-
-        Args:
-            other: source param instance
-
-        Returns:
-            New instance of cls with parameters copied from other
-
-        Raises:
-            TypeError: if source and target are not the same model type
-        """
-        cls_type = getattr(cls, 'model_type', None)
-        other_type = getattr(type(other), 'model_type', None)
-
-        if isinstance(cls_type, str) and isinstance(other_type, str):
-            # SV-family models: compare model_type string (allows cross-algorithm copies)
-            if cls_type != other_type:
-                raise TypeError(
-                    f"Model type mismatch: source is '{other_type}' ({type(other).__name__}) "
-                    f"but target is '{cls_type}' ({cls.__name__})."
-                )
-        elif not isinstance(other, cls):
-            # Simple models (BSM, Norm, etc.): require class compatibility
-            raise TypeError(
-                f"Cannot copy from '{type(other).__name__}' to '{cls.__name__}'."
-            )
-
-        return cls(**other.params_kw())
-
 
     def forward(self, spot, texp):
         """
@@ -461,13 +398,6 @@ class OptABC(abc.ABC):
         price = self.price(strike, spot, texp, cp=cp)
         return base_model.impvol(price, strike, spot, texp, cp=cp)
 
-    # create aliases
-    delta = delta_numeric
-    gamma = gamma_numeric
-    vega = vega_numeric
-    vanna = vanna_numeric
-    volga = volga_numeric
-    theta = theta_numeric
 
 
 class OptAnalyticABC(OptABC):
@@ -586,7 +516,7 @@ class OptAnalyticABC(OptABC):
         raise NotImplementedError
 
 
-class MassZeroABC(OptABC, abc.ABC):
+class MassZeroABC(OptABC):
     """
     Implied volatility asymptotics of De Marco et al. (2017) given the positive mass at zero.
 

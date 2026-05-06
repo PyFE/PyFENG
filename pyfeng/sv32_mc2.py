@@ -1,6 +1,7 @@
 import abc
 import numpy as np
-from . import sv_abc as sv
+from .sv_abc import CondMcBsmABC
+from .params import Sv32Params
 from . import heston_mc
 import scipy.optimize as spop
 import scipy.special as spsp
@@ -8,9 +9,7 @@ import scipy.stats as spst
 from scipy.misc import derivative
 
 
-class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
-    model_type = "3/2"
-    var_process = True
+class Sv32McABC(Sv32Params, CondMcBsmABC):
     scheme = None
     _m_heston = None
 

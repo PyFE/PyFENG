@@ -1,110 +1,13 @@
 import numpy as np
 import abc
-import os
-import pandas as pd
-from typing import ClassVar
 from . import bsm
-from . import opt_abc as opt
+from .opt_abc import OptABC
 
 
-class SvABC(opt.OptABC, abc.ABC):
-
-    var_process: ClassVar[bool]
-    vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
-
-    def __init__(
-        self,
-        sigma,
-        vov=0.01,
-        rho=0.0,
-        mr=0.01,
-        theta=None,
-        intr=0.0,
-        divr=0.0,
-        is_fwd=False,
-    ):
-        """
-        Args:
-            sigma: model volatility or variance at t=0.
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            mr: mean-reversion speed (kappa)
-            theta: long-term mean of volatility or variance. If None, same as sigma
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-
-        self.vov = vov
-        self.rho = rho
-        self.mr = mr
-        self.theta = sigma if theta is None else theta
-
-    def params_kw(self):
-        params1 = super().params_kw()
-        params2 = {
-            "vov": self.vov,
-            "rho": self.rho,
-            "mr": self.mr,
-            "theta": self.theta,
-        }
-        return {**params1, **params2}
-
-    @classmethod
-    def init_benchmark(cls, set_no=None):
-        """
-        Initiate an SV model with stored benchmark parameter sets
-
-        Args:
-            set_no: set number
-
-        Returns:
-            Dataframe of all test cases if set_no = None
-            (model, Dataframe of result, params) if set_no is specified
-
-        References:
-        """
-
-        this_dir, _ = os.path.split(__file__)
-        file = os.path.join(this_dir, f"data/{cls.model_type.lower()}_benchmark.xlsx")
-        df_param = pd.read_excel(file, sheet_name="Param", index_col="Sheet")
-
-        if set_no is None:
-            return df_param
-        else:
-            df_val = pd.read_excel(file, sheet_name=str(set_no))
-            param = df_param.loc[set_no].to_dict()
-            args_model = {k: param[k] for k in param.keys() & {"sigma", "theta", "vov", "rho", "mr", "intr", "divr"}}
-            args_pricing = {k: param[k] for k in param.keys() & {"texp", "spot"}}
-
-            assert df_val.columns[0] == "Strike"
-            args_pricing["strike"] = df_val.values[:, 0]
-
-            if "CP" in df_val.columns:
-                args_pricing["cp"] = df_val["CP"].values
-
-            val = df_val[param["col_name"]].values
-            is_iv = param["col_name"].startswith("IV")
-
-            m = cls(**args_model)
-
-            param_dict = {
-                "args_pricing": args_pricing,
-                "ref": param["Reference"],
-                "val": val,
-                "is_iv": is_iv,
-            }
-
-            return m, df_val, param_dict
-
-
-class CondMcBsmABC(opt.OptABC, abc.ABC):
+class CondMcBsmABC(OptABC):
     """
     Abstract Class for conditional Monte-Carlo method for BSM-based stochastic volatility models
     """
-    var_process: bool = NotImplementedError
 
     dt = 0.05
     n_path = 10000
@@ -298,11 +201,10 @@ class CondMcBsmABC(opt.OptABC, abc.ABC):
 
         return price
 
-class SvMixtureABC(opt.OptABC, abc.ABC):
+class SvMixtureABC(OptABC):
     """
     Abstract Class for BS-mixture model for the BSM-based stochastic volatility models
     """
-    var_process: bool = NotImplementedError
 
     correct_fwd = False
     result = {}

@@ -10,10 +10,11 @@ import scipy.special as spsp
 
 from . import opt_abc as opt
 from . import bsm
+from .params import NormParams
 from .util import MathFuncs, MathConsts
 
 
-class Norm(opt.OptAnalyticABC):
+class Norm(NormParams, opt.OptAnalyticABC):
     """
     Bachelier (normal) model for option pricing.
     Underlying price is assumed to follow arithmetic Brownian motion.
@@ -31,8 +32,6 @@ class Norm(opt.OptAnalyticABC):
                [10.48003559,  9.79822867,  6.3002881 ],
                [18.67164469, 17.95246828, 13.98027179]])
     """
-
-    model_type = "Norm"
 
     # Coefficients for _impvol_Choi2009
     _POLY_NU = [

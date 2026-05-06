@@ -8,46 +8,21 @@ Created on Tue Oct 10
 import abc
 import copy
 import warnings
-import os
-import pandas as pd
 import numpy as np
 import scipy.optimize as spop
 from scipy import stats as spst
 from numpy.polynomial.hermite_e import hermeval
 
-from . import opt_abc as opt
+from .opt_abc import OptABC, MassZeroABC
 from . import bsm
 from . import norm
 from . import cev
 from .util import MathFuncs, DistHelperLnShift
+from .params import SabrParams
 
-class SabrABC(opt.OptABC, abc.ABC):
-    vov, beta, rho = 0.0, 1.0, 0.0
-    model_type = "SABR"
-    var_process = False
+class SabrABC(SabrParams, OptABC):
     #### vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
     _base_beta = None
-
-    def __init__(self, sigma, vov=0.1, rho=0.0, beta=1.0, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility at t=0
-            vov: volatility of volatility
-            rho: correlation between price and volatility
-            beta: elasticity parameter. 1.0 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.vov = vov
-        self.rho = rho
-        self.beta = beta
-
-    def params_kw(self):
-        params = super().params_kw()
-        extra = {"vov": self.vov, "beta": self.beta, "rho": self.rho}
-        return {**params, **extra}  # Py 3.9, params | extra
 
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta
@@ -81,56 +56,6 @@ class SabrABC(opt.OptABC, abc.ABC):
             model = "norm" if np.isclose(self.beta, 0) else "bsm"
 
         return super().vol_smile(strike, spot, texp, cp=cp, model=model)
-
-    @classmethod
-    def init_benchmark(cls, set_no=None):
-        """
-        Initiate a SABR model with stored benchmark parameter sets
-
-        Args:
-            set_no: set number
-
-        Returns:
-            Dataframe of all test cases if set_no = None
-            (model, Dataframe of result, params) if set_no is specified
-
-        References:
-            - Antonov, Alexander, Konikov, M., & Spector, M. (2013). SABR spreads its wings. Risk, 2013(Aug), 58–63.
-            - Antonov, Alexandre, Konikov, M., & Spector, M. (2019). Modern SABR Analytics. Springer International Publishing. https://doi.org/10.1007/978-3-030-10656-0
-            - Antonov, Alexandre, & Spector, M. (2012). Advanced analytics for the SABR model. Available at SSRN. https://ssrn.com/abstract=2026350
-            - Cai, N., Song, Y., & Chen, N. (2017). Exact Simulation of the SABR Model. Operations Research, 65(4), 931–951. https://doi.org/10.1287/opre.2017.1617
-            - Korn, R., & Tang, S. (2013). Exact analytical solution for the normal SABR model. Wilmott Magazine, 2013(7), 64–69. https://doi.org/10.1002/wilm.10235
-            - Lewis, A. L. (2016). Option valuation under stochastic volatility II: With Mathematica code. Finance Press.
-            - von Sydow, L., ..., Haentjens, T., & Waldén, J. (2018). BENCHOP - SLV: The BENCHmarking project in Option Pricing – Stochastic and Local Volatility problems. International Journal of Computer Mathematics, 1–14. https://doi.org/10.1080/00207160.2018.1544368
-        """
-        this_dir, _ = os.path.split(__file__)
-        file = os.path.join(this_dir, "data/sabr_benchmark.xlsx")
-        df_param = pd.read_excel(file, sheet_name="Param", index_col="Sheet")
-
-        if set_no is None:
-            return df_param
-        else:
-            df_val = pd.read_excel(file, sheet_name=str(set_no))
-            param = df_param.loc[set_no]
-            args_model = {k: param[k] for k in ("sigma", "vov", "rho", "beta")}
-            args_pricing = {k: param[k] for k in ("texp", "spot")}
-
-            assert df_val.columns[0] == "Strike"
-            args_pricing["strike"] = df_val.values[:, 0]
-
-            val = df_val[param["col_name"]].values
-            is_iv = param["col_name"].startswith("IV")
-
-            m = cls(**args_model)
-
-            param_dict = {
-                "args_pricing": args_pricing,
-                "ref": param["Reference"],
-                "val": val,
-                "is_iv": is_iv,
-            }
-
-            return m, df_val, param_dict
 
     @staticmethod
     def _vv(zz, rho):
@@ -560,7 +485,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
         return vol
 
 
-class SabrChoiWu2021H(SabrVolApproxABC, opt.MassZeroABC):
+class SabrChoiWu2021H(SabrVolApproxABC, MassZeroABC):
     """
     The CEV volatility approximation of the SABR model based on Theorem 1 of Choi & Wu (2019)
 
@@ -652,7 +577,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, opt.MassZeroABC):
         return t0
 
 
-class SabrChoiWu2021P(SabrChoiWu2021H, opt.MassZeroABC):
+class SabrChoiWu2021P(SabrChoiWu2021H, MassZeroABC):
     """
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 

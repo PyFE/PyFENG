@@ -52,13 +52,14 @@ References:
 import abc
 import numpy as np
 from . import opt_abc as opt
+from .params import BsmParams
 from .sv_fft import VarGammaFft, CgmyFft, HestonFft
 
 
 __all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'CgmyCos', 'HestonCos']
 
 
-class CosABC(opt.OptABC, abc.ABC):
+class CosABC(opt.OptABC):
     """
     Abstract base class for European vanilla pricing by the COS method.
 
@@ -415,7 +416,7 @@ class CosABC(opt.OptABC, abc.ABC):
         )
 
 
-class BsmCos(CosABC):
+class BsmCos(BsmParams, CosABC):
     """
     Black-Scholes-Merton European option pricing via the COS method.
 
@@ -457,7 +458,7 @@ class VarGammaCos(VarGammaFft, CosABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.VarGammaCos(sigma=0.12, theta=-0.14, vov=0.2,
+        >>> m = pf.VarGammaCos(sigma=0.12, theta=-0.14, nu=0.2,
         ...                    intr=0.1, divr=0.0)
         >>> m.price(np.array([90.0, 100.0, 110.0]), 100.0, 1.0)
     """
@@ -480,7 +481,7 @@ class VarGammaCos(VarGammaFft, CosABC):
             (c1, c2, 0.0, c4)
         """
         T = float(texp)
-        nu, sig, th = self.vov, self.sigma, self.theta
+        nu, sig, th = self.nu, self.sigma, self.theta
         omega = np.log(1.0 - th * nu - 0.5 * sig**2 * nu) / nu
         c1 = T * (omega + th)
         c2 = (sig**2 + nu * th**2) * T

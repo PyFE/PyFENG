@@ -5,8 +5,8 @@ import scipy.stats as spst
 import scipy.interpolate as spinterp
 from scipy import special as spsp
 import functools
-from . import sv_abc as sv
-from . import heston
+from .sv_abc import CondMcBsmABC
+from .heston import HestonABC
 
 #### Use of RN generation spawn:
 # 0: simulation of variance (gamma/ncx2/normal)
@@ -17,7 +17,7 @@ from . import heston
 # 5: asset return
 
 
-class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
+class HestonMcABC(HestonABC, CondMcBsmABC):
     scheme = None
     correct_fwd = False
     correct_martingale = False

@@ -1,14 +1,12 @@
-import abc
 import warnings
 import numpy as np
-from . import sv_abc as sv
+from .opt_abc import OptABC
 from . import bsm
 from .util import MathFuncs
+from .params import HestonParams
 
 
-class HestonABC(sv.SvABC, abc.ABC):
-    model_type = "Heston"
-    var_process = True
+class HestonABC(HestonParams, OptABC):
 
     def chi_dim(self):
         """

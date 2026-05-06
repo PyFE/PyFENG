@@ -6,12 +6,13 @@ import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
-from . import sv_abc as sv
 from . import ousv
 from . import heston
 from . import rheston
+from .opt_abc import OptABC
+from .params import BsmParams, VarGammaParams, NigParams, Sv32Params, GarchParams
 
-class FftABC(opt.OptABC, abc.ABC):
+class FftABC(opt.OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
     x_lim = 200  # integratin limit
 
@@ -94,7 +95,7 @@ class FftABC(opt.OptABC, abc.ABC):
         return df*fwd*price
 
 
-class BsmFft(FftABC):
+class BsmFft(BsmParams, FftABC):
     """
     Option pricing under Black-Scholes-Merton (BSM) model using fast fourier transform (FFT).
 
@@ -112,38 +113,12 @@ class BsmFft(FftABC):
         return np.exp(val)
 
 
-class VarGammaFft(sv.SvABC, FftABC):
+class VarGammaFft(VarGammaParams, FftABC):
     """
     Variance Gamma (VG) model option pricing with FFT.
 
-    The log price is modelled as a drifted Brownian motion time-changed by a
-    Gamma subordinator:
-
-    .. math::
-
-        \\log(S_T/F_T) = \\theta\\, G_T + \\sigma\\, W_{G_T} + \\omega T
-
-    where :math:`G_T \\sim \\mathrm{Gamma}(T/\\nu,\\, \\nu)` (mean :math:`T`,
-    variance :math:`\\nu T`), :math:`W_t` is a standard Brownian motion
-    independent of :math:`G_T`, and the martingale correction is
-
-    .. math::
-
-        \\omega = \\frac{1}{\\nu}\\ln\\!\\left(1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu\\right).
-
-    **Parameter mapping** (from :class:`~pyfeng.sv_abc.SvABC`):
-
-    * ``sigma`` (:math:`\\sigma`): volatility of the Brownian component.
-    * ``vov`` (:math:`\\nu`): variance rate of the Gamma subordinator;
-      controls excess kurtosis. Larger :math:`\\nu` ⟹ heavier tails.
-    * ``theta`` (:math:`\\theta`): drift of the Gamma component; controls
-      skewness. Negative :math:`\\theta` gives a left-skewed distribution
-      (typical for equity).
-    * ``mr``, ``rho``: not used by this model.
-
-    Note:
-        The constraint :math:`1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu > 0`
-        must hold for the martingale correction to be real-valued.
+    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
+    defined in :class:`~pyfeng.params.VarGammaParams`.
 
     References:
         - Madan DB, Carr PP, Chang EC (1998) The Variance Gamma Process and Option
@@ -157,39 +132,9 @@ class VarGammaFft(sv.SvABC, FftABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> strike = np.arange(80, 121, 10)
-        >>> sigma, vov, theta, texp, spot = 0.2, 0.3, -0.1, 1.0, 100
-        >>> m = pf.VarGammaFft(sigma, vov=vov, theta=theta)
-        >>> m.price(strike, spot, texp)
+        >>> m = pf.VarGammaFft(0.2, nu=0.3, theta=-0.1)
+        >>> m.price(strike, 100, 1.0)
     """
-
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.0, theta=0.0, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: volatility of the Brownian component (:math:`\\sigma`).
-            vov: variance rate of the Gamma subordinator (:math:`\\nu > 0`).
-            rho: not used; retained for interface compatibility.
-            mr: not used; retained for interface compatibility.
-            theta: drift of the Gamma component (:math:`\\theta`). Defaults to
-                ``0.0`` (symmetric, no skew). Note: unlike :class:`~pyfeng.sv_abc.SvABC`,
-                the default here is ``0.0``, not ``sigma``.
-            intr: interest rate (domestic).
-            divr: dividend / convenience yield (foreign interest rate).
-            is_fwd: if ``True``, treat ``spot`` as forward price.
-
-        Raises:
-            ValueError: if :math:`1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu \\leq 0`,
-                which would make the martingale correction undefined.
-        """
-        super().__init__(sigma, vov=vov, rho=rho, mr=mr, theta=theta, intr=intr, divr=divr, is_fwd=is_fwd)
-        arg = 1.0 - self.theta * self.vov - 0.5 * self.sigma**2 * self.vov
-        if arg <= 0:
-            raise ValueError(
-                f"VarGamma constraint violated: "
-                f"1 - theta*vov - sigma^2*vov/2 = {arg:.6g} <= 0 "
-                f"(sigma={self.sigma}, vov={self.vov}, theta={self.theta}). "
-                f"Reduce |theta|, vov, or sigma."
-            )
-        self._mgf1_correction = -np.log(arg)  # = kappa(1)*vov = -omega*vov; reused in every mgf_logprice call
 
     def mgf_logprice(self, uu, texp):
         """
@@ -204,9 +149,6 @@ class VarGammaFft(sv.SvABC, FftABC):
                 - \\ln\\!\\left(1 - \\theta\\nu u - \\tfrac{1}{2}\\sigma^2\\nu u^2\\right)
             \\right]\\right).
 
-        The first term inside the brackets is the martingale correction
-        :math:`u \\cdot \\omega\\nu`; the second is the raw CGF of the VG
-        increment evaluated with ``np.log1p`` for numerical stability.
         ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{VG}}(1)\\nu = -\\omega\\nu`
         (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
         term is ``-self._mgf1_correction * uu``.
@@ -220,50 +162,21 @@ class VarGammaFft(sv.SvABC, FftABC):
         Returns:
             MGF value(s) at ``uu``, same shape as ``uu``.
         """
-        volvar = self.vov*self.sigma**2
-        # CF: rv = 1j*self._mgf1_correction*uu - np.log(1 + (-1j*self.theta*self.vov + 0.5*volvar*uu)*uu)
-        rv = -self._mgf1_correction * uu - np.log1p((-self.theta * self.vov - 0.5 * volvar * uu) * uu)
-        np.exp(texp/self.vov*rv, out=rv)
+        volvar = self.nu * self.sigma**2
+        # CF: rv = 1j*self._mgf1_correction*uu - np.log(1 + (-1j*self.theta*self.nu + 0.5*volvar*uu)*uu)
+        rv = -self._mgf1_correction * uu - np.log1p((-self.theta * self.nu - 0.5 * volvar * uu) * uu)
+        np.exp(texp/self.nu*rv, out=rv)
         return rv
 
 
-class ExpNigFft(sv.SvABC, FftABC):
+class ExpNigFft(NigParams, FftABC):
     """
-    Exponential Normal Inverse Gaussian (NIG) model option pricing with FFT.
+    Normal Inverse Gaussian (NIG) model option pricing with FFT.
 
-    The log price is modelled as a drifted Brownian motion time-changed by an
-    Inverse Gaussian (IG) subordinator:
+    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
+    defined in :class:`~pyfeng.params.NigParams`.
 
-    .. math::
-
-        \\log(S_T/F_T) = \\theta\\, I_T + \\sigma\\, W_{I_T} + \\omega T
-
-    where :math:`I_T \\sim \\mathrm{IG}(T,\\, T^2/\\nu)` (mean :math:`T`,
-    variance :math:`\\nu T`), :math:`W_t` is a standard Brownian motion
-    independent of :math:`I_T`, and the martingale correction is
-
-    .. math::
-
-        \\omega = \\frac{1}{\\nu}\\left(\\sqrt{1 - 2\\theta\\nu - \\sigma^2\\nu} - 1\\right).
-
-    The per-unit-time cumulant generating function (CGF) before the correction is
-
-    .. math::
-
-        \\kappa(u) = \\frac{1}{\\nu}\\left(1 - \\sqrt{1 - 2\\theta\\nu u - \\sigma^2\\nu u^2}\\right).
-
-    **Parameter mapping** (from :class:`~pyfeng.sv_abc.SvABC`):
-
-    * ``sigma`` (:math:`\\sigma`): volatility of the Brownian component.
-    * ``vov`` (:math:`\\nu`): dispersion parameter of the IG subordinator;
-      controls tail heaviness. Larger :math:`\\nu` ⟹ heavier tails.
-    * ``theta`` (:math:`\\theta`): drift/asymmetry parameter; controls
-      skewness. Negative :math:`\\theta` gives a left-skewed distribution.
-    * ``mr``, ``rho``: not used by this model.
-
-    Note:
-        The constraint :math:`1 - 2\\theta\\nu - \\sigma^2\\nu > 0` must hold
-        for the martingale correction to be real-valued.
+    Also accessible as ``NigFft`` (preferred name).
 
     References:
         - Barndorff-Nielsen OE (1997) Normal Inverse Gaussian Distributions and
@@ -277,43 +190,13 @@ class ExpNigFft(sv.SvABC, FftABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> strike = np.arange(80, 121, 10)
-        >>> sigma, vov, theta, texp, spot = 0.2, 0.3, -0.1, 1.0, 100
-        >>> m = pf.ExpNigFft(sigma, vov=vov, theta=theta)
-        >>> m.price(strike, spot, texp)
+        >>> m = pf.ExpNigFft(0.2, nu=0.3, theta=-0.1)
+        >>> m.price(strike, 100, 1.0)
     """
-
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.0, theta=0.0, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: volatility of the Brownian component (:math:`\\sigma`).
-            vov: dispersion parameter of the IG subordinator (:math:`\\nu > 0`).
-            rho: not used; retained for interface compatibility.
-            mr: not used; retained for interface compatibility.
-            theta: drift/asymmetry parameter (:math:`\\theta`). Defaults to
-                ``0.0`` (symmetric, no skew). Note: unlike :class:`~pyfeng.sv_abc.SvABC`,
-                the default here is ``0.0``, not ``sigma``.
-            intr: interest rate (domestic).
-            divr: dividend / convenience yield (foreign interest rate).
-            is_fwd: if ``True``, treat ``spot`` as forward price.
-
-        Raises:
-            ValueError: if :math:`1 - 2\\theta\\nu - \\sigma^2\\nu \\leq 0`,
-                which would make the martingale correction undefined.
-        """
-        super().__init__(sigma, vov=vov, rho=rho, mr=mr, theta=theta, intr=intr, divr=divr, is_fwd=is_fwd)
-        arg = 1.0 - 2.0 * self.theta * self.vov - self.sigma**2 * self.vov
-        if arg <= 0:
-            raise ValueError(
-                f"ExpNig constraint violated: "
-                f"1 - 2*theta*vov - sigma^2*vov = {arg:.6g} <= 0 "
-                f"(sigma={self.sigma}, vov={self.vov}, theta={self.theta}). "
-                f"Reduce |theta|, vov, or sigma."
-            )
-        self._mgf1_correction = 1.0 - np.sqrt(arg)  # = kappa(1)*vov = -omega*vov; reused in every mgf_logprice call
 
     def mgf_logprice(self, uu, texp):
         """
-        MGF of log price under the Exponential NIG model.
+        MGF of log price under the NIG model.
 
         The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
 
@@ -324,13 +207,9 @@ class ExpNigFft(sv.SvABC, FftABC):
                 + 1 - \\sqrt{1 - 2\\theta\\nu u - \\sigma^2\\nu u^2}
             \\right]\\right).
 
-        The first term is the martingale correction :math:`\\omega\\nu\\cdot u`;
-        the second is the raw CGF of the NIG increment.
         ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{NIG}}(1)\\nu = -\\omega\\nu`
         (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
-        term is ``-self._mgf1_correction * uu``.  The martingale condition
-        :math:`\\mathrm{MGF}(1) = 1` is satisfied by construction: both terms
-        cancel exactly at :math:`u = 1`.
+        term is ``-self._mgf1_correction * uu``.
 
         Args:
             uu: MGF argument (scalar or array). Real values give the MGF;
@@ -341,10 +220,10 @@ class ExpNigFft(sv.SvABC, FftABC):
         Returns:
             MGF value(s) at ``uu``, same shape as ``uu``.
         """
-        volvar = self.vov*self.sigma**2
-        rv = -self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.vov - volvar * uu) * uu)
-        # CF: rv = 1j*self._mgf1_correction*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.vov + volvar*uu)*uu)
-        np.exp(texp/self.vov*rv, out=rv)
+        volvar = self.nu * self.sigma**2
+        rv = -self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.nu - volvar * uu) * uu)
+        # CF: rv = 1j*self._mgf1_correction*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.nu + volvar*uu)*uu)
+        np.exp(texp/self.nu*rv, out=rv)
         return rv
 
 
@@ -785,7 +664,7 @@ class OusvFft(ousv.OusvABC, FftABC):
         return np.exp(res)
 
 
-class Sv32Fft(sv.SvABC, FftABC):
+class Sv32Fft(Sv32Params, FftABC):
     """
     3/2 model option pricing with Fourier inversion
 
@@ -994,7 +873,7 @@ class CgmyFft(FftABC):
         return rv
 
 
-class GarchFftWuMaWang2012(sv.SvABC, FftABC):
+class GarchFftWuMaWang2012(GarchParams, FftABC):
     """
     GARCH diffusion model option pricing with approximate Fourier inversion
 
@@ -1011,9 +890,6 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         >>> m.price(strike, spot, texp)
         array([11.7235,  8.9978,  6.7091])
     """
-
-    model_type = "GarchDiff"
-    var_process = True
 
     def mgf_logprice_old(self, uu, texp):
         """

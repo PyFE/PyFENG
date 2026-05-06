@@ -1,39 +1,21 @@
 import numpy as np
 from . import opt_abc as opt
 from . import bsm
+from .params import SviParams
 
 
-class Svi(opt.OptABC):
+class Svi(SviParams, opt.OptABC):
     """
     Stochastic Volatility-inspired (SVI) model by Gatheral.
+
+    Parameters are defined in :class:`~pyfeng.params.SviParams`.
 
     References
         - Gatheral J, Jacquier A (2013) Arbitrage-free SVI volatility surfaces. arXiv:12040646 [q-fin]
     """
-    model_type = "Svi"
-    vov, rho, smooth, shift = 0.4, -0.4, 0.1, 0.0
-
-    def __init__(self, sigma=0.04, vov=0.4, rho=-0.4, smooth=0.1, shift=0.0, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Raw SVI parametrization
-
-        Args:
-            sigma: level (a)
-            vov: vol-of-vol (b)
-            rho: rotation (rho)
-            smooth: smoothness (sigma)
-            shift: translation (m)
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-
-        self.sigma, self.vov, self.rho, self.smooth, self.shift = sigma, vov, rho, smooth, shift
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def base_model(self, sigma=None):
-        base_model = bsm.Bsm(sigma, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
-        return base_model
+        return bsm.Bsm(sigma, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
@@ -73,12 +55,9 @@ class Svi(opt.OptABC):
         vov_ = (w1 * w2) / (2 * texp)
         shift = - rho * texp / w2
         smooth = np.sqrt(rhoc2) * texp / w2
-        m = cls(sigma_, vov=vov_, rho=rho, smooth=smooth, shift=shift, intr=intr, divr=divr, is_fwd=is_fwd)
-
-        return m
+        return cls(sigma_, vov=vov_, rho=rho, smooth=smooth, shift=shift, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
         vol = self.vol_for_price(strike, spot, texp)
         m_vol = self.base_model(vol)
-        price = m_vol.price(strike, spot, texp, cp=cp)
-        return price
+        return m_vol.price(strike, spot, texp, cp=cp)

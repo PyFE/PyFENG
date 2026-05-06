@@ -12,7 +12,7 @@ import pyfeng.opt_abc as opt
 from pyfeng.quad import NdGHQ  # Not sure
 
 
-class OptMaABC(opt.OptABC, abc.ABC):
+class OptMaABC(opt.OptABC):
 
     n_asset = 1
     rho = None

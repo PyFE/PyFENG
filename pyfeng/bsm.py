@@ -5,9 +5,10 @@ import warnings
 
 from . import opt_abc as opt
 from . import norm
+from .params import BsmParams
 from .util import MathFuncs, MathConsts
 
-class Bsm(opt.OptAnalyticABC):
+class Bsm(BsmParams, opt.OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
 
@@ -26,8 +27,6 @@ class Bsm(opt.OptAnalyticABC):
                [ 9.4592961 ,  9.3881245 ,  6.45745004],
                [16.812035  , 17.10541288, 14.10354768]])
     """
-
-    model_type = "Bsm"
 
     @staticmethod
     def price_formula(strike, spot, sigma, texp, cp=1, intr=0.0, divr=0.0, is_fwd=False):

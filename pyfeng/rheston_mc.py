@@ -9,11 +9,11 @@ import abc
 import numpy as np
 import scipy.special as spsp
 import scipy.integrate as spint
-from . import sv_abc as sv
-from . import rheston
+from .sv_abc import CondMcBsmABC
+from .rheston import RoughHestonABC
 
 
-class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
+class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
     
     def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, intr=0.0, divr=0.0) -> None:
         """
@@ -29,7 +29,7 @@ class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
             intr: interest rate
             divr: dividend rate
         """
-        super().__init__(V_0, kappa * epsilon, rho, kappa, theta, alpha, intr, divr)
+        super().__init__(V_0, kappa * epsilon, rho, kappa, theta, alpha, intr=intr, divr=divr)
 
     def set_num_params(self, texp, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
         super().set_num_params(n_path, n_ts, rn_seed, antithetic)

@@ -1,9 +1,10 @@
 import scipy.stats as spst
 import numpy as np
-from . import opt_abc as opt
+from .opt_abc import OptABC
+from .params import InvGamParams, InvGaussParams
 
 
-class InvGam(opt.OptABC):
+class InvGam(InvGamParams, OptABC):
     """
     Option pricing model with the inverse gamma (reciprocal gamma) distribution.
 
@@ -19,8 +20,6 @@ class InvGam(opt.OptABC):
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
         array([15.49803779,  9.53595458,  5.49889751,  3.02086661,  1.60505654])
     """
-
-    sigma = None
 
     @staticmethod
     def price_formula(
@@ -54,7 +53,6 @@ class InvGam(opt.OptABC):
         Returns:
             (alpha, beta)
         """
-
         fwd = self.forward(spot, texp)
         alpha = 1 / np.expm1(self.sigma ** 2 * texp) + 2
         beta = (alpha - 1) * fwd
@@ -75,7 +73,7 @@ class InvGam(opt.OptABC):
         return cdf
 
 
-class InvGauss(opt.OptABC):
+class InvGauss(InvGaussParams, OptABC):
     """
     Option pricing model with the inverse Gaussian (IG) distribution.
 
@@ -91,8 +89,6 @@ class InvGauss(opt.OptABC):
         >>> m.price(np.arange(80, 121, 10), 100, 1.2)
         array([15.71924064,  9.70753358,  5.54459412,  2.95300168,  1.48019682])
     """
-
-    sigma = None
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
