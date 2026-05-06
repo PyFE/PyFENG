@@ -1,36 +1,13 @@
-import abc
-
 import scipy.stats as spst
 import scipy.special as spsp
 import numpy as np
-from . import opt_abc as opt
+from .opt_abc import OptABC, OptAnalyticABC, MassZeroABC
 from . import sv_abc as sv
+from .params import CevParams
 from .util import MathFuncs
 
 
-class CevAbc(opt.OptABC):
-    model_type = "Cev"
-    beta = 0.5
-
-    def __init__(self, sigma, beta=0.5, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility
-            beta: elasticity parameter. 0.5 by default
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.beta = beta
-
-    def params_kw(self):
-        params = super().params_kw()
-        extra = {"beta": self.beta}
-        return {**params, **extra}  # Py 3.9, params | extra
-
-
-class Cev(opt.OptAnalyticABC, CevAbc, opt.MassZeroABC):
+class Cev(CevParams, OptAnalyticABC, MassZeroABC):
     """
     Constant Elasticity of Variance (CEV) model.
 
@@ -209,7 +186,7 @@ class Cev(opt.OptAnalyticABC, CevAbc, opt.MassZeroABC):
         return self.theta_numeric(strike, spot, texp, cp=cp)
 
 
-class CevMc(CevAbc):
+class CevMc(CevParams, OptABC):
     """
     Constant Elasticity of Variance (CEV) model with exact Monte-Carlo method (Kang, 2014)
 

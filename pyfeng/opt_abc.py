@@ -4,43 +4,13 @@ import numpy as np
 import scipy.optimize as sopt
 import scipy.stats as spst
 from typing import ClassVar
+from .params import BaseParams
 
-class OptABC(abc.ABC):
+class OptABC(BaseParams, abc.ABC):
     model_type: ClassVar[str]
-    sigma, intr, divr = None, 0.0, 0.0
-    is_fwd = False
 
     IMPVOL_TOL = 1e-10
     IMPVOL_MAXVOL = 99.99
-
-    def __init__(self, sigma, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatility
-            intr: interest rate (domestic interest rate)
-            divr: dividend/convenience yield (foreign interest rate)
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        self.sigma = sigma
-        self.intr = intr
-        self.divr = divr
-        self.is_fwd = is_fwd
-
-    def params_kw(self):
-        """
-        Model parameters in dictionary
-        """
-        params = {
-            "sigma": self.sigma,
-            "intr": self.intr,
-            "divr": self.divr,
-            "is_fwd": self.is_fwd,
-        }
-        return params
-
-    def params_hash(self):
-        dct = self.params_kw()
-        return hash((frozenset(dct.keys()), frozenset(dct.values())))
 
     def forward(self, spot, texp):
         """

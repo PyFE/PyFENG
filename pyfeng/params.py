@@ -78,6 +78,11 @@ class BaseParams:
         """Model parameters as a keyword-argument dictionary."""
         return _params_kw(self)
 
+    def params_hash(self) -> int:
+        """Stable hash of the model parameters, suitable as a cache key."""
+        dct = self.params_kw()
+        return hash((frozenset(dct.keys()), frozenset(dct.values())))
+
     @classmethod
     def from_param(cls, other):
         """
@@ -124,6 +129,18 @@ class BsmParams(BaseParams):
 class NormParams(BaseParams):
     """Parameters for the Bachelier (Normal / absolute-diffusion) model."""
     model_type: ClassVar[str] = "Norm"
+
+
+@dataclass
+class InvGamParams(BaseParams):
+    """Parameters for the Inverse Gamma distribution option pricing model."""
+    model_type: ClassVar[str] = "InvGam"
+
+
+@dataclass
+class InvGaussParams(BaseParams):
+    """Parameters for the Inverse Gaussian distribution option pricing model."""
+    model_type: ClassVar[str] = "InvGauss"
 
 
 @dataclass
