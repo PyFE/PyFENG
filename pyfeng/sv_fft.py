@@ -6,11 +6,11 @@ import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
 from . import opt_abc as opt
-from . import sv_abc as sv
 from . import ousv
 from . import heston
 from . import rheston
-from .params import BsmParams, VarGammaParams, NigParams
+from .opt_abc import OptABC
+from .params import BsmParams, VarGammaParams, NigParams, Sv32Params, GarchParams
 
 class FftABC(opt.OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -664,7 +664,7 @@ class OusvFft(ousv.OusvABC, FftABC):
         return np.exp(res)
 
 
-class Sv32Fft(sv.SvABC, FftABC):
+class Sv32Fft(Sv32Params, FftABC):
     """
     3/2 model option pricing with Fourier inversion
 
@@ -873,7 +873,7 @@ class CgmyFft(FftABC):
         return rv
 
 
-class GarchFftWuMaWang2012(sv.SvABC, FftABC):
+class GarchFftWuMaWang2012(GarchParams, FftABC):
     """
     GARCH diffusion model option pricing with approximate Fourier inversion
 
@@ -890,9 +890,6 @@ class GarchFftWuMaWang2012(sv.SvABC, FftABC):
         >>> m.price(strike, spot, texp)
         array([11.7235,  8.9978,  6.7091])
     """
-
-    model_type = "GarchDiff"
-    var_process = True
 
     def mgf_logprice_old(self, uu, texp):
         """

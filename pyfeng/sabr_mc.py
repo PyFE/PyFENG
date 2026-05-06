@@ -8,14 +8,14 @@ import scipy.special as spsp
 from functools import partial
 import scipy.integrate as scint
 from . import sabr
-from . import sv_abc as sv
+from .sv_abc import CondMcBsmABC
 
 #### Use of RN generation spawn:
 # 0: simulation of volatility (normal)
 # 2: integrated/average variance (lognormal)
 # 5: asset return
 
-class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC):
+class SabrMcABC(sabr.SabrABC, CondMcBsmABC):
 
     def vol_step(self, dt, log=False):
         """

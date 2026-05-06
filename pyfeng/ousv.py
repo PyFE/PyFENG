@@ -2,9 +2,11 @@ import abc
 import warnings
 import numpy as np
 import scipy.integrate as scint
-from . import sv_abc as sv
+from .sv_abc import CondMcBsmABC
+from .opt_abc import OptABC
 from . import bsm
 from .util import MathFuncs
+from .params import OusvParams
 
 #### Use of RN generation spawn:
 # 0: simulation of sigma: vol_step()
@@ -15,10 +17,7 @@ from .util import MathFuncs
 # 5: asset return
 
 
-class OusvABC(sv.SvABC):
-
-    model_type = "OUSV"
-    var_process = False
+class OusvABC(OusvParams, OptABC):
 
     def avgvol_mv(self, texp, vol0=None, nz_theta=True):
         """
@@ -287,7 +286,7 @@ class OusvUncorrBallRoma1994(OusvABC):
         return price
 
 
-class OusvMcABC(OusvABC, sv.CondMcBsmABC):
+class OusvMcABC(OusvABC, CondMcBsmABC):
 
     @abc.abstractmethod
     def cond_states_step(self, dt, vol_0, nz_theta=True):

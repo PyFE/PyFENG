@@ -5,11 +5,11 @@ from . import sabr
 import scipy.special as spsp
 import scipy.stats as spst
 import scipy.integrate as spint
-from . import opt_abc as opt
+from .opt_abc import MassZeroABC
 from .util import MathFuncs, DistHelperLnShift
 
 
-class SabrMixtureABC(sabr.SabrABC, opt.MassZeroABC):
+class SabrMixtureABC(sabr.SabrABC, MassZeroABC):
 
     correct_fwd = False
 

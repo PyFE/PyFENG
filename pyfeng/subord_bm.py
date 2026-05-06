@@ -3,9 +3,10 @@ import numpy as np
 import scipy.special as spsp
 from .bsm import Bsm
 from .norm import Norm
-from . import sv_abc as sv
+from .opt_abc import OptABC
+from .params import SvParams
 
-class SubordBmABC(sv.SvABC):
+class SubordBmABC(SvParams, OptABC):
 
     # To do:
     # merge with SabrCondDistABC in sabr_int.py  use cond_spot_sigma()
@@ -13,14 +14,13 @@ class SubordBmABC(sv.SvABC):
     # unified initializer, seperate model vs numerical params: set_num_param()
     #
 
-    mr = 0.0
     sv_param = True
 
     n_quad = 7
     nu = None
 
     def __init__(self, sigma, vov=0.01, rho=0.0, n_quad=7, intr=0.0, divr=0.0, is_fwd=False, sv_param=True):
-        super().__init__(sigma, vov, rho, None, None, intr, divr, is_fwd=is_fwd)
+        super().__init__(sigma, vov=vov, rho=rho, mr=0.0, intr=intr, divr=divr, is_fwd=is_fwd)
         self.n_quad = n_quad
         self.sv_param = sv_param
 

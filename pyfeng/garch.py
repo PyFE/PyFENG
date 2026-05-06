@@ -1,13 +1,15 @@
 import warnings
 import numpy as np
-from . import sv_abc as sv
+from .sv_abc import CondMcBsmABC
+from .opt_abc import OptABC
 from . import bsm
 from .util import MathFuncs
+from .params import GarchParams
 
 #### Use of RN generation spawn:
 # 0: simulation of variance (gamma/ncx2/normal)
 
-class GarchUncorrBaroneAdesi2004(sv.SvABC):
+class GarchUncorrBaroneAdesi2004(GarchParams, OptABC):
     """
     Barone-Adesi et al. (2004)'s approximation pricing formula for European options under uncorrelated (rho=0) GARCH diffusion model.
     Up to 2nd order is implemented.
@@ -18,8 +20,6 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
     See Also: OusvUncorrBallRoma1994, HestonUncorrBallRoma1994
     """
 
-    model_type = "GarchDiff"
-    var_process = True
     order = 2
 
     def avgvar_mv(self, texp, var0):
@@ -80,14 +80,12 @@ class GarchUncorrBaroneAdesi2004(sv.SvABC):
         return price
 
 
-class GarchMcTimeDisc(sv.SvABC, sv.CondMcBsmABC):
+class GarchMcTimeDisc(GarchParams, CondMcBsmABC):
     """
     Garch model with conditional Monte-Carlo simulation
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
     """
 
-    model_type = "GarchDiff"
-    var_process = True
     scheme = 1  #
 
     def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
