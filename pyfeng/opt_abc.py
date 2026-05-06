@@ -461,13 +461,6 @@ class OptABC(abc.ABC):
         price = self.price(strike, spot, texp, cp=cp)
         return base_model.impvol(price, strike, spot, texp, cp=cp)
 
-    # create aliases
-    delta = delta_numeric
-    gamma = gamma_numeric
-    vega = vega_numeric
-    vanna = vanna_numeric
-    volga = volga_numeric
-    theta = theta_numeric
 
 
 class OptAnalyticABC(OptABC):
