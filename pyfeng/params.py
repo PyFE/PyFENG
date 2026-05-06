@@ -78,6 +78,37 @@ class BaseParams:
         """Model parameters as a keyword-argument dictionary."""
         return _params_kw(self)
 
+    @classmethod
+    def from_param(cls, other):
+        """
+        Create a new instance by copying parameters from another instance of the same model type.
+
+        Args:
+            other: source param or model instance.
+
+        Returns:
+            New instance of ``cls`` with parameters copied from ``other``.
+
+        Raises:
+            TypeError: if source and target have incompatible model types.
+        """
+        cls_type = getattr(cls, 'model_type', None)
+        other_type = getattr(type(other), 'model_type', None)
+
+        if isinstance(cls_type, str) and isinstance(other_type, str):
+            # Compare model_type strings: allows cross-algorithm copies (e.g. HestonFft → HestonMC)
+            if cls_type != other_type:
+                raise TypeError(
+                    f"Model type mismatch: source is '{other_type}' ({type(other).__name__}) "
+                    f"but target is '{cls_type}' ({cls.__name__})."
+                )
+        elif not isinstance(other, cls):
+            raise TypeError(
+                f"Cannot copy from '{type(other).__name__}' to '{cls.__name__}'."
+            )
+
+        return cls(**other.params_kw())
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Simple closed-form models
@@ -311,12 +342,15 @@ class SviParams(BaseParams):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @dataclass
-class CgmyParams:
+class CgmyParams(BaseParams):
     """
     Parameters for the CGMY (Carr-Geman-Madan-Yor) Lévy model.
 
     The Lévy measure is
     :math:`C[e^{-Mx}/x^{1+Y}\\mathbf{1}_{x>0} + e^{Gx}/|x|^{1+Y}\\mathbf{1}_{x<0}]\\,dx`.
+
+    ``sigma`` is inherited from :class:`BaseParams` but unused (set to ``None``);
+    the CGMY process has no Brownian diffusion component.
 
     Constraints: ``C > 0``, ``G > 0``, ``M > 1`` (for finite martingale
     correction), ``Y < 2``.
@@ -328,14 +362,11 @@ class CgmyParams:
     * ``_mgf1_correction = κ(1)/(C·Γ(-Y)) = -ω/(C·Γ(-Y))``.
     """
     model_type: ClassVar[str] = "CGMY"
-    C: float
-    G: float
-    M: float
-    Y: float
-    _: KW_ONLY
-    intr: float = 0.0
-    divr: float = 0.0
-    is_fwd: bool = False
+    sigma: float = None          # CGMY has no diffusion component
+    C: float = field(kw_only=True)
+    G: float = field(kw_only=True)
+    M: float = field(kw_only=True)
+    Y: float = field(kw_only=True)
 
     _gam_Y_C: float = field(init=False, repr=False)
     _M_pow_Y: float = field(init=False, repr=False)
@@ -362,7 +393,3 @@ class CgmyParams:
             np.power(self.M - 1.0, self.Y) - self._M_pow_Y
             + np.power(self.G + 1.0, self.Y) - self._G_pow_Y
         )
-
-    def params_kw(self) -> dict:
-        """Model parameters as a keyword-argument dictionary."""
-        return _params_kw(self)

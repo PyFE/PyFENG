@@ -13,7 +13,7 @@ from . import sv_abc as sv
 from . import rheston
 
 
-class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC, abc.ABC):
+class RoughHestonMcABC(rheston.RoughHestonABC, sv.CondMcBsmABC):
     
     def __init__(self, V_0, rho, kappa, epsilon, theta, alpha, intr=0.0, divr=0.0) -> None:
         """

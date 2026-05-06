@@ -6,7 +6,7 @@ from . import bsm
 from .util import MathFuncs
 
 
-class HestonABC(sv.SvABC, abc.ABC):
+class HestonABC(sv.SvABC):
     model_type = "Heston"
     var_process = True
 

@@ -8,7 +8,7 @@ import scipy.stats as spst
 from scipy.misc import derivative
 
 
-class Sv32McABC(sv.SvABC, sv.CondMcBsmABC, abc.ABC):
+class Sv32McABC(sv.SvABC, sv.CondMcBsmABC):
     model_type = "3/2"
     var_process = True
     scheme = None

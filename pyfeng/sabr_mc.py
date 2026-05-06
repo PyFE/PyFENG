@@ -15,7 +15,7 @@ from . import sv_abc as sv
 # 2: integrated/average variance (lognormal)
 # 5: asset return
 
-class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC, abc.ABC):
+class SabrMcABC(sabr.SabrABC, sv.CondMcBsmABC):
 
     def vol_step(self, dt, log=False):
         """

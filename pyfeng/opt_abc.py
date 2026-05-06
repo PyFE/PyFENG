@@ -42,39 +42,6 @@ class OptABC(abc.ABC):
         dct = self.params_kw()
         return hash((frozenset(dct.keys()), frozenset(dct.values())))
 
-    @classmethod
-    def from_param(cls, other):
-        """
-        Create a new instance by copying parameters from another model parameters of the same type.
-
-        Args:
-            other: source param instance
-
-        Returns:
-            New instance of cls with parameters copied from other
-
-        Raises:
-            TypeError: if source and target are not the same model type
-        """
-        cls_type = getattr(cls, 'model_type', None)
-        other_type = getattr(type(other), 'model_type', None)
-
-        if isinstance(cls_type, str) and isinstance(other_type, str):
-            # SV-family models: compare model_type string (allows cross-algorithm copies)
-            if cls_type != other_type:
-                raise TypeError(
-                    f"Model type mismatch: source is '{other_type}' ({type(other).__name__}) "
-                    f"but target is '{cls_type}' ({cls.__name__})."
-                )
-        elif not isinstance(other, cls):
-            # Simple models (BSM, Norm, etc.): require class compatibility
-            raise TypeError(
-                f"Cannot copy from '{type(other).__name__}' to '{cls.__name__}'."
-            )
-
-        return cls(**other.params_kw())
-
-
     def forward(self, spot, texp):
         """
         Forward price
@@ -579,7 +546,7 @@ class OptAnalyticABC(OptABC):
         raise NotImplementedError
 
 
-class MassZeroABC(OptABC, abc.ABC):
+class MassZeroABC(OptABC):
     """
     Implied volatility asymptotics of De Marco et al. (2017) given the positive mass at zero.
 

@@ -7,7 +7,7 @@ from . import bsm
 from . import opt_abc as opt
 
 
-class SvABC(opt.OptABC, abc.ABC):
+class SvABC(opt.OptABC):
 
     var_process: ClassVar[bool]
     vov, rho, mr, theta = 0.01, 0.0, 0.01, 1.0
@@ -100,7 +100,7 @@ class SvABC(opt.OptABC, abc.ABC):
             return m, df_val, param_dict
 
 
-class CondMcBsmABC(opt.OptABC, abc.ABC):
+class CondMcBsmABC(opt.OptABC):
     """
     Abstract Class for conditional Monte-Carlo method for BSM-based stochastic volatility models
     """
@@ -298,7 +298,7 @@ class CondMcBsmABC(opt.OptABC, abc.ABC):
 
         return price
 
-class SvMixtureABC(opt.OptABC, abc.ABC):
+class SvMixtureABC(opt.OptABC):
     """
     Abstract Class for BS-mixture model for the BSM-based stochastic volatility models
     """

@@ -9,7 +9,7 @@ from . import opt_abc as opt
 from .util import MathFuncs, DistHelperLnShift
 
 
-class SabrMixtureABC(sabr.SabrABC, opt.MassZeroABC, abc.ABC):
+class SabrMixtureABC(sabr.SabrABC, opt.MassZeroABC):
 
     correct_fwd = False
 

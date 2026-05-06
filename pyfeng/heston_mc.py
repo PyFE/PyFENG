@@ -17,7 +17,7 @@ from . import heston
 # 5: asset return
 
 
-class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC, abc.ABC):
+class HestonMcABC(heston.HestonABC, sv.CondMcBsmABC):
     scheme = None
     correct_fwd = False
     correct_martingale = False

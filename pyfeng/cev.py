@@ -8,7 +8,7 @@ from . import sv_abc as sv
 from .util import MathFuncs
 
 
-class CevAbc(opt.OptABC, abc.ABC):
+class CevAbc(opt.OptABC):
     model_type = "Cev"
     beta = 0.5
 

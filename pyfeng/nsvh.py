@@ -10,7 +10,7 @@ import scipy.optimize as spop
 from . import opt_abc as opt
 from .util import MathFuncs, MathConsts
 
-class NsvhABC(opt.OptABC, abc.ABC):
+class NsvhABC(opt.OptABC):
     beta = 0.0  ## should be fixed as 0
     vov, rho, lam = 0.0, 0.0, 0.0
     model_type = "Nsvh"

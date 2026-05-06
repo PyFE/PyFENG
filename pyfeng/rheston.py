@@ -2,7 +2,7 @@ import abc
 from . import sv_abc as sv
 
 
-class RoughHestonABC(sv.SvABC, abc.ABC):
+class RoughHestonABC(sv.SvABC):
     """
     Rough Heston model Abstract class
     """
