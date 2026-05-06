@@ -160,6 +160,87 @@ class OusvABC(OusvParams, OptABC):
 
         return strike
 
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the OUSV model (Lord & Kahl 2010 branch-cut-safe form).
+
+        We use the characteristic function in Eq (4.14) of Lord & Kahl (2010) that is
+        continuous in branch cut when complex log is evaluated.
+
+        References:
+            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models.
+              Mathematical Finance 20:671–694.
+              https://doi.org/10.1111/j.1467-9965.2010.00416.x
+        """
+        var_0 = self.sigma**2
+        sigma_0 = self.sigma
+
+        # equivalent Heston params when theta=0
+        mr_h, vov_h, theta_h = 2*self.mr, 2*self.vov, self.vov**2/(2*self.mr)
+        vov2_h = 4*self.vov**2
+
+        beta = mr_h - self.rho*vov_h*uu
+        dd = np.sqrt(beta**2 + vov2_h*uu*(1 - uu))
+        gg = (beta - dd)/(beta + dd)
+
+        exp_h = np.exp(-0.5*dd*texp)
+        exp = exp_h**2
+        tmp1 = 1 - gg*exp
+
+        # Heston model part
+        mgf = mr_h*theta_h*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
+        mgf /= vov2_h
+
+        # Additional part for OUSV
+        bb = (1 - exp_h)**2/tmp1
+        aa = 0.5*self.mr*self.theta/dd**2
+        aa *= beta*(dd*texp - 4) + dd*(dd*texp - 2) + 4*((dd**2 - 2*beta**2)/(beta + dd)*exp + 2*beta*exp_h)/tmp1
+
+        mgf += 0.5*self.theta/theta_h*(beta - dd)/dd*(aa + bb*sigma_0)
+
+        return np.exp(mgf)
+
+    def mgf_logprice_schobelzhu1998(self, uu, texp):
+        """
+        MGF from Eq. (13) in Schobel & Zhu (1998).
+        This form suffers discontinuity in complex log branch cut. Should not be used for pricing.
+
+        References:
+            - Schöbel R, Zhu J (1999) Stochastic Volatility With an Ornstein–Uhlenbeck
+              Process: An Extension. Rev Financ 3:23–46.
+              https://doi.org/10.1023/A:1009803506170
+        """
+        mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
+
+        s1 = 0.5*uu*((1 - 2*mr*rho/vov) - (1 - rho**2)*uu)
+        s2 = uu*mr*theta*rho/vov
+        s3 = 0.5*uu*rho/vov
+
+        gamma1 = np.sqrt(2*vov**2*s1 + mr**2)
+        gamma2 = (mr - 2*vov**2*s3)/gamma1
+        gamma3 = mr**2*theta - s2*vov**2
+        sinh = np.sinh(gamma1*texp)
+        cosh = np.cosh(gamma1*texp)
+        sincos = sinh + gamma2*cosh
+        cossin = cosh + gamma2*sinh
+        ktg3 = mr*theta*gamma1 - gamma2*gamma3
+        s2g3 = vov**2*gamma1**3
+
+        D = (mr - gamma1*sincos/cossin)/vov**2
+        B = ((ktg3 + gamma3*sincos)/cossin - mr*theta*gamma1)/(vov**2*gamma1)
+        C = (
+                -0.5*np.log(cossin)
+                + 0.5*mr*texp
+                + ((mr*theta*gamma1)**2 - gamma3**2)
+                /(2*s2g3)
+                *(sinh/cossin - gamma1*texp)
+                + ktg3*gamma3/s2g3*((cosh - 1)/cossin)
+        )
+
+        res = -0.5*uu*rho*(self.sigma**2/vov + vov*texp)
+        res += (D/2*self.sigma + B)*self.sigma + C
+        return np.exp(res)
+
 
 class OusvSchobelZhu1998(OusvABC):
     """

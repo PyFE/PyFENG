@@ -304,9 +304,29 @@ class SvParams(BaseParams):
 
 @dataclass
 class HestonParams(SvParams):
-    """Parameters for the Heston stochastic-volatility model."""
+    """
+    Parameters for the Heston stochastic-volatility model.
+
+    Raises:
+        ValueError: if any constraint is violated:
+            ``sigma > 0``, ``vov > 0``, ``mr > 0``, ``theta > 0``,
+            ``rho ∈ (−1, 1)``.
+    """
     model_type: ClassVar[str] = "Heston"
     var_process: ClassVar[bool] = True
+
+    def __post_init__(self):
+        super().__post_init__()   # sets self.theta = self.sigma when theta is None
+        if self.sigma <= 0.0:
+            raise ValueError(f"sigma (initial variance) must be > 0, got {self.sigma}")
+        if self.vov <= 0.0:
+            raise ValueError(f"vov (vol-of-vol) must be > 0, got {self.vov}")
+        if self.mr <= 0.0:
+            raise ValueError(f"mr (mean-reversion) must be > 0, got {self.mr}")
+        if self.theta <= 0.0:
+            raise ValueError(f"theta (long-run variance) must be > 0, got {self.theta}")
+        if not (-1.0 < self.rho < 1.0):
+            raise ValueError(f"rho must be in (-1, 1), got {self.rho}")
 
 
 @dataclass

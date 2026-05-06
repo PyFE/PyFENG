@@ -11,7 +11,7 @@ from .gamma import InvGam, InvGauss
 from .sv_fft import HestonFft, BsmFft, OusvFft, VarGammaFft, CgmyFft, ExpNigFft, Sv32Fft, GarchFftWuMaWang2012
 
 # COS related models
-from .sv_cos import CosABC, BsmCos, VarGammaCos, CgmyCos, HestonCos
+from .sv_cos import BsmCos, VarGammaCos, CgmyCos, HestonCos
 
 # SABR/NSVh related models
 from .sabr import SabrHagan2002, SabrNormVolApprox, SabrLorig2017, SabrChoiWu2021H, SabrChoiWu2021P

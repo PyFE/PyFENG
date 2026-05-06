@@ -120,6 +120,34 @@ class HestonABC(HestonParams, OptABC):
 
         return strike
 
+    def mgf_logprice(self, uu, texp):
+        """
+        Log price MGF under the Heston model (Lord & Kahl 2010 branch-cut-safe form).
+
+        We use the characteristic function in Eq (2.8) of Lord & Kahl (2010) that is
+        continuous in branch cut when the complex log is evaluated.
+
+        References:
+            - Heston SL (1993) A Closed-Form Solution for Options with Stochastic
+              Volatility with Applications to Bond and Currency Options.
+              The Review of Financial Studies 6:327–343.
+              https://doi.org/10.1093/rfs/6.2.327
+            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models.
+              Mathematical Finance 20:671–694.
+              https://doi.org/10.1111/j.1467-9965.2010.00416.x
+        """
+        var_0 = self.sigma
+        vov2 = self.vov**2
+
+        beta = self.mr - self.vov*self.rho*uu
+        dd = np.sqrt(beta**2 + vov2*uu*(1 - uu))
+        gg = (beta - dd)/(beta + dd)
+        exp = np.exp(-dd*texp)
+        tmp1 = 1 - gg*exp
+
+        mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
+        return np.exp(mgf/vov2)
+
 
 class HestonUncorrBallRoma1994(HestonABC):
     """

@@ -7,6 +7,7 @@ from scipy import special as spsp
 import functools
 from .sv_abc import CondMcBsmABC
 from .heston import HestonABC
+from .mgf2mom import Mgf2Mom
 
 #### Use of RN generation spawn:
 # 0: simulation of variance (gamma/ncx2/normal)
@@ -607,9 +608,8 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         def cumgenfunc_cond(aa):
             return np.log(self.x2_avgvar_mgf(aa, dt, 1))
 
-        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-4)
-        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-4)
-        return m1, var
+        cum = Mgf2Mom(cumgenfunc_cond).moments(2)
+        return cum[0], cum[1]
 
     def draw_x1(self, dt, var_0, var_t):
         """

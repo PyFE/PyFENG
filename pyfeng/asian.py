@@ -9,7 +9,6 @@ import math
 import numpy as np
 import mpmath as m
 import sympy
-from scipy.misc import derivative
 import pyfeng.multiasset as ma
 from . import opt_abc as opt
 from . import nsvh
@@ -163,12 +162,12 @@ class BsmAsianLinetsky2004(opt.OptABC):
         nu = self.nu()
 
         f = lambda x: m.whitw((1 - nu) / 2, x / 2, 1 / (2 * self.b))
-        return complex(-derivative(f, eigenval, dx=1e-12))
+        return complex((f(eigenval-1e-8) - f(eigenval-1e-8))/2e-8)
 
     def xi_p(self, eigenval):
         nu = self.nu()
         func = lambda x: m.whitw((1 - nu) / 2, complex(0, x / 2), 1 / (2 * self.b))
-        return complex(derivative(func, eigenval, dx=1e-12))
+        return complex((func(eigenval+1e-8) - func(eigenval-1e-8))/2e-8)
 
     def price_element_imag(self, tau, p_value, k):
         nu = self.nu()

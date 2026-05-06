@@ -10,7 +10,7 @@ from . import ousv
 from . import heston
 from . import rheston
 from .opt_abc import OptABC
-from .params import BsmParams, VarGammaParams, NigParams, Sv32Params, GarchParams
+from .params import BsmParams, VarGammaParams, NigParams, Sv32Params, GarchParams, CgmyParams
 
 class FftABC(opt.OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -113,9 +113,9 @@ class BsmFft(BsmParams, FftABC):
         return np.exp(val)
 
 
-class VarGammaFft(VarGammaParams, FftABC):
+class VarGammaABC(VarGammaParams, OptABC):
     """
-    Variance Gamma (VG) model option pricing with FFT.
+    Abstract base for Variance Gamma models — provides ``mgf_logprice``.
 
     Parameters, constraints, and the precomputed ``_mgf1_correction`` are
     defined in :class:`~pyfeng.params.VarGammaParams`.
@@ -127,13 +127,6 @@ class VarGammaFft(VarGammaParams, FftABC):
         - Madan DB, Seneta E (1990) The Variance Gamma (V.G.) Model for Share
           Market Returns. Journal of Business 63:511–524.
           https://doi.org/10.1086/296519
-
-    Examples:
-        >>> import numpy as np
-        >>> import pyfeng as pf
-        >>> strike = np.arange(80, 121, 10)
-        >>> m = pf.VarGammaFft(0.2, nu=0.3, theta=-0.1)
-        >>> m.price(strike, 100, 1.0)
     """
 
     def mgf_logprice(self, uu, texp):
@@ -169,14 +162,27 @@ class VarGammaFft(VarGammaParams, FftABC):
         return rv
 
 
-class ExpNigFft(NigParams, FftABC):
+class VarGammaFft(VarGammaABC, FftABC):
     """
-    Normal Inverse Gaussian (NIG) model option pricing with FFT.
+    Variance Gamma (VG) model option pricing with FFT.
+
+    Inherits ``mgf_logprice`` from :class:`VarGammaABC`.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(80, 121, 10)
+        >>> m = pf.VarGammaFft(0.2, nu=0.3, theta=-0.1)
+        >>> m.price(strike, 100, 1.0)
+    """
+
+
+class NigABC(NigParams, OptABC):
+    """
+    Abstract base for Normal Inverse Gaussian (NIG) models — provides ``mgf_logprice``.
 
     Parameters, constraints, and the precomputed ``_mgf1_correction`` are
     defined in :class:`~pyfeng.params.NigParams`.
-
-    Also accessible as ``NigFft`` (preferred name).
 
     References:
         - Barndorff-Nielsen OE (1997) Normal Inverse Gaussian Distributions and
@@ -185,13 +191,6 @@ class ExpNigFft(NigParams, FftABC):
         - Barndorff-Nielsen OE (1998) Processes of Normal Inverse Gaussian Type.
           Finance and Stochastics 2:41–68.
           https://doi.org/10.1007/s007800050032
-
-    Examples:
-        >>> import numpy as np
-        >>> import pyfeng as pf
-        >>> strike = np.arange(80, 121, 10)
-        >>> m = pf.ExpNigFft(0.2, nu=0.3, theta=-0.1)
-        >>> m.price(strike, 100, 1.0)
     """
 
     def mgf_logprice(self, uu, texp):
@@ -225,6 +224,25 @@ class ExpNigFft(NigParams, FftABC):
         # CF: rv = 1j*self._mgf1_correction*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.nu + volvar*uu)*uu)
         np.exp(texp/self.nu*rv, out=rv)
         return rv
+
+
+class ExpNigFft(NigABC, FftABC):
+    """
+    Normal Inverse Gaussian (NIG) model option pricing with FFT.
+
+    Inherits ``mgf_logprice`` from :class:`NigABC`.
+    Also accessible as ``NigFft`` (preferred name).
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(80, 121, 10)
+        >>> m = pf.ExpNigFft(0.2, nu=0.3, theta=-0.1)
+        >>> m.price(strike, 100, 1.0)
+    """
+
+
+NigFft = ExpNigFft
 
 
 class HestonFft(heston.HestonABC, FftABC):
@@ -737,9 +755,13 @@ class Sv32Fft(Sv32Params, FftABC):
         return ret
 
 
-class CgmyFft(FftABC):
+class CgmyFft(CgmyParams, FftABC):
     """
     CGMY model option pricing with FFT.
+
+    Parameters, constraints, and the precomputed constants
+    ``_gam_Y_C``, ``_M_pow_Y``, ``_G_pow_Y``, ``_mgf1_correction`` are
+    defined in :class:`~pyfeng.params.CgmyParams`.
 
     The CGMY process (Carr, Geman, Madan, Yor) is a four-parameter pure-jump
     Lévy process whose Lévy measure is
@@ -762,19 +784,6 @@ class CgmyFft(FftABC):
     and the martingale correction is :math:`\\omega = -\\kappa(1)`, so that
     :math:`E[S_T] = F_T`.
 
-    **Parameters:**
-
-    * ``C`` (:math:`C > 0`): overall activity / scale of the jump measure.
-    * ``G`` (:math:`G > 0`): exponential decay rate of the left tail
-      (negative jumps); larger ``G`` ⟹ thinner left tail.
-    * ``M`` (:math:`M > 1`): exponential decay rate of the right tail
-      (positive jumps); ``M > 1`` is required for the martingale correction
-      :math:`\\kappa(1)` to be finite.
-    * ``Y`` (:math:`Y < 2`): fine-structure index.
-      :math:`Y < 0` — finite activity (compound Poisson);
-      :math:`Y \\in [0,1)` — infinite activity, finite variation;
-      :math:`Y \\in [1,2)` — infinite variation.
-
     Note:
         The :math:`\\Gamma(-Y)` factor is singular at :math:`Y = 0, 1, 2, \\ldots`;
         these integer values require special limiting treatment.
@@ -794,45 +803,6 @@ class CgmyFft(FftABC):
         >>> m = pf.CgmyFft(C=1.0, G=5.0, M=10.0, Y=0.5)
         >>> m.price(strike, 100, 1.0)
     """
-
-    C, G, M, Y = 1., 1., 1., 0.
-
-    def __init__(self, C, G, M, Y, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            C: overall activity level (:math:`C > 0`).
-            G: left-tail decay rate (:math:`G > 0`).
-            M: right-tail decay rate (:math:`M > 1`).
-            Y: fine-structure index (:math:`Y < 2`).
-            intr: interest rate (domestic).
-            divr: dividend / convenience yield (foreign interest rate).
-            is_fwd: if ``True``, treat ``spot`` as forward price.
-
-        Raises:
-            ValueError: if any of ``C ≤ 0``, ``G ≤ 0``, ``M ≤ 1``, or
-                ``Y ≥ 2`` is violated.
-        """
-        super().__init__(C, intr=intr, divr=divr, is_fwd=is_fwd)  # self.sigma = C
-        self.C, self.G, self.M, self.Y = C, G, M, Y
-
-        if C <= 0:
-            raise ValueError(f"C = {C} must be positive.")
-        if G <= 0:
-            raise ValueError(f"G = {G} must be positive.")
-        if M <= 1:
-            raise ValueError(
-                f"M = {M} must be greater than 1 for the martingale "
-                f"correction kappa(1) to be finite."
-            )
-        if Y >= 2:
-            raise ValueError(f"Y = {Y} must be less than 2.")
-
-        # Precompute parameter-only constants reused in every mgf_logprice call
-        self._gam_Y_C = spsp.gamma(-Y) * self.C
-        self._M_pow_Y = np.power(M, Y)
-        self._G_pow_Y = np.power(G, Y)
-        # = kappa(1) / _gam_Y_C  (= -omega / _gam_Y_C)
-        self._mgf1_correction = np.power(M - 1., Y) - self._M_pow_Y + np.power(G + 1., Y) - self._G_pow_Y
 
     def mgf_logprice(self, uu, texp):
         """

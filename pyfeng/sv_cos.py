@@ -51,9 +51,10 @@ References:
 
 import abc
 import numpy as np
-from . import opt_abc as opt
-from .params import BsmParams
-from .sv_fft import VarGammaFft, CgmyFft, HestonFft
+from . import opt_abc as opt, BsmFft
+from .params import BsmParams, CgmyParams
+from .heston import HestonABC
+from .sv_fft import BsmFft, VarGammaABC
 
 
 __all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'CgmyCos', 'HestonCos']
@@ -125,7 +126,7 @@ class CosABC(opt.OptABC):
         eps = 1e-3
         # Wrap in array: VarGammaFft/CgmyFft use np.exp(..., out=rv) which
         # requires rv to be an ndarray, not a scalar.
-        lm = lambda v: float(np.log(self.mgf_logprice(np.atleast_1d(np.float64(v)), texp)).real)
+        lm = lambda v: np.log(self.mgf_logprice(np.atleast_1d(np.float64(v)), texp)).real.item()
         lm0 = lm(0.0)
         lmp1, lmm1 = lm(eps), lm(-eps)
         lmp2, lmm2 = lm(2 * eps), lm(-2 * eps)
@@ -435,9 +436,7 @@ class BsmCos(BsmParams, CosABC):
 
     n_cos: int = 64
 
-    def mgf_logprice(self, uu, texp):
-        """BSM MGF: exp(-½ σ² T · u(1-u))."""
-        return np.exp(-0.5 * self.sigma**2 * texp * uu * (1.0 - uu))
+    mgf_logprice = BsmFft.mgf_logprice
 
     def _cumulants(self, texp):
         """Analytic BSM cumulants of log(S_T/F): c1=-½σ²T, c2=σ²T, c3=c4=0."""
@@ -445,7 +444,7 @@ class BsmCos(BsmParams, CosABC):
         return -0.5 * s2t, s2t, 0.0, 0.0
 
 
-class VarGammaCos(VarGammaFft, CosABC):
+class VarGammaCos(VarGammaABC, CosABC):
     """
     Variance Gamma (VG) European option pricing via the COS method.
 
@@ -464,9 +463,6 @@ class VarGammaCos(VarGammaFft, CosABC):
     """
 
     n_cos: int = 256
-
-    # MRO routes price() through FftABC; rebind to the COS path.
-    price = CosABC.price
 
     def _cumulants(self, texp):
         """
@@ -489,7 +485,7 @@ class VarGammaCos(VarGammaFft, CosABC):
         return float(c1), float(c2), 0.0, float(c4)
 
 
-class CgmyCos(CgmyFft, CosABC):
+class CgmyCos(CgmyParams, CosABC):
     """
     CGMY infinite-activity Lévy European option pricing via the COS method.
 
@@ -513,9 +509,6 @@ class CgmyCos(CgmyFft, CosABC):
 
     n_cos: int = 256
 
-    # MRO routes price() through FftABC; rebind to the COS path.
-    price = CosABC.price
-
     def _truncation_range(self, texp):
         """
         COS truncation range -- F&O 2008 §5.4 Y-dependent heuristic.
@@ -538,7 +531,7 @@ class CgmyCos(CgmyFft, CosABC):
         return -self.L * self.Y, self.L * self.Y
 
 
-class HestonCos(HestonFft, CosABC):
+class HestonCos(HestonABC, CosABC):
     """
     Heston (1993) stochastic-volatility European option pricing via the COS method.
 
@@ -568,40 +561,6 @@ class HestonCos(HestonFft, CosABC):
 
     n_cos: int = 160
     L = None
-
-    def __init__(self, sigma, vov=0.01, rho=0.0, mr=0.01, theta=None,
-                 intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: initial variance V_0 (must be > 0).
-            vov: vol-of-vol ξ (must be > 0).
-            rho: spot-variance correlation, in (-1, 1).
-            mr: mean-reversion speed κ (must be > 0).
-            theta: long-run variance θ̄ (must be > 0; defaults to sigma).
-            intr: interest rate.
-            divr: dividend yield.
-            is_fwd: if True, treat spot as forward price.
-
-        Raises:
-            ValueError: on invalid parameter values.
-        """
-        if sigma <= 0.0:
-            raise ValueError(f"sigma (initial variance) must be > 0, got {sigma}")
-        if vov <= 0.0:
-            raise ValueError(f"vov (vol-of-vol) must be > 0, got {vov}")
-        if mr <= 0.0:
-            raise ValueError(f"mr (mean-reversion) must be > 0, got {mr}")
-        if theta is not None and theta <= 0.0:
-            raise ValueError(f"theta (long-run variance) must be > 0, got {theta}")
-        if not (-1.0 < rho < 1.0):
-            raise ValueError(f"rho must be in (-1, 1), got {rho}")
-
-        super().__init__(sigma=sigma, vov=vov, rho=rho, mr=mr, theta=theta,
-                         intr=intr, divr=divr, is_fwd=is_fwd)
-
-        # SvABC sets self.theta = sigma when theta is None; re-check after super.
-        if self.theta <= 0.0:
-            raise ValueError(f"theta resolved to <= 0 ({self.theta})")
 
     @staticmethod
     def _default_L(texp):
