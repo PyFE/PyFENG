@@ -155,6 +155,38 @@ class TestSubordBmPriceConsistency(unittest.TestCase):
             self._check(p_quad, p_fft, p_cos, f"NIG {label}")
 
 
+class TestSubordBmBenchmark(unittest.TestCase):
+    """
+    Benchmark prices from Fang & Oosterlee (2008), Table 7.
+
+    VG model, call option:
+        S0=100, K=90, r=0.1, q=0, sigma=0.12, theta=-0.14, nu=0.2
+        T=0.1 : 10.993703187...
+        T=1.0 : 19.099354724...
+    """
+
+    PARAMS  = dict(sigma=0.12, theta=-0.14, nu=0.2, intr=0.1, divr=0.0)
+    SPOT    = 100.0
+    STRIKE  = 90.0
+    REF     = {0.1: 10.993703187, 1.0: 19.099354724}
+
+    def test_vargamma_benchmark(self):
+        """VarGammaFft, VarGammaCos, and VarGammaQuad match Fang&Oosterlee Table 7."""
+        for texp, ref in self.REF.items():
+            p_fft = pf.VarGammaFft(**self.PARAMS).price(self.STRIKE, self.SPOT, texp, cp=1)
+            p_cos = pf.VarGammaCos(**self.PARAMS).price(self.STRIKE, self.SPOT, texp, cp=1)
+            m_quad = pf.VarGammaQuad(**self.PARAMS)
+            m_quad.n_quad = 15
+            p_quad = m_quad.price(self.STRIKE, self.SPOT, texp, cp=1)
+
+            np.testing.assert_allclose(p_fft,  ref, rtol=1e-4,
+                                       err_msg=f"FFT  T={texp}: vs Fang&Oosterlee ref")
+            np.testing.assert_allclose(p_cos,  ref, rtol=1e-4,
+                                       err_msg=f"COS  T={texp}: vs Fang&Oosterlee ref")
+            np.testing.assert_allclose(p_quad, ref, rtol=1e-5,
+                                       err_msg=f"Quad T={texp}: vs Fang&Oosterlee ref")
+
+
 if __name__ == "__main__":
     print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()
