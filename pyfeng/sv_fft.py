@@ -9,15 +9,17 @@ from . import opt_abc as opt
 from . import ousv
 from . import heston
 from . import rheston
+from . import sv32
+from .bsm import Bsm
 from .opt_abc import OptABC
-from .params import BsmParams, VarGammaParams, NigParams, Sv32Params, GarchParams, CgmyParams
+from .params import VarGammaParams, NigParams, GarchParams, CgmyParams
 
 class FftABC(opt.OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
     x_lim = 200  # integratin limit
 
     @abc.abstractmethod
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         Moment generating function (MGF) of log price. (forward = 1)
 
@@ -30,7 +32,7 @@ class FftABC(opt.OptABC):
         """
         raise NotImplementedError
 
-    def charfunc_logprice(self, x, texp):
+    def logp_cf(self, x, texp):
         """
         Characteristic function of log price
 
@@ -41,7 +43,7 @@ class FftABC(opt.OptABC):
         Returns:
 
         """
-        return self.mgf_logprice(1j*x, texp)
+        return self.logp_mgf(1j*x, texp)
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
@@ -51,7 +53,7 @@ class FftABC(opt.OptABC):
 
         dx = self.x_lim/self.n_x
         xx = np.arange(self.n_x + 1)[:, None]*dx  # the final value x_lim is excluded
-        yy = (np.exp(-log_kk*xx*1j)*self.mgf_logprice(xx*1j + 0.5, texp)).real/(xx**2 + 0.25)
+        yy = (np.exp(-log_kk*xx*1j)*self.logp_mgf(xx*1j + 0.5, texp)).real/(xx**2 + 0.25)
         int_val = spint.simpson(yy, dx=dx, axis=0)
         if np.isscalar(kk):
             int_val = int_val[0]
@@ -77,7 +79,7 @@ class FftABC(opt.OptABC):
         b = self.n_x*dk/2
         ks = -b + dk*np.arange(self.n_x)
 
-        integrand = np.exp(-1j*b*xx)*self.mgf_logprice(xx*1j + 0.5, texp)/(xx**2 + 0.25)*weight
+        integrand = np.exp(-1j*b*xx)*self.logp_mgf(xx*1j + 0.5, texp)/(xx**2 + 0.25)*weight
         # CF: integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
         integral_value = (self.n_x/np.pi)*spfft.ifft(integrand).real
 
@@ -95,7 +97,7 @@ class FftABC(opt.OptABC):
         return df*fwd*price
 
 
-class BsmFft(BsmParams, FftABC):
+class BsmFft(Bsm, FftABC):
     """
     Option pricing under Black-Scholes-Merton (BSM) model using fast fourier transform (FFT).
 
@@ -107,15 +109,13 @@ class BsmFft(BsmParams, FftABC):
         array([15.71362027,  9.69251556,  5.52948647,  2.94558375,  1.4813909 ])
     """
 
-    def mgf_logprice(self, uu, texp):
-        val = -0.5*self.sigma**2*texp*uu*(1 - uu)
-        # CF: val = -0.5 * self.sigma**2 * texp * uu * (1j + uu)
-        return np.exp(val)
+    price_analytic = Bsm.price
+    price = FftABC.price
 
 
 class VarGammaABC(VarGammaParams, OptABC):
     """
-    Abstract base for Variance Gamma models — provides ``mgf_logprice``.
+    Abstract base for Variance Gamma models — provides ``logp_mgf``.
 
     Parameters, constraints, and the precomputed ``_mgf1_correction`` are
     defined in :class:`~pyfeng.params.VarGammaParams`.
@@ -129,7 +129,7 @@ class VarGammaABC(VarGammaParams, OptABC):
           https://doi.org/10.1086/296519
     """
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         MGF of log price under the Variance Gamma model.
 
@@ -166,7 +166,7 @@ class VarGammaFft(VarGammaABC, FftABC):
     """
     Variance Gamma (VG) model option pricing with FFT.
 
-    Inherits ``mgf_logprice`` from :class:`VarGammaABC`.
+    Inherits ``logp_mgf`` from :class:`VarGammaABC`.
 
     Examples:
         >>> import numpy as np
@@ -179,7 +179,7 @@ class VarGammaFft(VarGammaABC, FftABC):
 
 class NigABC(NigParams, OptABC):
     """
-    Abstract base for Normal Inverse Gaussian (NIG) models — provides ``mgf_logprice``.
+    Abstract base for Normal Inverse Gaussian (NIG) models — provides ``logp_mgf``.
 
     Parameters, constraints, and the precomputed ``_mgf1_correction`` are
     defined in :class:`~pyfeng.params.NigParams`.
@@ -193,7 +193,7 @@ class NigABC(NigParams, OptABC):
           https://doi.org/10.1007/s007800050032
     """
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         MGF of log price under the NIG model.
 
@@ -225,12 +225,39 @@ class NigABC(NigParams, OptABC):
         np.exp(texp/self.nu*rv, out=rv)
         return rv
 
+    def logp_cumul(self, texp):
+        """
+        Analytic cumulants of log(S_T/F) for the NIG model.
+
+        The CGF is K(u) = (T/ν)[ωνu + 1 − √(1 − 2θνu − σ²νu²)].
+        Differentiating h = √g where g = 1 − 2θνu − σ²νu² via h² = g
+        (so g‴ = g⁴ = 0) yields the recursion hʰ = −h′ʰ⁻¹ terms only,
+        giving closed-form values at u = 0 (g = 1):
+
+            ω  = −_mgf1_correction / ν       (martingale correction)
+            c1 = T · (ω + θ)
+            c2 = T · (σ² + νθ²)
+            c3 = 3Tν · θ(σ² + νθ²)  =  3νθ · c2      (zero iff θ = 0)
+            c4 = 3Tν · (σ² + νθ²)(σ² + 5νθ²)
+
+        Returns:
+            (c1, c2, c3, c4)
+        """
+        nu, sig2, th = self.nu, self.sigma**2, self.theta
+        nth2 = nu * th**2
+        omega = -self._mgf1_correction / nu
+        c2 = texp * (sig2 + nth2)
+        c3 = 3.0 * nu * th * c2                                   # = 3νθ · c2
+        c4 = 3.0 * nu * c2 * (sig2 + 5.0 * nth2)                 # c2/texp = sig2+nth2
+        c1 = texp * (omega + th)
+        return float(c1), float(c2), float(c3), float(c4)
+
 
 class ExpNigFft(NigABC, FftABC):
     """
     Normal Inverse Gaussian (NIG) model option pricing with FFT.
 
-    Inherits ``mgf_logprice`` from :class:`NigABC`.
+    Inherits ``logp_mgf`` from :class:`NigABC`.
     Also accessible as ``NigFft`` (preferred name).
 
     Examples:
@@ -262,28 +289,6 @@ class HestonFft(heston.HestonABC, FftABC):
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.32997507, 35.8497697 , 13.08467014,  0.29577444])
     """
-
-    def mgf_logprice(self, uu, texp):
-        """
-        Log price MGF under the Heston model.
-        We use the characteristic function in Eq (2.8) of Lord & Kahl (2010) that is
-        continuous in branch cut when complex log is evaluated.
-
-        References:
-            - Heston SL (1993) A Closed-Form Solution for Options with Stochastic Volatility with Applications to Bond and Currency Options. The Review of Financial Studies 6:327–343. https://doi.org/10.1093/rfs/6.2.327
-            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models. Mathematical Finance 20:671–694. https://doi.org/10.1111/j.1467-9965.2010.00416.x
-        """
-        var_0 = self.sigma
-        vov2 = self.vov**2
-
-        beta = self.mr - self.vov*self.rho*uu
-        dd = np.sqrt(beta**2 + vov2*uu*(1 - uu))
-        gg = (beta - dd)/(beta + dd)
-        exp = np.exp(-dd*texp)
-        tmp1 = 1 - gg*exp
-
-        mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
-        return np.exp(mgf/vov2)
 
 
 class RoughHestonFft(rheston.RoughHestonABC, FftABC):
@@ -394,7 +399,7 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
             Ihrs += pow(t - s,r - 1) * hh[int(s//self.delta)] * self.delta
         return Ihrs / spsp.gamma(r)
 
-    def mgf_logprice_adam(self, uu, texp):
+    def logp_mgf_adam(self, uu, texp):
         """
         Log price mgf calculation under the rough Heston model, equation 4.5 in El Euch O, Rosenbaum M (2019)
 
@@ -512,7 +517,7 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
             temp += pow(self.c_alpha(k-i-1),1 - self.alpha) * phiSequence[i]
         return pow(self.texp/self.n,1 - self.alpha) * temp / spsp.gamma(2 - self.alpha)
 
-    def mgf_logprice_hybrid(self, uu, texp):
+    def logp_mgf_hybrid(self, uu, texp):
         """
         Log price MGF under the rough Heston model.
         The moment-generating function in Eq (2) in the reference paper ,which is from Eq (4.5) of El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models was employed
@@ -569,14 +574,14 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
         
         return LL
     
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         '''
         choose method to solve the fractional Riccati equation
         '''
         if self.method == 1:
-            rv = self.mgf_logprice_adam(uu, texp)
+            rv = self.logp_mgf_adam(uu, texp)
         elif self.method == 2:
-            rv = self.mgf_logprice_hybrid(uu, texp)
+            rv = self.logp_mgf_hybrid(uu, texp)
         else:
             raise ValueError(f"Unknown method: {self.method}")
         return rv
@@ -589,100 +594,8 @@ class OusvFft(ousv.OusvABC, FftABC):
 
     """
 
-    def mgf_logprice(self, uu, texp):
-        """
-        Log price MGF under the OUSV model.
-        We use the characteristic function in Eq (4.14) of Lord & Kahl (2010) that is
-        continuous in branch cut when complex log is evaluated.
 
-        Returns:
-            MGF value at uu
-
-        References:
-            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models. Mathematical Finance 20:671–694. https://doi.org/10.1111/j.1467-9965.2010.00416.x
-        """
-
-        var_0 = self.sigma**2
-        sigma_0 = self.sigma
-
-        # equivalent Heston params when theta=0
-        mr_h, vov_h, theta_h = 2*self.mr, 2*self.vov, self.vov**2/(2*self.mr)
-        vov2_h = 4*self.vov**2
-
-        beta = mr_h - self.rho*vov_h*uu
-        dd = np.sqrt(beta**2 + vov2_h*uu*(1 - uu))
-        gg = (beta - dd)/(beta + dd)
-
-        exp_h = np.exp(-0.5*dd*texp)
-        exp = exp_h**2
-        tmp1 = 1 - gg*exp
-
-        # Heston model part
-        mgf = mr_h*theta_h*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
-        mgf /= vov2_h
-
-        # Additional part for OUSV
-        bb = (1 - exp_h)**2/tmp1
-        aa = 0.5*self.mr*self.theta/dd**2
-        aa *= beta*(dd*texp - 4) + dd*(dd*texp - 2) + 4*((dd**2 - 2*beta**2)/(beta + dd)*exp + 2*beta*exp_h)/tmp1
-
-        mgf += 0.5*self.theta/theta_h*(beta - dd)/dd*(aa + bb*sigma_0)
-
-        return np.exp(mgf)
-
-    def mgf_logprice_schobelzhu1998(self, uu, texp):
-        """
-        MGF from Eq. (13) in Schobel & Zhu (1998).
-        This form suffers discontinuity in complex log branch cut. Should not be used for pricing.
-
-        Args:
-            uu: dummy variable
-            texp: time to expiry
-
-        Returns:
-            MGF value at uu
-
-        References:
-            - Schöbel R, Zhu J (1999) Stochastic Volatility With an Ornstein–Uhlenbeck Process: An Extension. Rev Financ 3:23–46. https://doi.org/10.1023/A:1009803506170
-
-        """
-        mr, theta, vov, rho = self.mr, self.theta, self.vov, self.rho
-
-        # CF: s1 = 0.5*uu*(uu*(1 - rho**2) + 1j*(1 - 2*mr*rho/vov))
-        # CF: s2 = 1j*uu*mr*theta*rho/vov
-        # CF: s3 = 0.5j*uu*rho/vov
-        s1 = 0.5*uu*((1 - 2*mr*rho/vov) - (1 - rho**2)*uu)
-        s2 = uu*mr*theta*rho/vov
-        s3 = 0.5*uu*rho/vov
-
-        gamma1 = np.sqrt(2*vov**2*s1 + mr**2)
-        gamma2 = (mr - 2*vov**2*s3)/gamma1
-        gamma3 = mr**2*theta - s2*vov**2
-        sinh = np.sinh(gamma1*texp)
-        cosh = np.cosh(gamma1*texp)
-        sincos = sinh + gamma2*cosh
-        cossin = cosh + gamma2*sinh
-        ktg3 = mr*theta*gamma1 - gamma2*gamma3
-        s2g3 = vov**2*gamma1**3
-
-        D = (mr - gamma1*sincos/cossin)/vov**2
-        B = ((ktg3 + gamma3*sincos)/cossin - mr*theta*gamma1)/(vov**2*gamma1)
-        C = (
-                -0.5*np.log(cossin)
-                + 0.5*mr*texp
-                + ((mr*theta*gamma1)**2 - gamma3**2)
-                /(2*s2g3)
-                *(sinh/cossin - gamma1*texp)
-                + ktg3*gamma3/s2g3*((cosh - 1)/cossin)
-        )
-
-        # CF: res = -0.5*1j*uu*rho*(self.sigma**2/vov + vov*texp)
-        res = -0.5*uu*rho*(self.sigma**2/vov + vov*texp)
-        res += (D/2*self.sigma + B)*self.sigma + C
-        return np.exp(res)
-
-
-class Sv32Fft(Sv32Params, FftABC):
+class Sv32Fft(sv32.Sv32ABC, FftABC):
     """
     3/2 model option pricing with Fourier inversion
 
@@ -699,69 +612,10 @@ class Sv32Fft(Sv32Params, FftABC):
         array([11.7235,  8.9978,  6.7091])
     """
 
-    expo_max = np.log(np.finfo(np.float32).max)
 
-    @staticmethod
-    def hyp1f1_complex(a, b, x):
-        """
-        Confluent hypergeometric function 1F1 (scipy.special.hyp1f1) taking complex values of a and b
-
-        Args:
-            a: parameter (real or complex)
-            b: parameter (real or complex)
-            x: argument (real or complex)
-
-        Returns:
-            function value
-
-        References:
-            - https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.hyp1f1.html#scipy.special.hyp1f1
-        """
-        inc = a / b * x
-        ret = 1 + inc
-
-        for kk in np.arange(1, 1024):
-            inc *= (a + kk) / (b + kk) / (kk + 1) * x
-            ret += inc
-
-        return ret
-
-    def mgf_logprice(self, uu, texp):
-        """
-        Log price MGF under the 3/2 SV model from Lewis (2000) or Carr & Sun (2007).
-
-        In the formula in Lewis (2000, p54), ik should be replaced by -ik.
-
-        References:
-            - Eq. (73)-(75) in Carr P, Sun J (2007) A new approach for option pricing under stochastic volatility. Rev Deriv Res 10:87–150. https://doi.org/10.1007/s11147-007-9014-6
-            - p 54 in Lewis AL (2000) Option valuation under stochastic volatility: With Mathematica code. Finance Press, Newport Beach, CA
-        """
-        vov2 = self.vov**2
-
-        mu = 0.5 + (self.mr - uu*self.rho*self.vov)/vov2
-        c_tilde = uu*(1 - uu)/vov2
-        delta = np.sqrt(mu**2 + c_tilde)
-        alpha = -mu + delta
-        beta = 1 + 2*delta
-
-        mr_new = self.mr * self.theta
-        XX = 2*mr_new/(self.vov**2 * self.sigma)/np.expm1(mr_new * texp)
-
-        #ret = spsp.gamma(beta - alpha) * spsp.rgamma(beta) * np.power(XX, alpha) * self.hyp1f1_complex(alpha, beta, -XX)
-        # we use log version because of large argument of np.exp()
-        expo = np.clip(spsp.loggamma(beta - alpha) - spsp.loggamma(beta) + alpha*np.log(XX), -self.expo_max, self.expo_max)
-        ret = np.exp(expo) * self.hyp1f1_complex(alpha, beta, -XX)
-
-        return ret
-
-
-class CgmyFft(CgmyParams, FftABC):
+class CgmyABC(CgmyParams, OptABC):
     """
-    CGMY model option pricing with FFT.
-
-    Parameters, constraints, and the precomputed constants
-    ``_gam_Y_C``, ``_M_pow_Y``, ``_G_pow_Y``, ``_mgf1_correction`` are
-    defined in :class:`~pyfeng.params.CgmyParams`.
+    Abstract base for CGMY models — provides ``logp_mgf``.
 
     The CGMY process (Carr, Geman, Madan, Yor) is a four-parameter pure-jump
     Lévy process whose Lévy measure is
@@ -795,16 +649,9 @@ class CgmyFft(CgmyParams, FftABC):
         - Ballotta L, Kyriakou I (2014) Monte Carlo Simulation of the CGMY
           Process and Option Pricing. Journal of Futures Markets 34:1095–1121.
           https://doi.org/10.1002/fut.21647
-
-    Examples:
-        >>> import numpy as np
-        >>> import pyfeng as pf
-        >>> strike = np.arange(80, 121, 10)
-        >>> m = pf.CgmyFft(C=1.0, G=5.0, M=10.0, Y=0.5)
-        >>> m.price(strike, 100, 1.0)
     """
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         MGF of log price under the CGMY model.
 
@@ -843,6 +690,21 @@ class CgmyFft(CgmyParams, FftABC):
         return rv
 
 
+class CgmyFft(CgmyABC, FftABC):
+    """
+    CGMY model option pricing with FFT.
+
+    Inherits ``logp_mgf`` from :class:`CgmyABC`.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(80, 121, 10)
+        >>> m = pf.CgmyFft(C=1.0, G=5.0, M=10.0, Y=0.5)
+        >>> m.price(strike, 100, 1.0)
+    """
+
+
 class GarchFftWuMaWang2012(GarchParams, FftABC):
     """
     GARCH diffusion model option pricing with approximate Fourier inversion
@@ -861,7 +723,7 @@ class GarchFftWuMaWang2012(GarchParams, FftABC):
         array([11.7235,  8.9978,  6.7091])
     """
 
-    def mgf_logprice_old(self, uu, texp):
+    def logp_mgf_old(self, uu, texp):
         """
         Approximated log price MGF under the GARCH diffusion model.
         Line-by-line implementation of Lemma 2.1. of Wu Et al. (2012).
@@ -905,7 +767,7 @@ class GarchFftWuMaWang2012(GarchParams, FftABC):
         return np.exp(C + D * self.sigma)
 
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         Approximated Log price MGF under the GARCH diffusion model.
         Refined implementation of Lemma 2.1. of Wu Et al. (2012).

@@ -120,7 +120,7 @@ class HestonABC(HestonParams, OptABC):
 
         return strike
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         Log price MGF under the Heston model (Lord & Kahl 2010 branch-cut-safe form).
 

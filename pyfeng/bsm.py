@@ -552,6 +552,21 @@ class Bsm(BsmParams, opt.OptAnalyticABC):
 
         return p
 
+    def logp_mgf(self, uu, texp):
+        """
+        MGF of log(S_T / F) under the BSM model.
+
+            M(u) = exp(-½ σ² T · u(1 - u))
+
+        Args:
+            uu: MGF argument (scalar or array, real or complex).
+            texp: time to expiry.
+
+        Returns:
+            MGF values with the same shape as ``uu``.
+        """
+        return np.exp(-0.5 * self.sigma**2 * texp * uu * (1.0 - uu))
+
     def price_vsk(self, texp=1):
         """
         Variance, skewness, and ex-kurtosis. Assume mean=1.

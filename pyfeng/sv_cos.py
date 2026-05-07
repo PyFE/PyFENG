@@ -51,20 +51,21 @@ References:
 
 import abc
 import numpy as np
-from . import opt_abc as opt, BsmFft
-from .params import BsmParams, CgmyParams
+from . import opt_abc as opt
+from .bsm import Bsm
 from .heston import HestonABC
-from .sv_fft import BsmFft, VarGammaABC
+from .sv_fft import VarGammaABC, NigABC, CgmyABC
+from .mgf2mom import Mgf2Mom
 
 
-__all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'CgmyCos', 'HestonCos']
+__all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'NigCos', 'CgmyCos', 'HestonCos']
 
 
 class CosABC(opt.OptABC):
     """
     Abstract base class for European vanilla pricing by the COS method.
 
-    Subclasses implement ``mgf_logprice(uu, texp)``, the moment generating
+    Subclasses implement ``logp_mgf(uu, texp)``, the moment generating
     function of log(S_T/F), where F is the forward price supplied by
     ``OptABC._fwd_factor``.
 
@@ -93,7 +94,7 @@ class CosABC(opt.OptABC):
     pricing_formula: str = 'fang-oosterlee'
 
     @abc.abstractmethod
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         Moment generating function of log(S_T / F).
 
@@ -106,34 +107,24 @@ class CosABC(opt.OptABC):
         """
         raise NotImplementedError
 
-    def charfunc_logprice(self, u, texp):
+    def logp_cf(self, u, texp):
         """Characteristic function φ(u) = MGF(i·u)."""
-        return self.mgf_logprice(1j * u, texp)
+        return self.logp_mgf(1j * u, texp)
 
-    def _cumulants(self, texp):
+    def logp_cumul(self, texp):
         """
-        First four cumulants of log(S_T/F) by finite differences on log MGF.
+        First four cumulants of log(S_T/F) via Mgf2Mom on the CGF.
 
-        Central-difference formulas (h = eps):
-            c1 = [K(h) - K(-h)] / 2h
-            c2 = [K(h) + K(-h) - 2K(0)] / h²
-            c4 = [K(2h) - 4K(h) + 6K(0) - 4K(-h) + K(-2h)] / h⁴
-        where K(u) = log MGF(u) is the cumulant generating function.
+        Passes log(logp_mgf(u, texp)) as the cumulant generating function
+        K(u) = log M(u).  Mgf2Mom numerically differentiates K at u=0:
+        K^(n)(0) = n-th cumulant.
 
         Returns:
-            (c1, c2, 0.0, c4)
+            (c1, c2, c3, c4)
         """
-        eps = 1e-3
-        # Wrap in array: VarGammaFft/CgmyFft use np.exp(..., out=rv) which
-        # requires rv to be an ndarray, not a scalar.
-        lm = lambda v: np.log(self.mgf_logprice(np.atleast_1d(np.float64(v)), texp)).real.item()
-        lm0 = lm(0.0)
-        lmp1, lmm1 = lm(eps), lm(-eps)
-        lmp2, lmm2 = lm(2 * eps), lm(-2 * eps)
-        c1 = (lmp1 - lmm1) / (2 * eps)
-        c2 = (lmp1 + lmm1 - 2 * lm0) / eps**2
-        c4 = (lmp2 - 4 * lmp1 + 6 * lm0 - 4 * lmm1 + lmm2) / eps**4
-        return c1, c2, 0.0, c4
+        cgf = lambda u: np.log(self.logp_mgf(np.atleast_1d(u), texp))
+        cum = Mgf2Mom(cgf).moments(4)
+        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
 
     def _junike_half_width(self, texp):
         """
@@ -153,7 +144,7 @@ class CosABC(opt.OptABC):
         Returns:
             w (float): half-width such that [c1-w, c1+w] captures the density.
         """
-        c1, c2, _, c4 = self._cumulants(texp)
+        c1, c2, _, c4 = self.logp_cumul(texp)
         L = 12.0
         w = 0.0
         for _ in range(15):
@@ -161,7 +152,7 @@ class CosABC(opt.OptABC):
             s_grid = np.logspace(-2, 2, 40)
 
             # Upper tail: inf_{s>0} exp(log M(s) - s*(c1+w))
-            mgf_pos = self.mgf_logprice(s_grid, texp).real
+            mgf_pos = self.logp_mgf(s_grid, texp).real
             ok = np.isfinite(mgf_pos) & (mgf_pos > 0)
             if ok.any():
                 upper = float(np.exp(np.min(np.log(mgf_pos[ok]) - s_grid[ok] * (c1 + w))))
@@ -169,7 +160,7 @@ class CosABC(opt.OptABC):
                 upper = 1.0
 
             # Lower tail: inf_{s>0} exp(log M(-s) + s*(c1-w))
-            mgf_neg = self.mgf_logprice(-s_grid, texp).real
+            mgf_neg = self.logp_mgf(-s_grid, texp).real
             ok = np.isfinite(mgf_neg) & (mgf_neg > 0)
             if ok.any():
                 lower = float(np.exp(np.min(np.log(mgf_neg[ok]) + s_grid[ok] * (c1 - w))))
@@ -195,11 +186,11 @@ class CosABC(opt.OptABC):
         ``_junike_half_width``.
         """
         if self.truncation_method == 'fang-oosterlee':
-            c1, c2, _, c4 = self._cumulants(texp)
+            c1, c2, _, c4 = self.logp_cumul(texp)
             half = self.L * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return c1 - half, c1 + half
         elif self.truncation_method == 'junike':
-            c1, _, _, _ = self._cumulants(texp)
+            c1, _, _, _ = self.logp_cumul(texp)
             half = self._junike_half_width(texp)
             return c1 - half, c1 + half
         else:
@@ -262,7 +253,7 @@ class CosABC(opt.OptABC):
 
         The k=0 term is halved for the prime summation (Σ').
         """
-        coeff = self.charfunc_logprice(u_arr, texp) * np.exp(-1j * u_arr * a)
+        coeff = self.logp_cf(u_arr, texp) * np.exp(-1j * u_arr * a)
         coeff[0] *= 0.5
         return coeff.real
 
@@ -417,7 +408,7 @@ class CosABC(opt.OptABC):
         )
 
 
-class BsmCos(BsmParams, CosABC):
+class BsmCos(Bsm, CosABC):
     """
     Black-Scholes-Merton European option pricing via the COS method.
 
@@ -436,11 +427,14 @@ class BsmCos(BsmParams, CosABC):
 
     n_cos: int = 64
 
-    mgf_logprice = BsmFft.mgf_logprice
+    price_analytic = Bsm.price
+    price = CosABC.price
 
-    def _cumulants(self, texp):
+    logp_cumul_numeric = CosABC.logp_cumul
+
+    def logp_cumul(self, texp):
         """Analytic BSM cumulants of log(S_T/F): c1=-½σ²T, c2=σ²T, c3=c4=0."""
-        s2t = self.sigma**2 * texp
+        s2t = float(self.sigma**2 * texp)
         return -0.5 * s2t, s2t, 0.0, 0.0
 
 
@@ -451,8 +445,8 @@ class VarGammaCos(VarGammaABC, CosABC):
     The VG log price is x = θ·G_T + σ·W_{G_T} + ω·T where G_T ~ Gamma(T/ν, ν)
     and ω = log(1 - θν - ½σ²ν)/ν is the martingale correction.
 
-    Inherits the MGF from ``VarGammaFft``; overrides ``_cumulants`` with the
-    analytic formulas from F&O 2008 Table 11 so the truncation range is exact.
+    Overrides ``logp_cumul`` with the closed-form formulas so the truncation
+    range is exact; the numeric fallback is available as ``logp_cumul_numeric``.
 
     Examples:
         >>> import numpy as np
@@ -464,28 +458,60 @@ class VarGammaCos(VarGammaABC, CosABC):
 
     n_cos: int = 256
 
-    def _cumulants(self, texp):
-        """
-        Analytic VG cumulants of log(S_T/F) -- F&O 2008 Table 11.
+    logp_cumul_numeric = CosABC.logp_cumul
 
-            ω  = log(1 - θν - ½σ²ν) / ν
+    def logp_cumul(self, texp):
+        """
+        Analytic VG cumulants of log(S_T/F).
+
+        From the CGF K(u) = ωTu − (T/ν)·log(1 − νθu − ½νσ²u²):
+
+            ω  = log(1 − θν − ½σ²ν) / ν   (martingale correction)
             c1 = T · (ω + θ)
-            c2 = (σ² + ν θ²) · T
-            c4 = 3T · (σ⁴ν + 2θ⁴ν³ + 4σ²θ²ν²)
+            c2 = T · (σ² + νθ²)
+            c3 = T · νθ · (3σ² + 2νθ²)     (K'''(0); non-zero for θ ≠ 0)
+            c4 = 3T · (σ⁴ν + 2θ⁴ν³ + 4σ²θ²ν²)   (F&O 2008 Table 11)
 
         Returns:
-            (c1, c2, 0.0, c4)
+            (c1, c2, c3, c4)
         """
-        T = float(texp)
         nu, sig, th = self.nu, self.sigma, self.theta
-        omega = np.log(1.0 - th * nu - 0.5 * sig**2 * nu) / nu
-        c1 = T * (omega + th)
-        c2 = (sig**2 + nu * th**2) * T
-        c4 = 3.0 * T * (sig**4 * nu + 2.0 * th**4 * nu**3 + 4.0 * sig**2 * th**2 * nu**2)
-        return float(c1), float(c2), 0.0, float(c4)
+        sig2, th2 = sig**2, th**2
+        omega = np.log(1.0 - th * nu - 0.5 * sig2 * nu) / nu
+        c1 = texp * (omega + th)
+        c2 = texp * (sig2 + nu * th2)
+        c3 = texp * nu * th * (3.0 * sig2 + 2.0 * nu * th2)
+        c4 = 3.0 * texp * nu * (sig2**2 + 2.0 * th2**2 * nu**2 + 4.0 * sig2 * th2 * nu)
+        return float(c1), float(c2), float(c3), float(c4)
 
 
-class CgmyCos(CgmyParams, CosABC):
+class NigCos(NigABC, CosABC):
+    """
+    Normal Inverse Gaussian (NIG) European option pricing via the COS method.
+
+    The NIG log price is x = θ·I_T + σ·W_{I_T} + ω·T where I_T ~ IG(T, T²/ν)
+    is an inverse-Gaussian subordinator and ω = (1 − √(1 − 2θν − σ²ν))/ν is
+    the martingale correction.
+
+    Overrides ``logp_cumul`` with the closed-form formulas so the truncation
+    range is exact; the numeric fallback is available as ``logp_cumul_numeric``.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> m = pf.NigCos(sigma=0.12, theta=-0.14, nu=0.2,
+        ...               intr=0.1, divr=0.0)
+        >>> m.price(np.array([90.0, 100.0, 110.0]), 100.0, 1.0)
+    """
+
+    n_cos: int = 256
+
+    logp_cumul_numeric = CosABC.logp_cumul
+
+    # logp_cumul is inherited directly from NigABC
+
+
+class CgmyCos(CgmyABC, CosABC):
     """
     CGMY infinite-activity Lévy European option pricing via the COS method.
 
@@ -520,10 +546,10 @@ class CgmyCos(CgmyParams, CosABC):
         Junike mode (Junike & Pankrashkin 2022, §3):
             [a, b] = [c1 - w, c1 + w]
         where w is the Chernoff-bound adaptive half-width, using numerical
-        cumulants from ``CosABC._cumulants``.
+        cumulants from ``CosABC.logp_cumul``.
         """
         if self.truncation_method == 'junike':
-            c1, _, _, _ = CosABC._cumulants(self, texp)
+            c1, _, _, _ = CosABC.logp_cumul(self, texp)
             half = self._junike_half_width(texp)
             return c1 - half, c1 + half
         if np.isclose(self.Y, 1.98):
@@ -582,7 +608,7 @@ class HestonCos(HestonABC, CosABC):
         """
         return float(np.sqrt(self.theta + self.sigma * self.vov))
 
-    def _c1_logF(self, texp):
+    def logp_m(self, texp):
         """
         First cumulant of log(S_T/F): c1 = -½ T · E[⟨V⟩_T / T].
 
@@ -590,17 +616,6 @@ class HestonCos(HestonABC, CosABC):
         """
         T = float(texp)
         return -0.5 * T * self.avgvar_mv(T)[0]
-
-    def _cumulants(self, texp, eps=1e-4):
-        """
-        Cumulants (c1, c2, 0, 0) of log(S_T/F).
-
-        c1 is analytic via ``_c1_logF``; c2 is by finite differences on
-        log MGF (F&O §5 sets c4 = 0 for Heston).
-        """
-        K = lambda uu: float(np.log(self.mgf_logprice(uu, texp)).real)
-        c2 = (K(eps) + K(-eps) - 2.0 * K(0.0)) / (eps * eps)
-        return float(self._c1_logF(texp)), float(c2), 0.0, 0.0
 
     def _truncation_range(self, texp):
         """
@@ -616,11 +631,11 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]
         """
         if self.truncation_method == 'fang-oosterlee':
-            c1, c2, _, c4 = self._cumulants(texp)
+            c1, c2, _, c4 = self.logp_cumul(texp)
             half = self._resolve_L(texp) * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return float(c1 - half), float(c1 + half)
         elif self.truncation_method == 'junike':
-            c1 = self._c1_logF(texp)
+            c1 = self.logp_m(texp)
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         else:
@@ -640,12 +655,12 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]   (single global interval for all strikes)
         """
         if self.truncation_method == 'junike':
-            c1 = self._c1_logF(texp)
+            c1 = self.logp_m(texp)
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         fwd, _, _ = self._fwd_factor(spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()
-        c1 = self._c1_logF(texp)
+        c1 = self.logp_m(texp)
         x = np.log(np.asarray(fwd, dtype=float) / np.asarray(strike, dtype=float))
         return x + c1 - half, x + c1 + half
 
@@ -680,7 +695,7 @@ class HestonCos(HestonABC, CosABC):
         k_arr = np.arange(int(self.n_cos))
         u_arr = k_arr * np.pi / width           # (N,) -- constant across strikes
 
-        phi   = self.charfunc_logprice(u_arr, texp)                    # (N,) once
+        phi   = self.logp_cf(u_arr, texp)                    # (N,) once
         a_col = np.atleast_1d(np.asarray(a_arr, dtype=float))[:, None] # (M, 1)
         phase = np.exp(-1j * u_arr[None, :] * a_col)                   # (M, N)
         cf_mat = phi[None, :] * phase                                   # (M, N)

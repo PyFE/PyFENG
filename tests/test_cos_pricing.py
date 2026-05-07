@@ -185,7 +185,7 @@ class TestHestonCos(unittest.TestCase):
     def test_mgf_martingale(self):
         m = _make_heston()
         for texp in [0.5, 1.0, 5.0]:
-            val = m.mgf_logprice(np.float64(1.0), texp)
+            val = m.logp_mgf(np.float64(1.0), texp)
             np.testing.assert_allclose(float(np.real(val)), 1.0, atol=1e-12,
                                        err_msg=f"T={texp}")
 
@@ -195,14 +195,14 @@ class TestVarGammaCos(unittest.TestCase):
     def _make_vg(self):
         return pf.VarGammaCos(sigma=0.12, theta=-0.14, nu=0.2, intr=0.1)
 
-    def test_cumulants_analytic_vs_fd(self):
+    def testlogp_cumul_analytic_vs_fd(self):
         m = self._make_vg()
         texp = 1.0
-        c1_a, c2_a, _, _ = m._cumulants(texp)
+        c1_a, c2_a, _, _ = m.logp_cumul(texp)
         # Finite-difference cross-check; wrap in array to satisfy VarGammaFft's
-        # mgf_logprice which uses np.exp(..., out=rv) and requires an ndarray.
+        # logp_mgf which uses np.exp(..., out=rv) and requires an ndarray.
         eps = 1e-4
-        lm = lambda v: np.log(m.mgf_logprice(np.atleast_1d(np.float64(v)), texp)).real.item()
+        lm = lambda v: np.log(m.logp_mgf(np.atleast_1d(np.float64(v)), texp)).real.item()
         c1_fd = (lm(eps) - lm(-eps)) / (2 * eps)
         c2_fd = (lm(eps) + lm(-eps) - 2 * lm(0.0)) / eps**2
         np.testing.assert_allclose(c1_a, c1_fd, atol=1e-5)

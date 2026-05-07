@@ -160,7 +160,7 @@ class OusvABC(OusvParams, OptABC):
 
         return strike
 
-    def mgf_logprice(self, uu, texp):
+    def logp_mgf(self, uu, texp):
         """
         Log price MGF under the OUSV model (Lord & Kahl 2010 branch-cut-safe form).
 
@@ -200,7 +200,7 @@ class OusvABC(OusvParams, OptABC):
 
         return np.exp(mgf)
 
-    def mgf_logprice_schobelzhu1998(self, uu, texp):
+    def logp_mgf_schobelzhu1998(self, uu, texp):
         """
         MGF from Eq. (13) in Schobel & Zhu (1998).
         This form suffers discontinuity in complex log branch cut. Should not be used for pricing.
