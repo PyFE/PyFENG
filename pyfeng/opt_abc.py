@@ -4,9 +4,23 @@ import numpy as np
 import scipy.optimize as sopt
 import scipy.stats as spst
 from typing import ClassVar
-from .params import BaseParams
 
-class OptABC(BaseParams, abc.ABC):
+
+class OptABC(abc.ABC):
+    """
+    Abstract base for all option pricing models.
+
+    The attributes below are not provided by this class — they are declared
+    here as bare annotations so that type-checkers and IDEs understand the
+    interface.  Every concrete subclass satisfies them by also inheriting from
+    a ``*Params`` dataclass that ultimately derives from ``BaseParams``.
+    """
+    # Provided by BaseParams in every concrete subclass.
+    sigma: float
+    intr: float
+    divr: float
+    is_fwd: bool
+
     model_type: ClassVar[str]
 
     IMPVOL_TOL = 1e-10

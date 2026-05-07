@@ -51,7 +51,7 @@ References:
 
 import abc
 import numpy as np
-from . import opt_abc as opt
+from .opt_abc import OptABC
 from .bsm import Bsm
 from .heston import HestonABC
 from .sv_fft import VarGammaABC, NigABC, CgmyABC
@@ -61,7 +61,7 @@ from .mgf2mom import Mgf2Mom
 __all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'NigCos', 'CgmyCos', 'HestonCos']
 
 
-class CosABC(opt.OptABC):
+class CosABC(OptABC):
     """
     Abstract base class for European vanilla pricing by the COS method.
 

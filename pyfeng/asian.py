@@ -10,7 +10,7 @@ import numpy as np
 import mpmath as m
 import sympy
 import pyfeng.multiasset as ma
-from . import opt_abc as opt
+from .opt_abc import OptABC
 from . import nsvh
 
 
@@ -112,7 +112,7 @@ class BsmAsianJsu(ma.OptMaABC):
         return df * price
 
 
-class BsmAsianLinetsky2004(opt.OptABC):
+class BsmAsianLinetsky2004(OptABC):
 
     b = 1.0
     n_eig = 50

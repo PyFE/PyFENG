@@ -6,7 +6,7 @@ Created on Wed Apr 28 09:08:29 2021
 """
 import warnings
 from . import multiasset as ma
-from . import opt_abc as opt
+from .opt_abc import OptABC
 import numpy as np
 from .util import MathFuncs
 import scipy.stats as spst
@@ -328,7 +328,7 @@ class BsmBasketAsianJu2002(ma.NormBasket):
             return -1
 
 
-class BsmContinuousAsianJu2002(opt.OptABC):
+class BsmContinuousAsianJu2002(OptABC):
     def price(self, strike, spot, texp, cp=1):
 
         if np.isscalar(spot) == False:

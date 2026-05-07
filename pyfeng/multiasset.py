@@ -8,11 +8,11 @@ from . import bsm
 from . import norm
 from . import gamma
 from . import nsvh
-import pyfeng.opt_abc as opt
+from .opt_abc import OptABC
 from pyfeng.quad import NdGHQ  # Not sure
 
 
-class OptMaABC(opt.OptABC):
+class OptMaABC(OptABC):
 
     n_asset = 1
     rho = None
@@ -369,7 +369,7 @@ class BsmMax2(OptMaABC):
         return price[0] if strike_isscalar else price
 
 
-class BsmBasket1Bm(opt.OptABC):
+class BsmBasket1Bm(OptABC):
     """
     Multiasset BSM model for pricing basket/Spread options when all asset prices are driven by a single Brownian motion (BM).
 
