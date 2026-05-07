@@ -11,7 +11,8 @@ from . import rheston
 from . import sv32
 from .bsm import Bsm
 from .opt_abc import OptABC
-from .params import VarGammaParams, NigParams, GarchParams, CgmyParams
+from .params import GarchParams, CgmyParams
+from .subord_bm import VarGammaABC, NigABC
 
 class FftABC(OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
@@ -99,55 +100,6 @@ class BsmFft(Bsm, FftABC):
     price = FftABC.price
 
 
-class VarGammaABC(VarGammaParams, OptABC):
-    """
-    Abstract base for Variance Gamma models — provides ``logp_mgf``.
-
-    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
-    defined in :class:`~pyfeng.params.VarGammaParams`.
-
-    References:
-        - Madan DB, Carr PP, Chang EC (1998) The Variance Gamma Process and Option
-          Pricing. European Finance Review 2:79–105.
-          https://doi.org/10.1023/A:1009703431535
-        - Madan DB, Seneta E (1990) The Variance Gamma (V.G.) Model for Share
-          Market Returns. Journal of Business 63:511–524.
-          https://doi.org/10.1086/296519
-    """
-
-    def logp_mgf(self, uu, texp):
-        """
-        MGF of log price under the Variance Gamma model.
-
-        The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
-
-        .. math::
-
-            \\exp\\!\\left(\\frac{T}{\\nu}\\left[
-                u\\ln\\!\\left(1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu\\right)
-                - \\ln\\!\\left(1 - \\theta\\nu u - \\tfrac{1}{2}\\sigma^2\\nu u^2\\right)
-            \\right]\\right).
-
-        ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{VG}}(1)\\nu = -\\omega\\nu`
-        (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
-        term is ``-self._mgf1_correction * uu``.
-
-        Args:
-            uu: MGF argument (scalar or array). Real values give the MGF;
-                purely imaginary values ``uu = 1j * xi`` give the characteristic
-                function.
-            texp: time to expiry.
-
-        Returns:
-            MGF value(s) at ``uu``, same shape as ``uu``.
-        """
-        volvar = self.nu * self.sigma**2
-        # CF: rv = 1j*self._mgf1_correction*uu - np.log(1 + (-1j*self.theta*self.nu + 0.5*volvar*uu)*uu)
-        rv = -self._mgf1_correction * uu - np.log1p((-self.theta * self.nu - 0.5 * volvar * uu) * uu)
-        np.exp(texp/self.nu*rv, out=rv)
-        return rv
-
-
 class VarGammaFft(VarGammaABC, FftABC):
     """
     Variance Gamma (VG) model option pricing with FFT.
@@ -163,88 +115,11 @@ class VarGammaFft(VarGammaABC, FftABC):
     """
 
 
-class NigABC(NigParams, OptABC):
-    """
-    Abstract base for Normal Inverse Gaussian (NIG) models — provides ``logp_mgf``.
-
-    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
-    defined in :class:`~pyfeng.params.NigParams`.
-
-    References:
-        - Barndorff-Nielsen OE (1997) Normal Inverse Gaussian Distributions and
-          Stochastic Volatility Modelling. Scandinavian Journal of Statistics
-          24:1–13. https://doi.org/10.1111/1467-9469.00045
-        - Barndorff-Nielsen OE (1998) Processes of Normal Inverse Gaussian Type.
-          Finance and Stochastics 2:41–68.
-          https://doi.org/10.1007/s007800050032
-    """
-
-    def logp_mgf(self, uu, texp):
-        """
-        MGF of log price under the NIG model.
-
-        The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
-
-        .. math::
-
-            \\exp\\!\\left(\\frac{T}{\\nu}\\left[
-                \\left(\\sqrt{1 - 2\\theta\\nu - \\sigma^2\\nu} - 1\\right) u
-                + 1 - \\sqrt{1 - 2\\theta\\nu u - \\sigma^2\\nu u^2}
-            \\right]\\right).
-
-        ``self._mgf1_correction`` stores :math:`\\kappa_{\\mathrm{NIG}}(1)\\nu = -\\omega\\nu`
-        (the raw CGF at :math:`u=1`, scaled by :math:`\\nu`), so the correction
-        term is ``-self._mgf1_correction * uu``.
-
-        Args:
-            uu: MGF argument (scalar or array). Real values give the MGF;
-                purely imaginary values ``uu = 1j * xi`` give the characteristic
-                function.
-            texp: time to expiry.
-
-        Returns:
-            MGF value(s) at ``uu``, same shape as ``uu``.
-        """
-        volvar = self.nu * self.sigma**2
-        rv = -self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.nu - volvar * uu) * uu)
-        # CF: rv = 1j*self._mgf1_correction*uu + 1 - np.sqrt(1 + (-2j*self.theta*self.nu + volvar*uu)*uu)
-        np.exp(texp/self.nu*rv, out=rv)
-        return rv
-
-    def logp_cum4(self, texp):
-        """
-        Analytic cumulants of log(S_T/F) for the NIG model.
-
-        The CGF is K(u) = (T/ν)[ωνu + 1 − √(1 − 2θνu − σ²νu²)].
-        Differentiating h = √g where g = 1 − 2θνu − σ²νu² via h² = g
-        (so g‴ = g⁴ = 0) yields the recursion hʰ = −h′ʰ⁻¹ terms only,
-        giving closed-form values at u = 0 (g = 1):
-
-            ω  = −_mgf1_correction / ν       (martingale correction)
-            c1 = T · (ω + θ)
-            c2 = T · (σ² + νθ²)
-            c3 = 3Tν · θ(σ² + νθ²)  =  3νθ · c2      (zero iff θ = 0)
-            c4 = 3Tν · (σ² + νθ²)(σ² + 5νθ²)
-
-        Returns:
-            (c1, c2, c3, c4)
-        """
-        nu, sig2, th = self.nu, self.sigma**2, self.theta
-        nth2 = nu * th**2
-        omega = -self._mgf1_correction / nu
-        c2 = texp * (sig2 + nth2)
-        c3 = 3.0 * nu * th * c2                                   # = 3νθ · c2
-        c4 = 3.0 * nu * c2 * (sig2 + 5.0 * nth2)                 # c2/texp = sig2+nth2
-        c1 = texp * (omega + th)
-        return float(c1), float(c2), float(c3), float(c4)
-
-
 class ExpNigFft(NigABC, FftABC):
     """
     Normal Inverse Gaussian (NIG) model option pricing with FFT.
 
     Inherits ``logp_mgf`` from :class:`NigABC`.
-    Also accessible as ``NigFft`` (preferred name).
 
     Examples:
         >>> import numpy as np
@@ -253,9 +128,6 @@ class ExpNigFft(NigABC, FftABC):
         >>> m = pf.ExpNigFft(0.2, nu=0.3, theta=-0.1)
         >>> m.price(strike, 100, 1.0)
     """
-
-
-NigFft = ExpNigFft
 
 
 class HestonFft(heston.HestonABC, FftABC):

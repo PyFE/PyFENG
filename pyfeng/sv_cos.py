@@ -54,7 +54,8 @@ import numpy as np
 from .opt_abc import OptABC
 from .bsm import Bsm
 from .heston import HestonABC
-from .sv_fft import VarGammaABC, NigABC, CgmyABC
+from .subord_bm import VarGammaABC, NigABC
+from .sv_fft import CgmyABC
 from .mgf2mom import Mgf2Mom
 from .util import MathFuncs
 

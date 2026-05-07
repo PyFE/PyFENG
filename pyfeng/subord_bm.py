@@ -4,7 +4,7 @@ import scipy.special as spsp
 from .bsm import Bsm
 from .norm import Norm
 from .opt_abc import OptABC
-from .params import SvParams
+from .params import SvParams, VarGammaParams, NigParams
 
 class SubordBmABC(SvParams, OptABC):
 
@@ -104,3 +104,111 @@ class ExpNigQuad(SubordBmABC):
         w_ig = np.concatenate((p[:ind_half], 1 - p[ind_half:])) * w
 
         return x_ig, w_ig
+
+
+class VarGammaABC(VarGammaParams, OptABC):
+    """
+    Abstract base for Variance Gamma models — provides ``logp_mgf``.
+
+    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
+    defined in :class:`~pyfeng.params.VarGammaParams`.
+
+    References:
+        - Madan DB, Carr PP, Chang EC (1998) The Variance Gamma Process and Option
+          Pricing. European Finance Review 2:79–105.
+          https://doi.org/10.1023/A:1009703431535
+        - Madan DB, Seneta E (1990) The Variance Gamma (V.G.) Model for Share
+          Market Returns. Journal of Business 63:511–524.
+          https://doi.org/10.1086/296519
+    """
+
+    def logp_mgf(self, uu, texp):
+        """
+        MGF of log price under the Variance Gamma model.
+
+        The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
+
+        .. math::
+
+            \\exp\\!\\left(\\frac{T}{\\nu}\\left[
+                u\\ln\\!\\left(1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu\\right)
+                - \\ln\\!\\left(1 - \\theta\\nu u - \\tfrac{1}{2}\\sigma^2\\nu u^2\\right)
+            \\right]\\right).
+
+        Args:
+            uu: MGF argument (scalar or array).
+            texp: time to expiry.
+
+        Returns:
+            MGF value(s) at ``uu``, same shape as ``uu``.
+        """
+        volvar = self.nu * self.sigma**2
+        rv = -self._mgf1_correction * uu - np.log1p((-self.theta * self.nu - 0.5 * volvar * uu) * uu)
+        np.exp(texp/self.nu*rv, out=rv)
+        return rv
+
+
+class NigABC(NigParams, OptABC):
+    """
+    Abstract base for Normal Inverse Gaussian (NIG) models — provides ``logp_mgf``
+    and analytic ``logp_cum4``.
+
+    Parameters, constraints, and the precomputed ``_mgf1_correction`` are
+    defined in :class:`~pyfeng.params.NigParams`.
+
+    References:
+        - Barndorff-Nielsen OE (1997) Normal Inverse Gaussian Distributions and
+          Stochastic Volatility Modelling. Scandinavian Journal of Statistics
+          24:1–13. https://doi.org/10.1111/1467-9469.00045
+        - Barndorff-Nielsen OE (1998) Processes of Normal Inverse Gaussian Type.
+          Finance and Stochastics 2:41–68.
+          https://doi.org/10.1007/s007800050032
+    """
+
+    def logp_mgf(self, uu, texp):
+        """
+        MGF of log price under the NIG model.
+
+        The MGF of :math:`\\log(S_T/F_T)` at argument :math:`u` is
+
+        .. math::
+
+            \\exp\\!\\left(\\frac{T}{\\nu}\\left[
+                \\left(\\sqrt{1 - 2\\theta\\nu - \\sigma^2\\nu} - 1\\right) u
+                + 1 - \\sqrt{1 - 2\\theta\\nu u - \\sigma^2\\nu u^2}
+            \\right]\\right).
+
+        Args:
+            uu: MGF argument (scalar or array).
+            texp: time to expiry.
+
+        Returns:
+            MGF value(s) at ``uu``, same shape as ``uu``.
+        """
+        volvar = self.nu * self.sigma**2
+        rv = -self._mgf1_correction * uu + 1 - np.sqrt(1 + (-2 * self.theta * self.nu - volvar * uu) * uu)
+        np.exp(texp/self.nu*rv, out=rv)
+        return rv
+
+    def logp_cum4(self, texp):
+        """
+        Analytic cumulants of log(S_T/F) for the NIG model.
+
+        From the CGF K(u) = (T/ν)[ωνu + 1 − √(1 − 2θνu − σ²νu²)]:
+
+            c1 = T · (ω + θ)
+            c2 = T · (σ² + νθ²)
+            c3 = 3Tν · θ(σ² + νθ²)  =  3νθ · c2
+            c4 = 3Tν · (σ² + νθ²)(σ² + 5νθ²)
+
+        Returns:
+            (c1, c2, c3, c4)
+        """
+        nu, sig2, th = self.nu, self.sigma**2, self.theta
+        nth2 = nu * th**2
+        omega = -self._mgf1_correction / nu
+        c2 = texp * (sig2 + nth2)
+        c3 = 3.0 * nu * th * c2
+        c4 = 3.0 * nu * c2 * (sig2 + 5.0 * nth2)
+        c1 = texp * (omega + th)
+        return float(c1), float(c2), float(c3), float(c4)
