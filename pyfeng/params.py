@@ -26,7 +26,9 @@ Hierarchy::
     │   └── Sv32Params              3/2 model
     ├── VarGammaParams              Variance Gamma subordinated BM  (+nu, theta)
     ├── NigParams                   NIG subordinated BM  (+nu, theta)
-    └── SviParams                   SVI  (+vov, rho, smooth, shift)
+    ├── SviParams                   SVI  (+vov, rho, smooth, shift)
+    ├── SpreadParams                two-asset spread/max  (+sigma2, rho)
+    └── MaParams                    multi-asset base: sigma array + cor → cor_m/cov_m/chol_m
 
     CgmyParams                      CGMY — no sigma; standalone
 """
@@ -34,6 +36,7 @@ Hierarchy::
 from __future__ import annotations
 
 import dataclasses
+import warnings
 import numpy as np
 import scipy.special as spsp
 from dataclasses import KW_ONLY, dataclass, field
@@ -495,3 +498,146 @@ class CgmyParams(BaseParams):
             np.power(self.M - 1.0, self.Y) - self._M_pow_Y
             + np.power(self.G + 1.0, self.Y) - self._G_pow_Y
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Two-asset spread / max models
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class SpreadParams(BaseParams):
+    """
+    Parameters for two-asset spread and max option models.
+
+    ``sigma`` is a 2-element array ``[σ₁, σ₂]``; ``rho`` is the correlation
+    between the two assets.
+
+    Generated ``__init__`` signature::
+
+        SpreadParams(sigma, rho=0.0, *, intr=0.0, divr=0.0, is_fwd=False)
+    """
+    model_type: ClassVar[str] = "Spread"
+    n_asset: ClassVar[int] = 2
+    weight: ClassVar[np.ndarray] = np.array([1., -1.])
+
+    rho: float = 0.0
+
+    def __post_init__(self):
+        self.sigma = np.atleast_1d(self.sigma).astype(float)
+        if len(self.sigma) != 2:
+            raise ValueError(f"sigma must be a 2-element array for SpreadParams; got length {len(self.sigma)}.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Multi-asset base
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class MaParams(BaseParams):
+    """
+    Base parameter class for multi-asset option models.
+
+    ``sigma`` (inherited from :class:`BaseParams`) is a 1-D array of
+    per-asset volatilities.  Exactly one of ``rho``, ``cor_m``, or ``cov_m``
+    may be supplied to describe the correlation/covariance structure:
+
+    * ``rho`` — scalar applied uniformly to every off-diagonal entry.
+    * ``cor_m`` — full (n_asset × n_asset) correlation matrix.
+    * ``cov_m`` — full (n_asset × n_asset) covariance matrix; ``sigma`` is
+      derived from its diagonal and overrides the positional argument.
+
+    Omitting all three is valid only for a single asset; for ``n_asset > 1``
+    it raises :class:`ValueError`.
+
+    ``weight`` controls how assets are combined in basket/spread payoffs.
+    ``None`` defaults to equal weights ``1/n_asset``.
+
+    Generated ``__init__`` signature::
+
+        MaParams(sigma, rho=None, cor_m=None, cov_m=None,
+                 *, weight=None, intr=0.0, divr=0.0, is_fwd=False)
+
+    The following attributes are always available after construction:
+
+    * ``n_asset`` — number of assets (``init=False``).
+    * ``rho`` — scalar correlation for 2-asset or uniform-ρ models, else ``None``.
+    * ``cor_m`` — (n_asset × n_asset) correlation matrix.
+    * ``cov_m`` — (n_asset × n_asset) covariance matrix.
+    * ``chol_m`` — lower-triangular Cholesky factor of ``cov_m`` (``init=False``).
+    * ``weight`` — (n_asset,) asset-weight vector.
+    """
+    rho: float | None = None              # scalar ρ for all off-diagonal entries
+    cor_m: np.ndarray | None = None       # full (n×n) correlation matrix
+    cov_m: np.ndarray | None = None       # full (n×n) covariance matrix
+    _: KW_ONLY
+    weight: np.ndarray | float | None = None
+
+    # ── always derived, never in __init__ ─────────────────────────────────────
+    n_asset: int = field(init=False, repr=False)
+    chol_m: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self):
+        self.sigma = np.atleast_1d(self.sigma)
+        self.n_asset = len(self.sigma)
+
+        # ── mutual exclusivity check ──────────────────────────────────────────
+        n_given = sum(x is not None for x in (self.rho, self.cor_m, self.cov_m))
+        if n_given > 1:
+            raise ValueError("At most one of rho, cor_m, cov_m may be specified.")
+
+        # ── resolve to cor_m + cov_m ──────────────────────────────────────────
+        if self.cov_m is not None:
+            self.cov_m = np.asarray(self.cov_m, dtype=float)
+            if self.cov_m.shape != (self.n_asset, self.n_asset):
+                raise ValueError(
+                    f"cov_m must have shape ({self.n_asset}, {self.n_asset}); "
+                    f"got {self.cov_m.shape}."
+                )
+            # derive sigma and cor_m from cov_m
+            self.sigma = np.sqrt(np.diag(self.cov_m))
+            self.cor_m = self.cov_m / (self.sigma[:, None] * self.sigma)
+            self.rho = float(self.cor_m[0, 1]) if self.n_asset == 2 else None
+        elif self.cor_m is not None:
+            self.cor_m = np.asarray(self.cor_m, dtype=float)
+            if self.cor_m.shape != (self.n_asset, self.n_asset):
+                raise ValueError(
+                    f"cor_m must have shape ({self.n_asset}, {self.n_asset}); "
+                    f"got {self.cor_m.shape}."
+                )
+            self.cov_m = self.sigma * self.cor_m * self.sigma[:, None]
+            self.rho = float(self.cor_m[0, 1]) if self.n_asset == 2 else None
+        else:
+            # rho path (or single-asset identity)
+            rho = self.rho if self.rho is not None else 0.0
+            self.cor_m = rho * np.ones((self.n_asset, self.n_asset)) + (
+                1.0 - rho
+            ) * np.eye(self.n_asset)
+            self.cov_m = self.sigma * self.cor_m * self.sigma[:, None]
+            # rho field already set (or stays None for single asset)
+
+        self.chol_m = np.linalg.cholesky(self.cov_m)
+
+        # ── weight ────────────────────────────────────────────────────────────
+        if self.weight is None:
+            self.weight = np.ones(self.n_asset) / self.n_asset
+        elif np.isscalar(self.weight):
+            self.weight = np.full(self.n_asset, float(self.weight))
+        else:
+            self.weight = np.asarray(self.weight, dtype=float)
+            if self.weight.shape != (self.n_asset,):
+                raise ValueError(
+                    f"weight must have shape ({self.n_asset},); got {self.weight.shape}."
+                )
+
+    def params_kw(self) -> dict:
+        """Return parameters as a keyword-argument dict.
+
+        ``cov_m`` is always used as the canonical correlation representation
+        so that ``cls(**obj.params_kw())`` round-trips cleanly regardless of
+        whether ``rho``, ``cor_m``, or ``cov_m`` was originally provided.
+        """
+        d = _params_kw(self)
+        # Drop rho and cor_m — cov_m (always populated) is sufficient.
+        d.pop("rho", None)
+        d.pop("cor_m", None)
+        return d

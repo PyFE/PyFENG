@@ -9,12 +9,12 @@ import math
 import numpy as np
 import mpmath as m
 import sympy
-import pyfeng.multiasset as ma
 from .opt_abc import OptABC
+from .params import BsmParams
 from . import nsvh
 
 
-class BsmAsianJsu(ma.OptMaABC):
+class BsmAsianJsu(BsmParams, OptABC):
     """
 
     Johnson's SU distribution approximation for Asian option pricing under the BSM model.
@@ -47,7 +47,7 @@ class BsmAsianJsu(ma.OptMaABC):
         Returns: the nth moment
 
         """
-        lam = self.sigma[0]
+        lam = self.sigma
         v = (self.intr - self.divr - lam ** 2 / 2) / lam
         beta = v / lam
 
@@ -105,14 +105,14 @@ class BsmAsianJsu(ma.OptMaABC):
 
         mu, var, skew, kurt = self.moment_mvsk(spot, texp)
 
-        m = nsvh.Nsvh1(sigma=self.sigma)
+        m = nsvh.Nsvh1(sigma=self.sigma, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
         price = m.price(strike, mu, texp, cp)
 
         return df * price
 
 
-class BsmAsianLinetsky2004(OptABC):
+class BsmAsianLinetsky2004(BsmParams, OptABC):
 
     b = 1.0
     n_eig = 50
