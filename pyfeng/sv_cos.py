@@ -56,6 +56,7 @@ from .bsm import Bsm
 from .heston import HestonABC
 from .sv_fft import VarGammaABC, NigABC, CgmyABC
 from .mgf2mom import Mgf2Mom
+from .util import MathFuncs
 
 
 __all__ = ['CosABC', 'BsmCos', 'VarGammaCos', 'NigCos', 'CgmyCos', 'HestonCos']
@@ -111,21 +112,6 @@ class CosABC(OptABC):
         """Characteristic function φ(u) = MGF(i·u)."""
         return self.logp_mgf(1j * u, texp)
 
-    def logp_cumul(self, texp):
-        """
-        First four cumulants of log(S_T/F) via Mgf2Mom on the CGF.
-
-        Passes log(logp_mgf(u, texp)) as the cumulant generating function
-        K(u) = log M(u).  Mgf2Mom numerically differentiates K at u=0:
-        K^(n)(0) = n-th cumulant.
-
-        Returns:
-            (c1, c2, c3, c4)
-        """
-        cgf = lambda u: np.log(self.logp_mgf(np.atleast_1d(u), texp))
-        cum = Mgf2Mom(cgf).moments(4)
-        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
-
     def _junike_half_width(self, texp):
         """
         Chernoff-bound adaptive half-width (Junike & Pankrashkin 2022, §3).
@@ -144,7 +130,7 @@ class CosABC(OptABC):
         Returns:
             w (float): half-width such that [c1-w, c1+w] captures the density.
         """
-        c1, c2, _, c4 = self.logp_cumul(texp)
+        c1, c2, _, c4 = self.logp_cum4(texp)
         L = 12.0
         w = 0.0
         for _ in range(15):
@@ -186,11 +172,11 @@ class CosABC(OptABC):
         ``_junike_half_width``.
         """
         if self.truncation_method == 'fang-oosterlee':
-            c1, c2, _, c4 = self.logp_cumul(texp)
+            c1, c2, _, c4 = self.logp_cum4(texp)
             half = self.L * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return c1 - half, c1 + half
         elif self.truncation_method == 'junike':
-            c1, _, _, _ = self.logp_cumul(texp)
+            c1, _, _, _ = self.logp_cum4(texp)
             half = self._junike_half_width(texp)
             return c1 - half, c1 + half
         else:
@@ -430,9 +416,9 @@ class BsmCos(Bsm, CosABC):
     price_analytic = Bsm.price
     price = CosABC.price
 
-    logp_cumul_numeric = CosABC.logp_cumul
+    logp_cum4_numeric = OptABC.logp_cum4_numeric
 
-    def logp_cumul(self, texp):
+    def logp_cum4(self, texp):
         """Analytic BSM cumulants of log(S_T/F): c1=-½σ²T, c2=σ²T, c3=c4=0."""
         s2t = float(self.sigma**2 * texp)
         return -0.5 * s2t, s2t, 0.0, 0.0
@@ -445,8 +431,8 @@ class VarGammaCos(VarGammaABC, CosABC):
     The VG log price is x = θ·G_T + σ·W_{G_T} + ω·T where G_T ~ Gamma(T/ν, ν)
     and ω = log(1 - θν - ½σ²ν)/ν is the martingale correction.
 
-    Overrides ``logp_cumul`` with the closed-form formulas so the truncation
-    range is exact; the numeric fallback is available as ``logp_cumul_numeric``.
+    Overrides ``logp_cum4`` with the closed-form formulas so the truncation
+    range is exact; the numeric fallback is available as ``logp_cum4_numeric``.
 
     Examples:
         >>> import numpy as np
@@ -458,9 +444,9 @@ class VarGammaCos(VarGammaABC, CosABC):
 
     n_cos: int = 256
 
-    logp_cumul_numeric = CosABC.logp_cumul
+    logp_cum4_numeric = OptABC.logp_cum4_numeric
 
-    def logp_cumul(self, texp):
+    def logp_cum4(self, texp):
         """
         Analytic VG cumulants of log(S_T/F).
 
@@ -493,8 +479,8 @@ class NigCos(NigABC, CosABC):
     is an inverse-Gaussian subordinator and ω = (1 − √(1 − 2θν − σ²ν))/ν is
     the martingale correction.
 
-    Overrides ``logp_cumul`` with the closed-form formulas so the truncation
-    range is exact; the numeric fallback is available as ``logp_cumul_numeric``.
+    Overrides ``logp_cum4`` with the closed-form formulas so the truncation
+    range is exact; the numeric fallback is available as ``logp_cum4_numeric``.
 
     Examples:
         >>> import numpy as np
@@ -506,9 +492,9 @@ class NigCos(NigABC, CosABC):
 
     n_cos: int = 256
 
-    logp_cumul_numeric = CosABC.logp_cumul
+    logp_cum4_numeric = OptABC.logp_cum4_numeric
 
-    # logp_cumul is inherited directly from NigABC
+    # logp_cum4 is inherited directly from NigABC
 
 
 class CgmyCos(CgmyABC, CosABC):
@@ -535,6 +521,8 @@ class CgmyCos(CgmyABC, CosABC):
 
     n_cos: int = 256
 
+    logp_cum4 = OptABC.logp_cum4_numeric
+
     def _truncation_range(self, texp):
         """
         COS truncation range -- F&O 2008 §5.4 Y-dependent heuristic.
@@ -546,10 +534,10 @@ class CgmyCos(CgmyABC, CosABC):
         Junike mode (Junike & Pankrashkin 2022, §3):
             [a, b] = [c1 - w, c1 + w]
         where w is the Chernoff-bound adaptive half-width, using numerical
-        cumulants from ``CosABC.logp_cumul``.
+        cumulants from ``logp_cum4_numeric``.
         """
         if self.truncation_method == 'junike':
-            c1, _, _, _ = CosABC.logp_cumul(self, texp)
+            c1, _, _, _ = self.logp_cum4(texp)
             half = self._junike_half_width(texp)
             return c1 - half, c1 + half
         if np.isclose(self.Y, 1.98):
@@ -588,6 +576,8 @@ class HestonCos(HestonABC, CosABC):
     n_cos: int = 160
     L = None
 
+    logp_cum4 = OptABC.logp_cum4_numeric
+
     @staticmethod
     def _default_L(texp):
         """Tau-adaptive L = max(10, 3·T + 2) (F&O §5.2 recommendation)."""
@@ -608,15 +598,6 @@ class HestonCos(HestonABC, CosABC):
         """
         return float(np.sqrt(self.theta + self.sigma * self.vov))
 
-    def logp_m(self, texp):
-        """
-        First cumulant of log(S_T/F): c1 = -½ T · E[⟨V⟩_T / T].
-
-        Computed analytically via ``avgvar_mv`` (mean of integrated variance).
-        """
-        T = float(texp)
-        return -0.5 * T * self.avgvar_mv(T)[0]
-
     def _truncation_range(self, texp):
         """
         Global COS truncation range [a, b] for log(S_T/F).
@@ -631,11 +612,11 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]
         """
         if self.truncation_method == 'fang-oosterlee':
-            c1, c2, _, c4 = self.logp_cumul(texp)
+            c1, c2, _, c4 = self.logp_cum4(texp)
             half = self._resolve_L(texp) * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return float(c1 - half), float(c1 + half)
         elif self.truncation_method == 'junike':
-            c1 = self.logp_m(texp)
+            c1 = self.logp_mv3(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         else:
@@ -655,12 +636,12 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]   (single global interval for all strikes)
         """
         if self.truncation_method == 'junike':
-            c1 = self.logp_m(texp)
+            c1 = self.logp_mv3(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         fwd, _, _ = self._fwd_factor(spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()
-        c1 = self.logp_m(texp)
+        c1 = self.logp_mv3(texp)[0]
         x = np.log(np.asarray(fwd, dtype=float) / np.asarray(strike, dtype=float))
         return x + c1 - half, x + c1 + half
 

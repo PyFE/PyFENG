@@ -412,6 +412,21 @@ class OptABC(abc.ABC):
         price = self.price(strike, spot, texp, cp=cp)
         return base_model.impvol(price, strike, spot, texp, cp=cp)
 
+    def logp_cum4_numeric(self, texp):
+        """
+        First four cumulants of log(S_T/F) via numerical differentiation of the CGF.
+
+        Passes log(logp_mgf(u, texp)) as the cumulant generating function
+        K(u) = log M(u). Mgf2Mom numerically differentiates K at u=0:
+        K^(n)(0) = n-th cumulant.
+
+        Returns:
+            (c1, c2, c3, c4)
+        """
+        from .mgf2mom import Mgf2Mom
+        cgf = lambda u: np.log(self.logp_mgf(np.atleast_1d(u), texp))
+        cum = Mgf2Mom(cgf).moments(4)
+        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
 
 
 class OptAnalyticABC(OptABC):

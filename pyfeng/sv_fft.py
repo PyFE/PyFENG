@@ -224,7 +224,7 @@ class NigABC(NigParams, OptABC):
         np.exp(texp/self.nu*rv, out=rv)
         return rv
 
-    def logp_cumul(self, texp):
+    def logp_cum4(self, texp):
         """
         Analytic cumulants of log(S_T/F) for the NIG model.
 
