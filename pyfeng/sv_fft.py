@@ -31,19 +31,6 @@ class FftABC(OptABC):
         """
         raise NotImplementedError
 
-    def logp_cf(self, x, texp):
-        """
-        Characteristic function of log price
-
-        Args:
-            x:
-            texp:
-
-        Returns:
-
-        """
-        return self.logp_mgf(1j*x, texp)
-
     def price(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
 

@@ -108,10 +108,6 @@ class CosABC(OptABC):
         """
         raise NotImplementedError
 
-    def logp_cf(self, u, texp):
-        """Characteristic function φ(u) = MGF(i·u)."""
-        return self.logp_mgf(1j * u, texp)
-
     def _junike_half_width(self, texp):
         """
         Chernoff-bound adaptive half-width (Junike & Pankrashkin 2022, §3).
@@ -616,7 +612,7 @@ class HestonCos(HestonABC, CosABC):
             half = self._resolve_L(texp) * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return float(c1 - half), float(c1 + half)
         elif self.truncation_method == 'junike':
-            c1 = self.logp_mv3(texp)[0]
+            c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         else:
@@ -636,12 +632,12 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]   (single global interval for all strikes)
         """
         if self.truncation_method == 'junike':
-            c1 = self.logp_mv3(texp)[0]
+            c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         fwd, _, _ = self._fwd_factor(spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()
-        c1 = self.logp_mv3(texp)[0]
+        c1 = self.logp_mv(texp)[0]
         x = np.log(np.asarray(fwd, dtype=float) / np.asarray(strike, dtype=float))
         return x + c1 - half, x + c1 + half
 
