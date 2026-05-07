@@ -5,7 +5,6 @@ import scipy.special as spsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
 import functools
-from . import opt_abc as opt
 from . import ousv
 from . import heston
 from . import rheston
@@ -14,7 +13,7 @@ from .bsm import Bsm
 from .opt_abc import OptABC
 from .params import VarGammaParams, NigParams, GarchParams, CgmyParams
 
-class FftABC(opt.OptABC):
+class FftABC(OptABC):
     n_x = 2**12  # number of grid. power of 2 for FFT
     x_lim = 200  # integratin limit
 
