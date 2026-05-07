@@ -40,10 +40,10 @@ def Gamma(n_quad, shape=1.0, rate=1.0, scale=None):
 
     assert(shape > 0)
     scale = scale or 1/rate
-    x, w = spsp.roots_genlaguerre(n_quad, shape - 1)
+    x, w, w_sum = spsp.roots_genlaguerre(n_quad, shape - 1, mu=True)
 
     x *= scale
-    w /= w.sum()
+    w /= w_sum
 
     return x, w
 
@@ -73,13 +73,20 @@ def InvGauss(n_quad, mu=1.0, lam=1.0):
         >>> sum((x - mu)**2*w), mu**3/lam  # variance of IG
         >>> sum((1/x - 1/mu - 1/lam)**2*w), (1/mu/lam + 2/lam**2)  # variance of 1/IG
     """
-    z, w = spsp.roots_hermitenorm(n_quad)
+    z, w, w_sum = spsp.roots_hermitenorm(n_quad, mu=True)
 
     fac = 0.5 * mu / lam
     y_hat = np.square(z) * fac
 
-    x = 1.0 + y_hat + z*np.sqrt(fac * (2.0 + y_hat))
-    w *= 0.7978845608028653558799 / (1.0 + x)  ## np.sqrt(2.0/np.pi), 2*w from GHQ
+    # Always compute the large root first (both terms positive → no cancellation).
+    # For z < 0 the direct formula gives the small root via subtraction, which
+    # loses precision for large |z|.  Use x_small = 1/x_large instead
+    # (the two IG roots satisfy x_small · x_large = 1).
+    x = 1.0 + y_hat + np.abs(z) * np.sqrt(fac * (2.0 + y_hat))  # large root, always stable
+    neg = z < 0
+    x[neg] = 1.0 / x[neg]                                         # invert to small root
+
+    w *= 2.0 / (w_sum * (1.0 + x))  ## weight factor 1/(1+x) holds for both roots
     x *= mu
 
     return x, w
