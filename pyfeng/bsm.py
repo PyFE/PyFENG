@@ -3,12 +3,12 @@ import scipy.stats as spst
 import scipy.optimize as spopt
 import warnings
 
-from . import opt_abc as opt
 from . import norm
+from .opt_abc import OptABC, OptAnalyticABC
 from .params import BsmParams
 from .util import MathFuncs, MathConsts
 
-class Bsm(BsmParams, opt.OptAnalyticABC):
+class Bsm(BsmParams, OptAnalyticABC):
     """
     Black-Scholes-Merton (BSM) model for option pricing.
 
@@ -552,6 +552,21 @@ class Bsm(BsmParams, opt.OptAnalyticABC):
 
         return p
 
+    def logp_mgf(self, uu, texp):
+        """
+        MGF of log(S_T / F) under the BSM model.
+
+            M(u) = exp(-½ σ² T · u(1 - u))
+
+        Args:
+            uu: MGF argument (scalar or array, real or complex).
+            texp: time to expiry.
+
+        Returns:
+            MGF values with the same shape as ``uu``.
+        """
+        return np.exp(-0.5 * self.sigma**2 * texp * uu * (1.0 - uu))
+
     def price_vsk(self, texp=1):
         """
         Variance, skewness, and ex-kurtosis. Assume mean=1.
@@ -724,7 +739,7 @@ class BsmDisp(Bsm):
             vol *= (1 + lnkd**2/24) / (1 + lnk**2/24) * (1 + vol**2*texp/24) / (1 + self.sigma**2*texp/24)
         else:
             # Use the generic OptABC price-inversion, not Bsm.vol_smile's flat-sigma shortcut
-            vol = opt.OptABC.vol_smile(self, strike, spot, texp, model=model, cp=cp)
+            vol = OptABC.vol_smile(self, strike, spot, texp, model=model, cp=cp)
 
         return vol
 

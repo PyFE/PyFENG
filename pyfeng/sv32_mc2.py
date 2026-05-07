@@ -2,11 +2,11 @@ import abc
 import numpy as np
 from .sv_abc import CondMcBsmABC
 from .params import Sv32Params
+from .mgf2mom import Mgf2Mom
 from . import heston_mc
 import scipy.optimize as spop
 import scipy.special as spsp
 import scipy.stats as spst
-from scipy.misc import derivative
 
 
 class Sv32McABC(Sv32Params, CondMcBsmABC):
@@ -308,7 +308,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
         Returns:
             RNs with size of mean/variance
         """
-        idx = (mean > np.finfo(np.float).eps)
+        idx = (mean > np.finfo(float).eps)
         avgvar = np.zeros_like(mean)
         mean = mean[idx]
         var = var[idx]
@@ -350,9 +350,8 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
         def cumgenfunc_cond(bb):
             return np.log(self.cond_avgvar_laplace(-bb, dt, var_0, var_t))
 
-        m1 = derivative(cumgenfunc_cond, 0, n=1, dx=1e-3)
-        var = derivative(cumgenfunc_cond, 0, n=2, dx=1e-3)
-        return m1, var
+        cum = Mgf2Mom(cumgenfunc_cond).moments(2)
+        return cum[0], cum[1]
 
     def cond_states_step_invlap(self, var_0, texp):
         """

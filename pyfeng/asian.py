@@ -9,13 +9,12 @@ import math
 import numpy as np
 import mpmath as m
 import sympy
-from scipy.misc import derivative
-import pyfeng.multiasset as ma
-from . import opt_abc as opt
+from .opt_abc import OptABC
+from .params import BsmParams
 from . import nsvh
 
 
-class BsmAsianJsu(ma.OptMaABC):
+class BsmAsianJsu(BsmParams, OptABC):
     """
 
     Johnson's SU distribution approximation for Asian option pricing under the BSM model.
@@ -48,7 +47,7 @@ class BsmAsianJsu(ma.OptMaABC):
         Returns: the nth moment
 
         """
-        lam = self.sigma[0]
+        lam = self.sigma
         v = (self.intr - self.divr - lam ** 2 / 2) / lam
         beta = v / lam
 
@@ -106,14 +105,14 @@ class BsmAsianJsu(ma.OptMaABC):
 
         mu, var, skew, kurt = self.moment_mvsk(spot, texp)
 
-        m = nsvh.Nsvh1(sigma=self.sigma)
+        m = nsvh.Nsvh1(sigma=self.sigma, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
         price = m.price(strike, mu, texp, cp)
 
         return df * price
 
 
-class BsmAsianLinetsky2004(opt.OptABC):
+class BsmAsianLinetsky2004(BsmParams, OptABC):
 
     b = 1.0
     n_eig = 50
@@ -163,12 +162,12 @@ class BsmAsianLinetsky2004(opt.OptABC):
         nu = self.nu()
 
         f = lambda x: m.whitw((1 - nu) / 2, x / 2, 1 / (2 * self.b))
-        return complex(-derivative(f, eigenval, dx=1e-12))
+        return complex((f(eigenval-1e-8) - f(eigenval-1e-8))/2e-8)
 
     def xi_p(self, eigenval):
         nu = self.nu()
         func = lambda x: m.whitw((1 - nu) / 2, complex(0, x / 2), 1 / (2 * self.b))
-        return complex(derivative(func, eigenval, dx=1e-12))
+        return complex((func(eigenval+1e-8) - func(eigenval-1e-8))/2e-8)
 
     def price_element_imag(self, tau, p_value, k):
         nu = self.nu()

@@ -1,79 +1,19 @@
 import abc
+import warnings
 
 import scipy.stats as spst
-import warnings
 import numpy as np
 from itertools import product, combinations
-from . import bsm
-from . import norm
-from . import gamma
-from . import nsvh
-import pyfeng.opt_abc as opt
+from .bsm import Bsm
+from .norm import Norm
+from .gamma import InvGam
+from .nsvh import Nsvh1
+from .opt_abc import OptABC
+from .params import MaParams, SpreadParams
 from pyfeng.quad import NdGHQ  # Not sure
 
 
-class OptMaABC(opt.OptABC):
-
-    n_asset = 1
-    rho = None
-    cor_m = np.diag([1.0])
-    cov_m = np.diag([1.0])
-    chol_m = np.diag([1.0])
-
-    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-
-        Args:
-            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix with shape (n_asset, n_asset), used as it is.
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-        sigma = np.atleast_1d(sigma)
-        self.n_asset = len(sigma)
-
-        super().__init__(sigma, intr, divr, is_fwd)
-
-        if self.n_asset == 1:
-            if cor is not None:
-                warnings.warn(f"Ignoring cor={cor} for a single asset.")
-            self.rho = None
-            self.cor_m = np.array([[1.0]])
-        elif np.isscalar(cor):
-            self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) + (
-                1.0 - cor
-            ) * np.eye(self.n_asset)
-            self.rho = cor
-        else:
-            if cor.shape != (self.n_asset, self.n_asset):
-                raise ValueError(f"cor must have shape ({self.n_asset}, {self.n_asset}), got {cor.shape}.")
-            self.cor_m = cor
-            if self.n_asset == 2:
-                self.rho = cor[0, 1]
-
-        self.cov_m = sigma * self.cor_m * sigma[:, None]
-        self.chol_m = np.linalg.cholesky(self.cov_m)
-
-    def price(self, strike, spot, texp, cp=1):
-        """
-        Call/put option price.
-
-        Args:
-            strike: strike price.
-            spot: spot (or forward) prices for assets.
-                Asset dimension should be the last, e.g. (n_asset, ) or (N, n_asset)
-            texp: time to expiry.
-            cp: 1/-1 for call/put option.
-
-        Returns:
-            option price
-        """
-        raise NotImplementedError
-
-
-class BsmSpreadKirk(OptMaABC):
+class BsmSpreadKirk(SpreadParams, OptABC):
     """
     Kirk's approximation for spread option.
 
@@ -83,17 +23,13 @@ class BsmSpreadKirk(OptMaABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.BsmSpreadKirk((0.2, 0.3), cor=-0.5)
+        >>> m = pf.BsmSpreadKirk((0.2, 0.3), rho=-0.5)
         >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         array([22.15632247, 17.18441817, 12.98974214,  9.64141666,  6.99942072])
     """
 
-    weight = np.array([1, -1])
-
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        if fwd.shape[-1] != self.n_asset:
-            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd1 = fwd[..., 0] - np.minimum(strike, 0)
         fwd2 = fwd[..., 1] + np.maximum(strike, 0)
@@ -101,11 +37,11 @@ class BsmSpreadKirk(OptMaABC):
         sig1 = self.sigma[0] * fwd[..., 0] / fwd1
         sig2 = self.sigma[1] * fwd[..., 1] / fwd2
         sig_spd = np.sqrt(sig1 * (sig1 - 2.0 * self.rho * sig2) + sig2 ** 2)
-        price = bsm.Bsm.price_formula(fwd2, fwd1, sig_spd, texp, cp=cp, is_fwd=True)
+        price = Bsm.price_formula(fwd2, fwd1, sig_spd, texp, cp=cp, is_fwd=True)
         return df * price
 
 
-class BsmSpreadBjerksund2014(OptMaABC):
+class BsmSpreadBjerksund2014(SpreadParams, OptABC):
     """
     Bjerksund & Stensland (2014)'s approximation for spread option.
 
@@ -115,17 +51,13 @@ class BsmSpreadBjerksund2014(OptMaABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.BsmSpreadBjerksund2014((0.2, 0.3), cor=-0.5)
+        >>> m = pf.BsmSpreadBjerksund2014((0.2, 0.3), rho=-0.5)
         >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         array([22.13172022, 17.18304247, 12.98974214,  9.54431944,  6.80612597])
     """
 
-    weight = np.array([1, -1])
-
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
-        if fwd.shape[-1] != self.n_asset:
-            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd1 = fwd[..., 0]
         fwd2 = fwd[..., 1]
@@ -152,57 +84,26 @@ class BsmSpreadBjerksund2014(OptMaABC):
         return df * price
 
 
-class NormBasket(OptMaABC):
+class NormBasket(MaParams, OptABC):
     """
     Basket option pricing under the multiasset Bachelier model
     """
 
-    weight = None
-
-    def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Initialize an instance for basket option.
-
-        Args:
-            sigma: model volatilities of `n_asset` assets. (n_asset, ) array
-            cor: correlation. If matrix, used as it is. (n_asset, n_asset)
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            weight: asset weights, If None, equally weighted as 1/n_asset
-                If scalar, equal weights of the value
-                If 1-D array, uses as it is. (n_asset, )
-            intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
-            is_fwd: if True, treat `spot` as forward price. False by default.
-
-        See Also:
-            init_spread()
-        """
-
-        super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
-        if weight is None:
-            self.weight = np.ones(self.n_asset) / self.n_asset
-        elif np.isscalar(weight):
-            self.weight = np.ones(self.n_asset) * weight
-        else:
-            if len(weight) != self.n_asset:
-                raise ValueError(f"weight length {len(weight)} does not match n_asset={self.n_asset}.")
-            self.weight = np.array(weight)
-
     @classmethod
-    def init_spread(cls, sigma, cor=None, intr=0.0, divr=0.0, is_fwd=False):
+    def init_spread(cls, sigma, rho=None, cor_m=None, cov_m=None, intr=0.0, divr=0.0, is_fwd=False):
         """
-        Initalize an instance for spread option pricing.
-        This is a special case of the initalization with weight = (1, -1)
+        Initialize an instance for spread option pricing.
+        Convenience constructor that sets ``weight = [1, -1]``.
 
         Examples:
             >>> import numpy as np
             >>> import pyfeng as pf
-            >>> m = pf.NormSpread.init_spread((20, 30), cor=-0.5, intr=0.05)
+            >>> m = pf.NormBasket.init_spread((20, 30), rho=-0.5, intr=0.05)
             >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
             array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
         """
-
-        return cls(sigma, cor=cor, weight=np.array([1, -1]), intr=intr, divr=divr, is_fwd=is_fwd)
+        return cls(sigma, rho=rho, cor_m=cor_m, cov_m=cov_m,
+                   weight=np.array([1.0, -1.0]), intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
@@ -212,7 +113,7 @@ class NormBasket(OptMaABC):
         fwd_basket = fwd @ self.weight
         vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
 
-        price = norm.Norm.price_formula(
+        price = Norm.price_formula(
             strike, fwd_basket, vol_basket, texp, cp=cp, is_fwd=True
         )
         return df * price
@@ -230,7 +131,7 @@ class BsmBasketLevy1992(NormBasket):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> strike = np.arange(50, 151, 10)
-        >>> m = pf.BsmBasketLevy1992(sigma=0.4*np.ones(4), cor=0.5)
+        >>> m = pf.BsmBasketLevy1992(sigma=0.4*np.ones(4), rho=0.5)
         >>> m.price(strike, spot=100*np.ones(4), texp=5)
         array([54.34281026, 47.521086  , 41.56701301, 36.3982413 , 31.92312156,
                28.05196621, 24.70229571, 21.800801  , 19.28360474, 17.09570196,
@@ -247,7 +148,7 @@ class BsmBasketLevy1992(NormBasket):
         m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
 
         sig = np.sqrt(np.log(m2 / (m1 ** 2)) / texp)
-        price = bsm.Bsm.price_formula(strike, m1, sig, texp, cp=cp, is_fwd=True)
+        price = Bsm.price_formula(strike, m1, sig, texp, cp=cp, is_fwd=True)
         return df * price
 
 
@@ -263,7 +164,7 @@ class BsmBasketMilevsky1998(NormBasket):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> strike = np.arange(50, 151, 10)
-        >>> m = pf.BsmBasketMilevsky1998(sigma=0.4*np.ones(4), cor=0.5)
+        >>> m = pf.BsmBasketMilevsky1998(sigma=0.4*np.ones(4), rho=0.5)
         >>> m.price(strike, spot=100*np.ones(4), texp=5)
         array([51.93069524, 44.40986   , 38.02596564, 32.67653542, 28.21560931,
                24.49577509, 21.38543199, 18.77356434, 16.56909804, 14.69831445,
@@ -282,13 +183,13 @@ class BsmBasketMilevsky1998(NormBasket):
         alpha = 1 / (m2 / m1 ** 2 - 1) + 2
         beta = (alpha - 1) * m1
 
-        price = gamma.InvGam.price_formula(
+        price = InvGam.price_formula(
             strike, m1, texp, alpha, beta, cp=cp, is_fwd=True
         )
         return df * price
 
 
-class BsmMax2(OptMaABC):
+class BsmMax2(SpreadParams, OptABC):
     """
     Option on the max of two assets.
     Payout = max( max(F_1, F_2) - K, 0 ) for all or  max( K - max(F_1, F_2), 0 ) for put option
@@ -299,22 +200,20 @@ class BsmMax2(OptMaABC):
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
-        >>> m = pf.BsmMax2(0.2*np.ones(2), cor=0, divr=0.1, intr=0.05)
+        >>> m = pf.BsmMax2(0.2*np.ones(2), rho=0, divr=0.1, intr=0.05)
         >>> m.price(strike=[90, 100, 110], spot=100*np.ones(2), texp=3)
         array([15.86717049, 11.19568103,  7.71592217])
     """
 
     m_switch = None
 
-    def __init__(self, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
-        super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=is_fwd)
-        self.m_switch = BsmSpreadKirk(sigma, cor, is_fwd=True)
+    def __post_init__(self):
+        super().__post_init__()
+        self.m_switch = BsmSpreadKirk(self.sigma, rho=self.rho, is_fwd=True)
 
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
         fwd, df, _ = self._fwd_factor(spot, texp)
-        if fwd.shape[-1] != self.n_asset:
-            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         sig_std = sig * np.sqrt(texp)
         spd_rho = np.sqrt(np.dot(sig, sig) - 2 * self.rho * sig[0] * sig[1])
@@ -331,6 +230,7 @@ class BsmMax2(OptMaABC):
             np.array([self.rho * sig[1] - sig[0], self.rho * sig[0] - sig[1]]) / spd_rho
         )
 
+        cor_m = np.array([[1.0, self.rho], [self.rho, 1.0]])
         mu0 = np.zeros(2)
         cor_m1 = rho12[0] + (1 - rho12[0]) * np.eye(2)
         cor_m2 = rho12[1] + (1 - rho12[1]) * np.eye(2)
@@ -355,7 +255,7 @@ class BsmMax2(OptMaABC):
                 - spst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2)
             )
             term3 = strike[k] * np.array(
-                spst.multivariate_normal.cdf(xx_ + sig_std, mu0, self.cor_m)
+                spst.multivariate_normal.cdf(xx_ + sig_std, mu0, cor_m)
             )
 
             if term1 + term2 + term3 < strike[k]:
@@ -369,35 +269,13 @@ class BsmMax2(OptMaABC):
         return price[0] if strike_isscalar else price
 
 
-class BsmBasket1Bm(opt.OptABC):
+class BsmBasket1Bm(MaParams, OptABC):
     """
     Multiasset BSM model for pricing basket/Spread options when all asset prices are driven by a single Brownian motion (BM).
 
     """
 
-    def __init__(self, sigma, weight=None, intr=0.0, divr=0.0, is_fwd=False):
-        """
-        Args:
-            sigma: model volatilities of `n_asset` assets. (n_asset, )
-            weight: asset weights, If None, equally weighted as 1/n_asset
-                If scalar, equal weights of the value
-                If 1-D array, uses as it is. (n_asset, )
-            intr: interest rate (domestic interest rate)
-            divr: vector of dividend/convenience yield (foreign interest rate) 0-D or (n_asset, ) array
-            is_fwd: if True, treat `spot` as forward price. False by default.
-        """
-
-        sigma = np.atleast_1d(sigma)
-        self.n_asset = len(sigma)
-        if weight is None:
-            self.weight = np.ones(self.n_asset) / self.n_asset
-        elif np.isscalar(weight):
-            self.weight = np.ones(self.n_asset) * weight
-        else:
-            if len(weight) != self.n_asset:
-                raise ValueError(f"weight length {len(weight)} does not match n_asset={self.n_asset}.")
-            self.weight = np.array(weight)
-        super().__init__(sigma, intr=intr, divr=divr, is_fwd=is_fwd)
+    rho: float = 1.0
 
     @staticmethod
     def root(fac, std, strike):
@@ -595,7 +473,7 @@ class BsmBasketJsu(NormBasket):
 
         var, skew, kurt = self.moment_vsk(fwd, texp)
 
-        m = nsvh.Nsvh1(sigma=self.sigma)
+        m = Nsvh1(sigma=self.sigma)
         m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
         price = m.price(strike, fwd_basket, texp, cp)
 
@@ -614,8 +492,8 @@ class BsmBasketChoi2018(NormBasket):
     lam = 4.0
 
     @classmethod
-    def init_lowerbound(cls, sigma, cor=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
-        m = cls(sigma, cor=cor, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
+    def init_lowerbound(cls, sigma, rho=None, cor_m=None, cov_m=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
+        m = cls(sigma, rho=rho, cor_m=cor_m, cov_m=cov_m, weight=weight, intr=intr, divr=divr, is_fwd=is_fwd)
         m.n_quad = 0
         return m
 

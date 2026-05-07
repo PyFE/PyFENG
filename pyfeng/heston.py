@@ -54,33 +54,69 @@ class HestonABC(HestonParams, OptABC):
         s2 = self.vov**2 * dt * avg * (var0*e_mr + self.theta*mr_t*avg/2)
         return m, s2
 
-    def avgvar_mv(self, texp, var0=None):
+    def avgvar_mv3(self, texp, var0=None):
         """
-        Mean and variance of the average variance given V(0) = var_0.
-        Appnedix B in Ball & Roma (1994)
+        Mean, variance, and 3rd central moment of the average variance I_T = (1/T)∫v dt
+        under the CIR process.
+
+        The 3rd central moment equals the 3rd cumulant κ₃(I_T) = κ₃(J_T)/T³
+        where J_T = T·I_T.  The cumulants of J_T are computed by differentiating
+        the log-MGF three times w.r.t. λ at λ=0, giving the linear ODE chain:
+
+            b₁' = −κb₁ + 1
+            b₂' = −κb₂ + ν²b₁²
+            b₃' = −κb₃ + 3ν²b₁b₂
+
+        with b_n(0)=0 and κ_n(J_T) = κθ∫₀ᵀ b_n dt + b_n(T)·v₀.
+
+        Note: var0 is taken as an argument (rather than using self.sigma) because
+        this method is also called by var_step_qe in HestonMcAndersen2008.
 
         Args:
-            var0: initial variance
-            texp: time step
+            texp: time to expiry
+            var0: initial variance (default: self.sigma)
 
         Returns:
-            mean, variance
+            (mean, variance, c3) where c3 = E[(I_T − E[I_T])³]
+
+        References:
+            Ball C, Roma A (1994) Stochastic Volatility Option Pricing.
+            Journal of Financial and Quantitative Analysis 29:589–607. Appendix B.
         """
-
-        ### We take var0 as argument instead of using self.sigma
-        ### because it is used in var_step_qe method in HestonMcAndersen2008
-
         if var0 is None:
             var0 = self.sigma
 
-        mr_t = self.mr*texp
+        mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
         phi = MathFuncs.avg_exp(-mr_t)
         x0 = var0 - self.theta
         mean = self.theta + x0*phi
         var = (self.theta - 2*x0*e_mr) + (var0 - 2.5*self.theta + (var0 - self.theta/2)*e_mr)*phi
         var *= (self.vov/mr_t)**2 * texp
-        return mean, var
+
+        fac = (self.vov/self.mr)**4 / self.mr  # ν⁴/κ⁵
+
+        # b₃(T): degree-2 polynomial in mr_t, coefficients in e_mr/e2/e3
+        b3 = 3*fac * ((1 + 0.5*e_mr*(1 - e_mr*(2 + e_mr))) - mr_t*e_mr*(1 + mr_t + 2*e_mr))
+
+        # ∫₀ᵀ b₃ dt: degree-1 polynomial in mr_t; constant part in Horner form on e_mr
+        int_b3 = fac*texp * ((3 - 11*phi + e_mr*(9 - 3.5*phi + e_mr*(3 - 0.5*phi))) + 3*mr_t*e_mr)
+
+        # a₃(T) = κθ ∫₀ᵀ b₃ dt  (θ-contribution to 3rd cumulant of J_T)
+        a3 = self.mr * self.theta * int_b3
+
+        # 3rd central moment of I_T = J_T/T: c₃(I_T) = κ₃(J_T)/T³
+        # For small mr_t the direct formula (a3+b3*v0)/T³ suffers catastrophic
+        # cancellation (numerator → 0 as T⁵ while each term is O(1)).
+        # Taylor expansion of c3 in mr_t = κT:
+        #   c3 = ν⁴T²·[v₀/5 + u·(θ/30 − 17v₀/60) + u²·(3v₀/14 − 17θ/420) + O(u³)]
+        # where u = mr_t.  Three terms give relative error O(mr_t³) < 1e-3 for mr_t < 0.1.
+        v0 = float(var0)
+        c3_small = (self.vov**2*texp)**2 * (v0/5 + mr_t * (self.theta/30 - 17*v0/60) + mr_t**2 * (3*v0/14 - 17*self.theta/420))
+        c3_full = (a3 + b3 * v0) / texp**3
+        c3 = np.where(mr_t < 0.1, c3_small, c3_full)
+
+        return mean, var, c3
 
     def strike_var_swap_analytic(self, texp, dt):
         """
@@ -120,11 +156,90 @@ class HestonABC(HestonParams, OptABC):
 
         return strike
 
+    def logp_mgf(self, uu, texp):
+        """
+        Log price MGF under the Heston model (Lord & Kahl 2010 branch-cut-safe form).
+
+        We use the characteristic function in Eq (2.8) of Lord & Kahl (2010) that is
+        continuous in branch cut when the complex log is evaluated.
+
+        References:
+            - Heston SL (1993) A Closed-Form Solution for Options with Stochastic
+              Volatility with Applications to Bond and Currency Options.
+              The Review of Financial Studies 6:327–343.
+              https://doi.org/10.1093/rfs/6.2.327
+            - Lord R, Kahl C (2010) Complex Logarithms in Heston-Like Models.
+              Mathematical Finance 20:671–694.
+              https://doi.org/10.1111/j.1467-9965.2010.00416.x
+        """
+        var_0 = self.sigma
+        vov2 = self.vov**2
+
+        beta = self.mr - self.vov*self.rho*uu
+        dd = np.sqrt(beta**2 + vov2*uu*(1 - uu))
+        gg = (beta - dd)/(beta + dd)
+        exp = np.exp(-dd*texp)
+        tmp1 = 1 - gg*exp
+
+        mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
+        return np.exp(mgf/vov2)
+
+    def logp_mv3(self, texp):
+        """
+        Mean, variance, and 3rd central moment of log(S_T/F) under the Heston model (mu = 0).
+
+        From the conditional decomposition (with Y = vov·∫√v dW):
+
+            ln(S_T/F) = (rho/vov)·Y + rho_c·√(T·I_T)·X − T·I_T/2
+
+        **Mean** (E[Y] = 0 by construction):
+
+            E[Z] = −T/2 · E[I_T]
+
+        **Variance** (law of total variance + Itô isometry Var(Y) = vov²·T·E[I_T]):
+
+            Var[Z] = T·μ_I + T²/4·σ²_I − (ρT/vov)·Cov(Y, I_T)
+
+        **Cov(Y, I_T)** (stochastic Fubini + CIR moment):
+
+            Cov(Y, I_T) = vov²·[θ·T/2 + (v₀−θ)·(1−φ)/κ]
+
+        where φ = (1−e^{−κT})/(κT).
+
+        **3rd central moment** (for ρ=0, law of total moments):
+
+            μ₃(Z) = −(3T²/2)·Var(I_T) − (T³/8)·μ₃(I_T)
+
+        Args:
+            texp: time to expiry
+
+        Returns:
+            (mean, variance, c3) of log(S_T/F)
+
+        References:
+            Le Floc'h F (2020) arXiv:2005.13248, Appendix B, Eq. (B5)
+        """
+        T = float(texp)
+        mu_i, var_i, c3_i = self.avgvar_mv3(T)
+
+        mean = -0.5 * T * mu_i
+
+        mr_t = self.mr * T
+        phi = MathFuncs.avg_exp(-mr_t)
+        x0 = float(self.sigma) - self.theta
+        cov_yi = self.vov**2 * (self.theta * T / 2 + x0 * (1 - phi) / self.mr)
+
+        var = T * mu_i + (T**2 / 4) * var_i - self.rho * T / self.vov * cov_yi
+
+        c3 = -1.5 * T**2 * var_i - T**3 / 8 * c3_i
+
+        return mean, var, c3
+
 
 class HestonUncorrBallRoma1994(HestonABC):
     """
     Ball & Roma (1994)'s approximation pricing formula for European options under uncorrelated (rho=0) Heston model.
-    Up to 2nd order is implemented.
+    Up to 3rd order (order=3) is implemented.
 
     See Also: OusvUncorrBallRoma1994, GarchUncorrBaroneAdesi2004
     """
@@ -136,14 +251,17 @@ class HestonUncorrBallRoma1994(HestonABC):
         if not np.isclose(self.rho, 0.0):
             warnings.warn(f"Pricing ignores rho = {self.rho}.")
 
-        avgvar, var = self.avgvar_mv(texp)
+        if self.order >= 3:
+            avgvar, var, c3 = self.avgvar_mv3(texp)
+        else:
+            avgvar, var, _ = self.avgvar_mv3(texp)
 
         m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
         price = m_bs.price(strike, spot, texp, cp)
 
-        if self.order == 2:
+        if self.order >= 2:
             price += 0.5*var*m_bs.d2_var(strike, spot, texp, cp)
-        elif self.order > 2:
-            raise ValueError(f"Not implemented for approx order: {self.order}")
+        if self.order >= 3:
+            price += (1/6)*c3*m_bs.d3_var(strike, spot, texp, cp)
 
         return price

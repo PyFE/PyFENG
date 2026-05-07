@@ -1,8 +1,9 @@
 import numpy as np
-import pyfeng.multiasset as ma
+from .params import MaParams
+from .opt_abc import OptABC
 
 
-class BsmNdMc(ma.OptMaABC):
+class BsmNdMc(MaParams, OptABC):
     """
     Monte-Carlo simulation of multiasset (N-d) BSM (geometric Brownian Motion)
 
@@ -34,11 +35,11 @@ class BsmNdMc(ma.OptMaABC):
     n_path = 0
     path = tobs = None
 
-    def __init__(self, sigma, cor=None, intr=0.0, divr=0.0, rn_seed=None, antithetic=True):
+    def __init__(self, sigma, rho=None, cor_m=None, cov_m=None, intr=0.0, divr=0.0, rn_seed=None, antithetic=True):
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.antithetic = antithetic
-        super().__init__(sigma, cor=cor, intr=intr, divr=divr, is_fwd=False)
+        super().__init__(sigma, rho=rho, cor_m=cor_m, cov_m=cov_m, intr=intr, divr=divr, is_fwd=False)
 
     def _bm_incr(self, tobs, n_path):
         """

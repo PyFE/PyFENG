@@ -1,10 +1,10 @@
 import numpy as np
-from . import opt_abc as opt
 from . import bsm
+from .opt_abc import OptABC
 from .params import SviParams
 
 
-class Svi(SviParams, opt.OptABC):
+class Svi(SviParams, OptABC):
     """
     Stochastic Volatility-inspired (SVI) model by Gatheral.
 
