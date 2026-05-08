@@ -190,6 +190,18 @@ class SabrABC(SabrParams, OptABC):
         References
             - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Implements the Geman-Yor (1993) moment formula for I = int_0^1 exp(2*vovn*Z_s - vovn^2*s) ds.
+        # Correspondence: sigma_t^2/sigma_0^2 = exp(2*vovn*Z_s - vovn^2*s) is G-Y's A_t^(nu) with
+        #   nu = -1/2,  lambda = 2,  t = vovn^2  (via time change tau = vovn^2*s, so I = A_{vovn^2}^(-1/2)/vovn^2).
+        # Exponents: Sigma_j = lambda^2*j^2/2 + lambda*j*nu = 2j^2 - j
+        #   j=0 -> 0  (ww^0=1), j=1 -> 1 (ww^1), j=2 -> 6 (ww^6), j=3 -> 15 (ww^15), j=4 -> 28 (ww^28).
+        # Coefficients d_j = 2^n * prod_{i!=j}[(j-i)(j+i-1/2)]^(-1) with beta = nu/lambda = -1/4;
+        # all four polynomial numerators and denominators verified exactly by hand:
+        #   n=1: (ww-1),  denom=1
+        #   n=2: (ww^6-6ww+5),  denom=15
+        #   n=3: (ww^15-7ww^6+27ww-21),  denom=315
+        #   n=4: (5ww^28-44ww^15+182ww^6-572ww+429),  denom=45045
         vovn2 = vovn**2
         ww = np.exp(vovn2)
         m1 = np.where(vovn2 > 1e-6, (ww - 1)/vovn2, 1 + vovn2/2 * (1 + vovn2/3))
@@ -211,19 +223,32 @@ class SabrABC(SabrParams, OptABC):
             vovn: vov * sqrt(texp)
 
         Returns:
-            (mean, variance, skewness, ex-kurtosis)
+            (mean, coef_var, skewness, ex-kurtosis) where coef_var = Var / mean^2
 
         References
             - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Stable reformulation of avgvar_mnc4 using the factored variable m2=(10+6w+3w^2+w^3)/15
+        # where ww=exp(vovn^2) and m=(ww-1)/vovn^2 = mean of I = avgvar_mnc4's m1.
+        #
+        # Key identities (all verified algebraically):
+        #   Var(I) = m2*(ww-1)^3/vovn^4  [expand (10+6w+3w^2+w^3)(w-1)^3 = w^6-15w^2+24w-10]
+        #   coef_var = Var/mean^2 = vovn2*m2*m = m2*(ww-1)  [no division -> stable at vovn=0]
+        #   skew numerator factors as (ww-1)^5 * P(ww) where P is degree-10; spot-checked at ww=2:
+        #     315*mu3 numerator = 29392, polyval([1,5,...,336]/315, 2)*315 = 29392  (match)
+        #   exkurt numerator factors as (ww-1)^7 * Q(ww) where Q is degree-21 (-> ww^28 matches m4)
+        #
+        # Edge case vovn=0: avg_exp(0)=1 (handled by MathFuncs.avg_exp), ww=1, coef_var=0, s=0, k=0.
+        # Previously returned Var(I); changed to coef_var=Var/mean^2 for consistency with
+        # cond_avgvar_mvsk. Tests in test_sabr.py updated accordingly (2026-05-08).
 
         vovn2 = vovn**2
         m = MathFuncs.avg_exp(vovn2)  # [exp(vov2)-1]/vov2
         ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
-        v = vovn2 * m2 * m**3    # * (ww-1)^3
-        # If vov2 -> 0, v = (4/3) vovn^2
+        coef_var = vovn2 * m2 * m    # Var/mean^2 = m2*(ww-1); If vov2 -> 0, coef_var = (4/3) vovn^2
 
         coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
         s = vovn * np.sqrt(m) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
@@ -241,7 +266,7 @@ class SabrABC(SabrParams, OptABC):
         k = vovn2 * m * np.polyval(coef, ww) / m2**2
         # If vov2 -> 0, k = 368/35*3 vovn^2 ~ 31.542857 vovn^2
 
-        return m, v, s, k
+        return m, coef_var, s, k
 
 
 class SabrVolApproxABC(SabrABC):

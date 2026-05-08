@@ -49,6 +49,21 @@ class BsmAsianJsu(BsmParams, OptABC):
         Returns: the nth moment
 
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Implements Geman-Yor (1993) eq. on p.359 for the n-th raw moment of the time average
+        #   S_bar = (1/T) * integral_0^T S_t dt,  S_t = S_0 * exp((r-q-sigma^2/2)*t + sigma*B_t).
+        #
+        # Notation map (code -> G-Y):  lam=sigma, v=(r-q-sigma^2/2)/sigma, beta=v/sigma=v/lam.
+        # The integral is rescaled to G-Y form A_t^(nu) = int_0^t exp(lambda*(W_s+nu*s)) ds
+        # with lambda=sigma, nu=v, t=T. This gives:
+        #   E[S_bar^n] = (S_0/T)^n * n!/lambda^(2n) * sum_{j=0}^{n} d_j * exp(Sigma_j * T)
+        # where Sigma_j = lambda^2*j^2/2 + lambda*j*v = j*(r-q) + j*(j-1)*sigma^2/2  (verified)
+        # and   d_j = 2^n * prod_{i!=j} [(beta+j)^2 - (beta+i)^2]^(-1)               (verified)
+        # The j=0 term (exp(0)=1) absorbs the "-1" in (exp(Sigma_k*T)-1) of the explicit form.
+        # Both n=1 and n=2 cases verified algebraically; n=1 gives S_0*(exp((r-q)*T)-1)/((r-q)*T).
+        #
+        # KNOWN BUG: division by zero when 2*beta+i+j=0 for any 0<=i<j<=n, i.e., when
+        # r-q = sigma^2*(1-i-j)/2. For n<=4 the first case is r=q (i=0,j=1). No fix implemented.
         lam = self.sigma
         v = (self.intr - self.divr - lam ** 2 / 2) / lam
         beta = v / lam
@@ -79,6 +94,13 @@ class BsmAsianJsu(BsmParams, OptABC):
         Returns: mean, variance, skewness, kurtosis of Asian options
 
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Converts raw moments (m1..m4) from self.moments() into mean/var/skew/kurtosis.
+        # Textbook central-moment formulas confirmed correct:
+        #   var  = m2 - m1^2
+        #   skew = (m3 - 3*m2*m1 + 2*m1^3) / var^(3/2)         [note: m3-m1^3-3*m2*m1+3*m1^3 = same]
+        #   kurt = (m4 - 4*m3*m1 + 6*m2*m1^2 - 3*m1^4) / var^2  [raw kurtosis, NOT excess]
+        # Caller (price()) passes kurt-3 to calibrate_vsk() for the excess kurtosis. Correct.
         moments = []
         for i in range(1, 5):
             moments.append(self.moments(spot, texp, i))
