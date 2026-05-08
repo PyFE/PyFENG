@@ -4,7 +4,6 @@ import scipy.fft as spfft
 import scipy.special as spsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
-import functools
 from . import ousv
 from . import heston
 from . import rheston
@@ -32,7 +31,7 @@ class FftABC(OptABC):
         """
         raise NotImplementedError
 
-    def price(self, strike, spot, texp, cp=1):
+    def price_simpson(self, strike, spot, texp, cp=1):
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         kk = strike/fwd
@@ -47,39 +46,46 @@ class FftABC(OptABC):
         price = np.where(cp > 0, 1, kk) - np.sqrt(kk)/np.pi*int_val
         return df*fwd*price
 
-    @functools.lru_cache(maxsize=16)
-    def fft_interp(self, texp, *args, **kwargs):
+    def fft_interp(self, texp, params_hash, n_x, x_lim):
         """ FFT method based on the Lewis expression
 
         References:
             https://github.com/cantaro86/Financial-Models-Numerical-Methods/blob/master/1.3%20Fourier%20transform%20methods.ipynb
         """
-        dx = self.x_lim/self.n_x
-        xx = np.arange(self.n_x)*dx  # the final value x_lim is excluded
+        key = (texp, params_hash, n_x, x_lim)
+        try:
+            return self._fft_cache[key]
+        except AttributeError:
+            self._fft_cache = {}
+        except KeyError:
+            pass
 
-        weight = np.ones(self.n_x)  # Simpson weights
+        dx = x_lim/n_x
+        xx = np.arange(n_x)*dx  # the final value x_lim is excluded
+
+        weight = np.ones(n_x)  # Simpson weights
         weight[1:-1:2] = 4
         weight[2:-1:2] = 2
         weight *= dx/3
 
-        dk = 2*np.pi/self.x_lim
-        b = self.n_x*dk/2
-        ks = -b + dk*np.arange(self.n_x)
+        dk = 2*np.pi/x_lim
+        b = n_x*dk/2
+        ks = -b + dk*np.arange(n_x)
 
         integrand = np.exp(-1j*b*xx)*self.logp_mgf(xx*1j + 0.5, texp)/(xx**2 + 0.25)*weight
         # CF: integrand = np.exp(-1j*b*xx)*self.cf(xx - 0.5j, texp)*1/(xx**2 + 0.25)*weight
-        integral_value = (self.n_x/np.pi)*spfft.ifft(integrand).real
+        integral_value = (n_x/np.pi)*spfft.ifft(integrand).real
 
         obj = spinterp.interp1d(ks, integral_value, kind='cubic')
+        self._fft_cache[key] = obj
         return obj
 
-    def price_fft(self, strike, spot, texp, cp=1):
+    def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
         kk = strike/fwd
         log_kk = np.log(kk)
 
-        # self.params_hash(), self.n_x, self.x_lim are only used for cache key
-        spline_cub = self.fft_interp(texp, k1=self.params_hash(), k2=self.n_x, k3=self.x_lim)
+        spline_cub = self.fft_interp(texp, self.params_hash(), self.n_x, self.x_lim)
         price = np.where(cp > 0, 1, kk) - np.sqrt(kk)*spline_cub(-log_kk)
         return df*fwd*price
 
