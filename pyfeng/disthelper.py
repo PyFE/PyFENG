@@ -515,12 +515,13 @@ class DistGig:
         if correct:
             w /= np.sum(w)
         else:
+            # Use kve (exponentially scaled) so exp(+η) in kve cancels the exp(-η) factor,
+            # giving a numerically stable ratio for all η = gamma*delta > 0.
             ratio = (
                 np.power(self.gamma / self.delta, self.p)
-                * np.exp(-self.gamma * self.delta)
                 / self.delta
                 / np.sqrt(2.0 / np.pi)
-                / spsp.kv(self.p, self.gamma * self.delta)
+                / spsp.kve(self.p, self.gamma * self.delta)
             )
             w *= ratio
 
