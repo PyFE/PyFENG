@@ -54,7 +54,7 @@ class HestonABC(HestonParams, OptABC):
         s2 = self.vov**2 * dt * avg * (var0*e_mr + self.theta*mr_t*avg/2)
         return m, s2
 
-    def avgvar_mv3(self, texp, var0=None):
+    def avgvar_mv(self, texp, var0=None):
         """
         Mean, variance, and 3rd central moment of the average variance I_T = (1/T)∫v dt
         under the CIR process.
@@ -184,9 +184,9 @@ class HestonABC(HestonParams, OptABC):
         mgf = self.mr*self.theta*((beta - dd)*texp - 2*np.log(tmp1/(1 - gg))) + var_0*(beta - dd)*(1 - exp)/tmp1
         return np.exp(mgf/vov2)
 
-    def logp_mv3(self, texp):
+    def logp_mv(self, texp):
         """
-        Mean, variance, and 3rd central moment of log(S_T/F) under the Heston model (mu = 0).
+        Mean and variance of log(S_T/F) under the Heston model (mu = 0).
 
         From the conditional decomposition (with Y = vov·∫√v dW):
 
@@ -200,40 +200,35 @@ class HestonABC(HestonParams, OptABC):
 
             Var[Z] = T·μ_I + T²/4·σ²_I − (ρT/vov)·Cov(Y, I_T)
 
-        **Cov(Y, I_T)** (stochastic Fubini + CIR moment):
+        **Cov(Y, I_T)** (solving the ODE H'(t) + κH(t) = vov·t·E[v_t] via Itô + Fubini):
 
-            Cov(Y, I_T) = vov²·[θ·T/2 + (v₀−θ)·(1−φ)/κ]
+            Cov(Y, I_T) = (vov²/κ)·[θ·(1−φ) + (v₀−θ)·(φ − e^{−κT})]
 
         where φ = (1−e^{−κT})/(κT).
-
-        **3rd central moment** (for ρ=0, law of total moments):
-
-            μ₃(Z) = −(3T²/2)·Var(I_T) − (T³/8)·μ₃(I_T)
 
         Args:
             texp: time to expiry
 
         Returns:
-            (mean, variance, c3) of log(S_T/F)
+            (mean, variance) of log(S_T/F)
 
         References:
             Le Floc'h F (2020) arXiv:2005.13248, Appendix B, Eq. (B5)
         """
         T = float(texp)
-        mu_i, var_i, c3_i = self.avgvar_mv3(T)
+        mu_i, var_i, _ = self.avgvar_mv(T)
 
         mean = -0.5 * T * mu_i
 
         mr_t = self.mr * T
+        e_mr = np.exp(-mr_t)
         phi = MathFuncs.avg_exp(-mr_t)
         x0 = float(self.sigma) - self.theta
-        cov_yi = self.vov**2 * (self.theta * T / 2 + x0 * (1 - phi) / self.mr)
+        cov_yi = self.vov**2 / self.mr * (self.theta * (1 - phi) + x0 * (phi - e_mr))
 
         var = T * mu_i + (T**2 / 4) * var_i - self.rho * T / self.vov * cov_yi
 
-        c3 = -1.5 * T**2 * var_i - T**3 / 8 * c3_i
-
-        return mean, var, c3
+        return mean, var
 
 
 class HestonUncorrBallRoma1994(HestonABC):
@@ -248,13 +243,16 @@ class HestonUncorrBallRoma1994(HestonABC):
 
     def price(self, strike, spot, texp, cp=1):
 
+        if self.order > 3:
+            warnings.warn(f"order = {self.order} is not implemented. Calculating up to order 3.")
+
         if not np.isclose(self.rho, 0.0):
             warnings.warn(f"Pricing ignores rho = {self.rho}.")
 
         if self.order >= 3:
-            avgvar, var, c3 = self.avgvar_mv3(texp)
+            avgvar, var, c3 = self.avgvar_mv(texp)
         else:
-            avgvar, var, _ = self.avgvar_mv3(texp)
+            avgvar, var, _ = self.avgvar_mv(texp)
 
         m_bs = bsm.Bsm(np.sqrt(avgvar), intr=self.intr, divr=self.divr)
         price = m_bs.price(strike, spot, texp, cp)

@@ -101,7 +101,7 @@ class TestHestonMc(unittest.TestCase):
             # analytic mean and variance
             var_m, var_v = m.var_mv(texp)
             # analytic mean and average variance
-            avgvar_m, avgvar_v = m.avgvar_mv(texp)
+            avgvar_m, avgvar_v, _ = m.avgvar_mv(texp)
             # MC samples of variance and avgvar
             var_t, avgvar, *_ = m.cond_states_step(texp, m.sigma)
 
@@ -110,6 +110,28 @@ class TestHestonMc(unittest.TestCase):
 
             np.testing.assert_allclose(np.mean(avgvar), avgvar_m, rtol=0.02)
             np.testing.assert_allclose(np.var(avgvar), avgvar_v, rtol=0.02)
+
+
+class TestHestonLogp(unittest.TestCase):
+    """
+    Tests for the log-price distribution moments/cumulants of the Heston model.
+    """
+
+    def test_logp_mv(self):
+        """
+        Compare analytic mean and variance (logp_mv) with numerical cumulants
+        (logp_cum4_numeric) for all benchmark parameter sets, over randomized texp.
+        """
+        rng = np.random.default_rng(seed=42)
+        for no in [1, 2, 3]:
+            m, _, rv = pf.HestonCos.init_benchmark(no)
+            texp0 = rv['args_pricing']['texp']
+            for texp in texp0 * rng.uniform(0.25, 2, 5):
+                mean_a, var_a = m.logp_mv(texp)
+                c1_n, c2_n, *_ = m.logp_cum4_numeric(texp)
+
+                np.testing.assert_allclose(c1_n, mean_a, rtol=1e-4)
+                np.testing.assert_allclose(c2_n, var_a,  rtol=1e-4)
 
 
 if __name__ == "__main__":

@@ -139,7 +139,7 @@ class BaseParams:
         }
 
     @classmethod
-    def from_param(cls, other):
+    def from_model(cls, other):
         """
         Create a new instance by copying parameters from another instance of the same model type.
 
@@ -332,9 +332,20 @@ class VarGammaParams(BaseParams):
     """
     Parameters for the Variance Gamma (VG) model.
 
-    The log price is :math:`\\theta G_T + \\sigma W_{G_T} + \\omega T` where
-    :math:`G_T \\sim \\mathrm{Gamma}(T/\\nu,\\, \\nu)` is the Gamma subordinator
-    with mean :math:`T` and variance :math:`\\nu T`.
+    The log price is
+
+    .. math::
+
+        \\log(F_T/F_0) = \\omega T + \\theta G_T + \\sigma W_{G_T},
+
+    where :math:`G_T \\sim \\mathrm{Gamma}(T/\\nu,\\, \\nu)` is the Gamma subordinator
+    with mean :math:`T` and variance :math:`\\nu T`, and the drift
+
+    .. math::
+
+        \\omega = \\frac{1}{\\nu}\\ln\\!\\left(1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu\\right)
+
+    is chosen so that :math:`E[F_T] = F_0` (martingale condition).
 
     * ``sigma`` (:math:`\\sigma`): volatility of the Brownian component.
     * ``nu`` (:math:`\\nu`): variance rate of the Gamma subordinator (controls
@@ -343,7 +354,7 @@ class VarGammaParams(BaseParams):
 
     Constraint: :math:`1 - \\theta\\nu - \\tfrac{1}{2}\\sigma^2\\nu > 0`.
 
-    Precomputes ``_mgf1_correction = -ln(1 - theta*nu - sigma^2*nu/2) = kappa(1)*nu``.
+    Precomputes ``_mgf1_correction = -omega * nu = -ln(1 - theta*nu - sigma^2*nu/2)``.
     """
     model_type: ClassVar[str] = "VarGamma"
     nu: float = 0.01
@@ -361,15 +372,82 @@ class VarGammaParams(BaseParams):
             )
         self._mgf1_correction = -np.log(arg)
 
+    def sv_params_dict(self):
+        """
+        Return the SV parametrization ``(sigma_bs, rho, vov)`` as a dict.
+
+        The conversion requires :math:`\\nu(2\\theta + \\sigma^2) \\le 1`, which is
+        stricter than the VG model constraint (:math:`\\le 2`).
+
+        Returns:
+            ``{'sigma_bs': ..., 'rho': ..., 'vov': ...}``
+
+        Raises:
+            ValueError: if :math:`\\nu(2\\theta + \\sigma^2) > 1`.
+        """
+        cond = self.nu * (2.0 * self.theta + self.sigma**2)
+        if cond > 1.0:
+            raise ValueError(
+                f"Cannot convert to SV parametrization: "
+                f"nu*(2*theta + sigma^2) = {cond:.6g} > 1."
+            )
+        vov = np.sqrt(self.nu)
+        c = 1.0 - np.sqrt(1.0 - cond)
+        denom = np.sqrt(c**2 + self.sigma**2 * self.nu)
+        return {'sigma_bs': float(denom / vov), 'rho': float(c / denom), 'vov': float(vov)}
+
+    @staticmethod
+    def to_sv_param(sigma, theta, nu):
+        """Convert ``(sigma, theta, nu)`` to ``(sigma_bs, rho, vov)``.
+
+        Raises ``ValueError`` if :math:`\\nu(2\\theta+\\sigma^2) > 1`
+        (stricter than the VG model constraint of ``< 2``).
+        """
+        cond = nu * (2.0 * theta + sigma**2)
+        if cond > 1.0:
+            raise ValueError(
+                f"Cannot convert to SV parametrization: "
+                f"nu*(2*theta + sigma^2) = {cond:.6g} > 1."
+            )
+        vov = np.sqrt(nu)
+        c = 1.0 - np.sqrt(1.0 - cond)
+        denom = np.sqrt(c**2 + sigma**2 * nu)
+        return float(denom / vov), float(c / denom), float(vov)
+
+    @staticmethod
+    def to_orig_param(sigma_bs, rho, vov):
+        """Convert ``(sigma_bs, rho, vov)`` to ``(sigma, theta, nu)``."""
+        nu = float(vov**2)
+        sigma = float(np.sqrt(1.0 - rho**2) * sigma_bs)
+        theta = float(rho * sigma_bs / vov - 0.5 * sigma_bs**2)
+        return sigma, theta, nu
+
+    @classmethod
+    def from_sv_param(cls, sigma_bs, rho, vov, **kwargs):
+        """Construct an instance from the SV parametrization ``(sigma_bs, rho, vov)``."""
+        sigma, theta, nu = cls.to_orig_param(sigma_bs, rho, vov)
+        return cls(sigma=sigma, theta=theta, nu=nu, **kwargs)
+
 
 @dataclass
 class NigParams(BaseParams):
     """
     Parameters for the Normal Inverse Gaussian (NIG) model.
 
-    The log price is :math:`\\theta I_T + \\sigma W_{I_T} + \\omega T` where
-    :math:`I_T \\sim \\mathrm{IG}(T,\\, T^2/\\nu)` is the Inverse Gaussian subordinator
-    with mean :math:`T` and variance :math:`\\nu T`.
+    The log price is
+
+    .. math::
+
+        \\log(F_T/F_0) = \\omega T + \\theta I_T + \\sigma W_{I_T},
+
+    where :math:`I_T \\sim \\mathrm{IG}(T,\\, T^2/\\nu)` is the Inverse Gaussian subordinator
+    with mean :math:`T` and variance :math:`\\nu T`, and the drift
+
+    .. math::
+
+        \\omega = -\\frac{1}{\\nu}\\left(1 - \\sqrt{1 - 2\\theta\\nu - \\sigma^2\\nu}\\right)
+
+    is chosen so that :math:`E[F_T] = F_0` (martingale condition).
 
     * ``sigma`` (:math:`\\sigma`): volatility of the Brownian component.
     * ``nu`` (:math:`\\nu`): variance rate of the IG subordinator (controls
@@ -378,7 +456,7 @@ class NigParams(BaseParams):
 
     Constraint: :math:`1 - 2\\theta\\nu - \\sigma^2\\nu > 0`.
 
-    Precomputes ``_mgf1_correction = 1 - sqrt(1 - 2*theta*nu - sigma^2*nu) = kappa(1)*nu``.
+    Precomputes ``_mgf1_correction = -omega * nu = 1 - sqrt(1 - 2*theta*nu - sigma^2*nu)``.
     """
     model_type: ClassVar[str] = "NIG"
     nu: float = 0.01
@@ -395,6 +473,49 @@ class NigParams(BaseParams):
                 f"Reduce |theta|, nu, or sigma."
             )
         self._mgf1_correction = 1.0 - np.sqrt(arg)
+
+    def sv_params_dict(self):
+        """
+        Return the SV parametrization ``(sigma_bs, rho, vov)`` as a dict.
+
+        For NIG the model constraint :math:`\\nu(2\\theta + \\sigma^2) < 1` coincides
+        with the SV conversion condition, so this is always valid for valid parameters.
+
+        Returns:
+            ``{'sigma_bs': ..., 'rho': ..., 'vov': ...}``
+        """
+        vov = np.sqrt(self.nu)
+        cond = self.nu * (2.0 * self.theta + self.sigma**2)
+        c = 1.0 - np.sqrt(1.0 - cond)
+        denom = np.sqrt(c**2 + self.sigma**2 * self.nu)
+        return {'sigma_bs': float(denom / vov), 'rho': float(c / denom), 'vov': float(vov)}
+
+    @staticmethod
+    def to_sv_param(sigma, theta, nu):
+        """Convert ``(sigma, theta, nu)`` to ``(sigma_bs, rho, vov)``.
+
+        For NIG the model constraint :math:`\\nu(2\\theta+\\sigma^2) < 1` coincides
+        with the SV conversion condition, so no additional guard is needed.
+        """
+        vov = np.sqrt(nu)
+        cond = nu * (2.0 * theta + sigma**2)
+        c = 1.0 - np.sqrt(1.0 - cond)
+        denom = np.sqrt(c**2 + sigma**2 * nu)
+        return float(denom / vov), float(c / denom), float(vov)
+
+    @staticmethod
+    def to_orig_param(sigma_bs, rho, vov):
+        """Convert ``(sigma_bs, rho, vov)`` to ``(sigma, theta, nu)``."""
+        nu = float(vov**2)
+        sigma = float(np.sqrt(1.0 - rho**2) * sigma_bs)
+        theta = float(rho * sigma_bs / vov - 0.5 * sigma_bs**2)
+        return sigma, theta, nu
+
+    @classmethod
+    def from_sv_param(cls, sigma_bs, rho, vov, **kwargs):
+        """Construct an instance from the SV parametrization ``(sigma_bs, rho, vov)``."""
+        sigma, theta, nu = cls.to_orig_param(sigma_bs, rho, vov)
+        return cls(sigma=sigma, theta=theta, nu=nu, **kwargs)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

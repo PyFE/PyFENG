@@ -151,7 +151,7 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
 
         avgvar /= texp
 
-        avgvar_m_anal, avgvar_v_anal, _ = self.avgvar_mv3(texp)  # analytic mean and variance of avgvar
+        avgvar_m_anal, avgvar_v_anal, _ = self.avgvar_mv(texp)  # analytic mean and variance of avgvar
         self.result = {**self.result,
                        'avgvar mean': avgvar_m_anal,
                        'avgvar mean error': avgvar.mean()/avgvar_m_anal - 1,
@@ -964,7 +964,7 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
         if dt is None:
             dt = self.dt
 
-        mean, var, _ = self.avgvar_mv3(texp)
+        mean, var, _ = self.avgvar_mv(texp)
 
         m_x, v_x = self.x1star_avgvar_mv(dt, kk=0)
         m_z, v_z = self.x2star_avgvar_mv(dt, kk=0)

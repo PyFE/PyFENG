@@ -54,7 +54,8 @@ import numpy as np
 from .opt_abc import OptABC
 from .bsm import Bsm
 from .heston import HestonABC
-from .sv_fft import VarGammaABC, NigABC, CgmyABC
+from .subord_bm import VarGammaABC, NigABC
+from .sv_fft import CgmyABC
 from .mgf2mom import Mgf2Mom
 from .util import MathFuncs
 
@@ -107,10 +108,6 @@ class CosABC(OptABC):
             MGF values with the same shape as ``uu``.
         """
         raise NotImplementedError
-
-    def logp_cf(self, u, texp):
-        """Characteristic function φ(u) = MGF(i·u)."""
-        return self.logp_mgf(1j * u, texp)
 
     def _junike_half_width(self, texp):
         """
@@ -616,7 +613,7 @@ class HestonCos(HestonABC, CosABC):
             half = self._resolve_L(texp) * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
             return float(c1 - half), float(c1 + half)
         elif self.truncation_method == 'junike':
-            c1 = self.logp_mv3(texp)[0]
+            c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         else:
@@ -636,12 +633,12 @@ class HestonCos(HestonABC, CosABC):
             [a, b] = [c1 ± w]   (single global interval for all strikes)
         """
         if self.truncation_method == 'junike':
-            c1 = self.logp_mv3(texp)[0]
+            c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
             return float(c1 - half), float(c1 + half)
         fwd, _, _ = self._fwd_factor(spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()
-        c1 = self.logp_mv3(texp)[0]
+        c1 = self.logp_mv(texp)[0]
         x = np.log(np.asarray(fwd, dtype=float) / np.asarray(strike, dtype=float))
         return x + c1 - half, x + c1 + half
 
