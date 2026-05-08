@@ -128,6 +128,7 @@ class RiskParity(MaParams):
                 ww /= self.sigma
                 ww /= np.sum(ww)
                 self._result = {'err': err, 'n_iter': k}
+                self.weight = ww
                 return ww
 
         # when not converged
@@ -169,6 +170,7 @@ class RiskParity(MaParams):
             if err < tol:
                 ww /= np.sum(ww)
                 self._result = {'err': err, 'n_iter': k}
+                self.weight = ww
                 return ww
 
         # when not converged
@@ -215,4 +217,5 @@ class RiskParity(MaParams):
         ww /= np.sum(ww)
         err = np.max(np.abs(sol.fun))
         self._result = {'err': err, 'n_iter': sol.nfev}
+        self.weight = ww
         return ww
