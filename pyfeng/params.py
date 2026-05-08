@@ -687,6 +687,7 @@ class MaParams(BaseParams):
     * ``chol_m`` — lower-triangular Cholesky factor of ``cov_m`` (``init=False``).
     * ``weight`` — (n_asset,) asset-weight vector.
     """
+    sigma: np.ndarray | None = None        # overrides BaseParams; None iff cov_m given
     rho: float | None = None              # scalar ρ for all off-diagonal entries
     cor_m: np.ndarray | None = None       # full (n×n) correlation matrix
     cov_m: np.ndarray | None = None       # full (n×n) covariance matrix
@@ -698,13 +699,20 @@ class MaParams(BaseParams):
     chol_m: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self):
-        self.sigma = np.atleast_1d(self.sigma)
-        self.n_asset = len(self.sigma)
-
         # ── mutual exclusivity check ──────────────────────────────────────────
         n_given = sum(x is not None for x in (self.rho, self.cor_m, self.cov_m))
         if n_given > 1:
             raise ValueError("At most one of rho, cor_m, cov_m may be specified.")
+
+        # ── derive sigma from cov_m when not supplied ─────────────────────────
+        if self.sigma is None:
+            if self.cov_m is not None:
+                self.sigma = np.sqrt(np.diag(np.asarray(self.cov_m, dtype=float)))
+            else:
+                raise ValueError("sigma must be provided when cov_m is not given.")
+
+        self.sigma = np.atleast_1d(self.sigma)
+        self.n_asset = len(self.sigma)
 
         # ── resolve to cor_m + cov_m ──────────────────────────────────────────
         if self.cov_m is not None:

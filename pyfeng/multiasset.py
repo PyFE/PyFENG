@@ -3,7 +3,6 @@ import warnings
 
 import scipy.stats as spst
 import numpy as np
-from itertools import product, combinations
 from .bsm import Bsm
 from .norm import Norm
 from .gamma import InvGam
@@ -119,7 +118,84 @@ class NormBasket(MaParams, OptABC):
         return df * price
 
 
-class BsmBasketJu2002(MaParams, OptABC):
+class BsmBasketABC(MaParams, OptABC):
+    """
+    Abstract base class for BSM basket option models.
+
+    Provides :meth:`price_mvsk` — the shared moment machinery for the basket
+    $B = \\sum_i w_i F_i(T)$ under the multiasset Black-Scholes-Merton model.
+    """
+
+    def price_mvsk(self, fwd, texp, order=4):
+        """
+        Mean, coefficient of variation squared, skewness, and excess kurtosis of the basket.
+
+        Each asset follows $F_i(T) = v_i \\exp(\\sigma_i Z_i \\sqrt{T} - \\frac{1}{2}\\sigma_i^2 T)$
+        where $v_i = w_i F_i(0)$ and $Z_i$ are correlated standard normals with covariance
+        $C_{ij} = \\sigma_i \\sigma_j \\rho_{ij}$.
+
+        The $k$-th raw moment is:
+
+        .. math::
+            m_k = \\sum_{i_1,\\ldots,i_k} \\prod_p v_{i_p}
+                  \\cdot \\exp\\!\\Bigl(\\sum_{p < q} C_{i_p i_q} \\cdot T\\Bigr)
+
+        The $-\\mathrm{Var}(X_i)/2$ drift correction in each asset and the $+\\mathrm{Var}/2$
+        diagonal of the MGF cancel exactly, leaving only the pairwise cross-covariance sum
+        $\\sum_{p<q} C_{i_p i_q} T$.  Setting $P_{ij} = \\exp(C_{ij} T)$ (the full covariance
+        matrix including diagonal $P_{ii} = \\exp(\\sigma_i^2 T)$), the moments become:
+
+        .. math::
+            m_2 &= \\sum_{ij} v_i v_j P_{ij} \\\\
+            m_3 &= \\sum_{ijk} v_i v_j v_k P_{ij} P_{ik} P_{jk} \\\\
+            m_4 &= \\sum_{ijkl} v_i v_j v_k v_l P_{ij} P_{ik} P_{il} P_{jk} P_{jl} P_{kl}
+
+        $m_2$ is a single matrix product; $m_3$ uses two; $m_4$ uses a reshape-matmul-reshape
+        on $N_{ijk} = P_{ik} P_{jk}$.  All are $O(n^k)$ but fully vectorised.
+
+        The second return value is the coefficient of variation squared,
+        $\\widetilde{\\beta} = \\mathrm{Var}(B) / E[B]^2 = m_2/m_1^2 - 1$,
+        consistent with :class:`DistLognormal`.
+
+        Args:
+            fwd: forward price array (n_asset,)
+            texp: time to expiry
+            order: 2 returns ``(mean, coef_var)``; 4 (default) returns ``(mean, coef_var, skew, exkurt)``
+
+        Returns:
+            ``(mean, coef_var)`` if *order* = 2, else ``(mean, coef_var, skew, exkurt)``
+        """
+        P = np.exp(self.cov_m * texp)                       # P[i,j] = exp(σ_i σ_j ρ_ij T)
+        v = np.asarray(fwd).ravel() * self.weight           # weighted forwards, shape (n_asset,)
+
+        m1 = v.sum()
+        M2 = np.outer(v, v) * P             # M2[i,j] = v_i v_j P_ij
+        m2 = M2.sum()
+        coef_var = m2 / m1 ** 2 - 1         # Var(B) / E[B]^2
+
+        if order == 2:
+            return m1, coef_var
+
+        var = coef_var * m1 ** 2
+
+        # m3 = Σ_{ijk} v_i v_j v_k P_ij P_ik P_jk
+        #    = sum( (P * v) ⊙ (M2 @ P) )
+        m3 = np.sum((P * v) * (M2 @ P))
+
+        # m4 = Σ_{ijkl} v_i v_j v_k v_l P_ij P_ik P_il P_jk P_jl P_kl
+        #    = Σ_{ij} M2_ij H_ij,  H_ij = Σ_{kl} N_ijk M2_kl N_ijl,  N[i,j,k] = P_ik P_jk
+        n = len(v)
+        N = P[:, None, :] * P[None, :, :]
+        H = (N * (N.reshape(n * n, n) @ M2).reshape(n, n, n)).sum(-1)
+        m4 = np.sum(M2 * H)
+
+        skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var ** 1.5
+        exkurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var ** 2 - 3
+
+        return m1, coef_var, skew, exkurt
+
+
+class BsmBasketJu2002(BsmBasketABC):
     """
     Basket option pricing using Ju's (2002) Taylor-expansion of the characteristic
     function ratio around zero volatility, accurate to O(σ⁶).
@@ -154,11 +230,8 @@ class BsmBasketJu2002(MaParams, OptABC):
         cov_t = self.cov_m * texp            # σ_i σ_j ρ_ij T,  shape (n,n)
 
         # First two moments of the basket (Levy 1992)
-        exp_cov_t = np.exp(cov_t)
-        m1 = fw.sum(axis=-1)                 # E[B]   = Σ w_i F_i
-        m2 = np.sum((fw @ exp_cov_t) * fw, axis=-1)  # E[B²] = Σ_ij w_i F_i exp(cov_t_ij) w_j F_j
-
-        std = np.sqrt(np.log(m2 / m1**2))
+        m1, coef_var = self.price_mvsk(fwd, texp, order=2)
+        std = np.sqrt(np.log1p(coef_var))
         base = df * Bsm.price_formula(strike, m1, std, texp=1.0, cp=cp, is_fwd=True)
 
         if not self.correction_ju2002:
@@ -242,7 +315,7 @@ class BsmBasketLevy1992(BsmBasketJu2002):
     correction_ju2002 = False
 
 
-class BsmBasketMilevsky1998(MaParams, OptABC):
+class BsmBasketMilevsky1998(BsmBasketABC):
     """
     Basket option pricing with the inverse gamma distribution of Milevsky & Posner (1998)
 
@@ -266,11 +339,9 @@ class BsmBasketMilevsky1998(MaParams, OptABC):
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
-        fwd_basket = fwd * self.weight
-        m1 = np.sum(fwd_basket, axis=-1)
-        m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
+        m1, coef_var = self.price_mvsk(fwd, texp, order=2)
 
-        alpha = 1 / (m2 / m1 ** 2 - 1) + 2
+        alpha = 1 / coef_var + 2
         beta = (alpha - 1) * m1
 
         price = InvGam.price_formula(
@@ -359,7 +430,7 @@ class BsmMax2(SpreadParams, OptABC):
         return price[0] if strike_isscalar else price
 
 
-class BsmBasket1Bm(MaParams, OptABC):
+class BsmBasket1Bm(BsmBasketABC):
     """
     Multiasset BSM model for pricing basket/Spread options when all asset prices are driven by a single Brownian motion (BM).
 
@@ -457,7 +528,7 @@ class BsmBasket1Bm(MaParams, OptABC):
         return price
 
 
-class BsmBasketJsu(MaParams, OptABC):
+class BsmBasketJsu(BsmBasketABC):
     """
 
     Johnson's SU distribution approximation for Basket option pricing under the multiasset BSM model.
@@ -473,104 +544,22 @@ class BsmBasketJsu(MaParams, OptABC):
 
     """
 
-    def moment_vsk(self, fwd, texp):
-        """
-
-        Return variance, skewness, kurtosis for Basket options.
-
-        Args:
-            fwd: forward price
-            texp: time to expiry
-
-        Returns: variance, skewness, kurtosis of Basket options
-
-        """
-        n = len(self.weight)
-
-        m1 = sum(self.weight[i] * fwd[i] for i in range(n))
-
-        m2_index = [i for i in product(np.arange(n), repeat=2)]
-        m2 = sum(
-            self.weight[i]
-            * self.weight[j]
-            * fwd[i]
-            * fwd[j]
-            * np.exp(self.sigma[i] * self.sigma[j] * self.cor_m[i][j] * texp)
-            for i, j in m2_index
-        )
-
-        m3_index = [i for i in product(np.arange(n), repeat=3)]
-        m3 = sum(
-            self.weight[i]
-            * self.weight[j]
-            * self.weight[l]
-            * fwd[i]
-            * fwd[j]
-            * fwd[l]
-            * np.exp(
-                sum(
-                    self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj]
-                    for ii, jj in combinations(np.array([i, j, l]), 2)
-                )
-                * texp
-            )
-            for i, j, l in m3_index
-        )
-
-        m4_index = [i for i in product(np.arange(n), repeat=4)]
-        m4 = sum(
-            self.weight[i]
-            * self.weight[j]
-            * self.weight[l]
-            * self.weight[k]
-            * fwd[i]
-            * fwd[j]
-            * fwd[l]
-            * fwd[k]
-            * np.exp(
-                sum(
-                    self.sigma[ii] * self.sigma[jj] * self.cor_m[ii][jj]
-                    for ii, jj in combinations(np.array([i, j, l, k]), 2)
-                )
-                * texp
-            )
-            for i, j, l, k in m4_index
-        )
-
-        var = m2 - m1 ** 2
-        skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var ** (3 / 2)
-        kurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var ** 2
-
-        return var, skew, kurt
-
     def price(self, strike, spot, texp, cp=1):
-        """
-
-        Basket options price.
-        Args:
-            strike: strike price
-            spot: spot price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
-        Returns: Basket options price
-
-        """
         fwd, df, _ = self._fwd_factor(spot, texp)
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd @ self.weight
-
-        var, skew, kurt = self.moment_vsk(fwd, texp)
+        m1, coef_var, skew, exkurt = self.price_mvsk(fwd, texp)
 
         m = Nsvh1(sigma=self.sigma)
-        m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
+        m.calibrate_vsk(coef_var * m1**2, skew, exkurt, texp, setval=True)
         price = m.price(strike, fwd_basket, texp, cp)
 
         return df * price
 
 
-class BsmBasketChoi2018(MaParams, OptABC):
+class BsmBasketChoi2018(BsmBasketABC):
     """
     Choi (2018)'s pricing method for Basket/Spread/Asian options
 

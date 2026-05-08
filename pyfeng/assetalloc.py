@@ -1,77 +1,14 @@
-import abc
 import warnings
 import numpy as np
 import scipy.stats as spst
 import scipy.optimize as spop
+from dataclasses import dataclass, field
+
+from .params import MaParams
 
 
-class AssetAllocABC(abc.ABC):
-
-    n_asset = 1
-    rho = None
-    sigma = np.array([1.0])
-    ret = np.array([0.0])
-    cor_m = np.eye(1)
-    cov_m = np.eye(1)
-    longshort = np.array([1], dtype=np.int8)
-
-    def __init__(self, sigma=None, cor=None, cov=None, ret=None, longshort=1):
-        """
-
-        Args:
-            sigma: asset volatilities of `n_asset` assets. (n_asset, ) array
-            cor: asset correlation. If matrix with shape (n_asset, n_asset), used as it is.
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            cov: asset covariance
-            ret: expected return
-            longshort: long/short constraint. 1 for long-only, -1 for short, 0 for no constraint
-        """
-
-        if cov is None:
-            # when sigma and cor are given
-
-            self.sigma = np.atleast_1d(sigma)
-            self.n_asset = len(self.sigma)
-
-            if self.n_asset == 1:
-                raise ValueError(f"The number of assets should be more than one.")
-
-            if np.isscalar(cor):
-                self.cor_m = cor * np.ones((self.n_asset, self.n_asset)) \
-                             + (1 - cor) * np.eye(self.n_asset)
-                self.rho = cor
-            else:
-                if cor.shape != (self.n_asset, self.n_asset):
-                    raise ValueError(f"cor must have shape ({self.n_asset}, {self.n_asset}), got {cor.shape}.")
-                self.cor_m = cor
-                if self.n_asset == 2:
-                    self.rho = cor[0, 1]
-
-            self.cov_m = self.sigma * self.cor_m * sigma[:, None]
-        else:
-            # When covariance is given directly
-            self.n_asset = cov.shape[0]
-
-            self.cov_m = cov
-            self.sigma = np.sqrt(np.diag(cov))
-            self.cor_m = cov.copy()
-            self.cor_m /= self.sigma[:, None]
-            self.cor_m /= self.sigma
-
-        if ret is not None:
-            self.ret = ret * np.ones(self.n_asset)
-
-        if longshort is None:
-            self.longshort = np.full(self.n_asset, 1, dtype=np.int8)  # long-only
-        elif np.isscalar(longshort):
-            self.longshort = np.full(self.n_asset, np.sign(longshort), dtype=np.int8)  # long-only
-        else:
-            if self.n_asset != len(longshort):
-                raise ValueError(f"longshort length {len(longshort)} does not match n_asset={self.n_asset}.")
-            self.longshort = np.sign(longshort, dtype=np.int8)  # long-only
-
-
-class RiskParity(AssetAllocABC):
+@dataclass
+class RiskParity(MaParams):
     """
     Risk parity (equal risk contribution) asset allocation.
 
@@ -89,46 +26,51 @@ class RiskParity(AssetAllocABC):
                 [ -1.178, -7.901, 0.503, 5.460, 1.057 ],
                 [ 8.778, 84.954, 45.184, 1.057, 34.126 ]
             ])/10000
-        
-        >>> m = pf.RiskParity(cov=cov)
-        >>> m.weight()
+
+        >>> m = pf.RiskParity(cov_m=cov)
+        >>> m.fit_ccd()
         array([0.125, 0.047, 0.083, 0.613, 0.132])
         >>> m._result
         {'err': 2.2697290741335863e-07, 'n_iter': 6}
 
-        >>> m = pf.RiskParity(cov=cov, budget=[0.1, 0.1, 0.2, 0.3, 0.3])
-        >>> m.weight()
+        >>> m = pf.RiskParity(cov_m=cov, budget=[0.1, 0.1, 0.2, 0.3, 0.3])
+        >>> m.fit_ccd()
         array([0.077, 0.025, 0.074, 0.648, 0.176])
 
-        >>> m = pf.RiskParity(cov=cov, longshort=[-1, -1, 1, 1, 1])
-        >>> m.weight()
+        >>> m = pf.RiskParity(cov_m=cov, longshort=[-1, -1, 1, 1, 1])
+        >>> m.fit_ccd()
         array([-0.216, -0.162,  0.182,  0.726,  0.47 ])
     """
 
-    budget = None
-    _result = {}
+    budget: np.ndarray | None = None
+    longshort: np.ndarray | int = 1
 
-    def __init__(self, sigma=None, cor=None, cov=None, ret=None, budget=None, longshort=1):
-        """
+    _result: dict = field(default_factory=dict, init=False, repr=False)
 
-        Args:
-            sigma: asset volatilities of `n_asset` assets. (n_asset, ) array
-            cor: asset correlation. If matrix with shape (n_asset, n_asset), used as it is.
-                If scalar, correlation matrix is constructed with all same off-diagonal values.
-            cov: asset covariance
-            ret: expected return
-            budget: risk bugget. 1/n_asset if not specified.
-            longshort: long/short constraint. 1 for long-only (default), -1 for short, 0 for no constraint
-        """
-        super().__init__(sigma=sigma, cor=cor, cov=cov, ret=ret, longshort=longshort)
-        if budget is None:
+    def __post_init__(self):
+        super().__post_init__()
+
+        # ── budget ────────────────────────────────────────────────────────────
+        if self.budget is None:
             self.budget = np.full(self.n_asset, 1 / self.n_asset)
         else:
-            if self.n_asset != len(budget):
+            budget = np.asarray(self.budget, dtype=float)
+            if len(budget) != self.n_asset:
                 raise ValueError(f"budget length {len(budget)} does not match n_asset={self.n_asset}.")
             if not np.isclose(np.sum(budget), 1):
                 raise ValueError(f"budget must sum to 1, got {np.sum(budget)}.")
-            self.budget = np.array(budget)
+            self.budget = budget
+
+        # ── longshort ─────────────────────────────────────────────────────────
+        if self.longshort is None:
+            self.longshort = np.ones(self.n_asset, dtype=np.int8)
+        elif np.isscalar(self.longshort):
+            self.longshort = np.full(self.n_asset, np.sign(int(self.longshort)), dtype=np.int8)
+        else:
+            ls = np.asarray(self.longshort)
+            if len(ls) != self.n_asset:
+                raise ValueError(f"longshort length {len(ls)} does not match n_asset={self.n_asset}.")
+            self.longshort = np.sign(ls).astype(np.int8)
 
     @classmethod
     def init_random(cls, n_asset=10, zero_ev=0, budget=False):
@@ -150,10 +92,10 @@ class RiskParity(AssetAllocABC):
         if not np.allclose(np.diag(cor), 1):
             raise ValueError("Correlation matrix diagonal must be all ones.")
 
-        m = cls(cov=cor)
+        m = cls(cov_m=cor)
         return m
 
-    def weight(self, tol=1e-6):
+    def fit_ccd(self, tol=1e-6):
         """
         Risk parity weight using the improved CCD method of Choi and Chen (2022)
 
@@ -186,16 +128,17 @@ class RiskParity(AssetAllocABC):
                 ww /= self.sigma
                 ww /= np.sum(ww)
                 self._result = {'err': err, 'n_iter': k}
+                self.weight = ww
                 return ww
 
         # when not converged
         self._result = {'err': err, 'n_iter': k}
         return None
 
-    def weight_ccd_original(self, tol=1e-6):
+    def fit_ccd_original(self, tol=1e-6):
         """
         Risk parity weight using original CCD method of Griveau-Billion et al (2013).
-        This is implemented for performance comparison. Use weight() for better performance.
+        This is implemented for performance comparison. Use fit_ccd() for better performance.
 
         Args:
             tol: error tolerance
@@ -227,6 +170,7 @@ class RiskParity(AssetAllocABC):
             if err < tol:
                 ww /= np.sum(ww)
                 self._result = {'err': err, 'n_iter': k}
+                self.weight = ww
                 return ww
 
         # when not converged
@@ -244,10 +188,10 @@ class RiskParity(AssetAllocABC):
         jac = cov + np.diag(bud / (w * w))
         return jac
 
-    def weight_newton(self, tol=1e-6):
+    def fit_newton(self, tol=1e-6):
         """
         Risk parity weight using the 'improved' Newton method by Choi & Chen (2022).
-        This is implemented for performance comparison. Use weight() for better performance.
+        This is implemented for performance comparison. Use fit_ccd() for better performance.
 
         Args:
             tol: error tolerance
@@ -273,4 +217,5 @@ class RiskParity(AssetAllocABC):
         ww /= np.sum(ww)
         err = np.max(np.abs(sol.fun))
         self._result = {'err': err, 'n_iter': sol.nfev}
+        self.weight = ww
         return ww
