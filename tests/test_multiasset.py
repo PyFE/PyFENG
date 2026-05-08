@@ -164,6 +164,95 @@ class TestMultiAsset(unittest.TestCase):
             np.testing.assert_almost_equal(p, p2)
 
 
+class TestBsmBasketChoi2018(unittest.TestCase):
+    """
+    Tests for BsmBasketChoi2018 against numerical results in:
+    Choi J (2018) Sum of all Black-Scholes-Merton models: An efficient pricing method for
+    spread, basket, and Asian options. J Futures Markets 38:627-644.
+
+    All prices are present values (forward value discounted by e^{-rT}).
+    """
+
+    def test_spread_S1(self):
+        """
+        Table 4: set S1, spread option with varying K.
+        N=2, T=1, S=(100, 96), w=(1,-1), sigma=(20%, 10%), rho=50%, q=5%, r=10%.
+        Fast prices with M_2=4 and control variate: errors ~1e-8 vs converged prices.
+        """
+        m = pf.BsmBasketChoi2018(
+            (0.20, 0.10), rho=0.50,
+            weight=np.array([1.0, -1.0]),
+            intr=0.10, divr=0.05,
+        )
+        m.set_num_params(n_quad=[4])
+        strike = np.arange(0.0, 4.1, 0.4)
+        result = m.price(strike, np.array([100.0, 96.0]), texp=1.0)
+        result2 = np.array([
+            8.5132252, 8.3124607, 8.1149938, 7.9208198, 7.7299325,
+            7.5423239, 7.3579843, 7.1769024, 6.9990651, 6.8244581, 6.6530651,
+        ])
+        np.testing.assert_almost_equal(result, result2, decimal=6)
+
+    def test_spread_S2_rho(self):
+        """
+        Table 5: set S2, spread option with varying rho (K=100, lam=9).
+        N=2, T=1, S=(200, 100), w=(1,-1), sigma=(15%, 30%), q=r=0.
+        Fast prices with lam=9: errors ~5e-8 vs converged prices.
+        """
+        spot = np.array([200.0, 100.0])
+        rhos   = [0.90, 0.70, 0.50, 0.30, 0.10, -0.10, -0.30, -0.50, -0.70, -0.90]
+        result2 = np.array([
+            5.4792720, 9.3209439, 11.9804918, 14.1425869, 16.0102190,
+            17.6770249, 19.1954201, 20.5982705, 21.9077989, 23.1398674,
+        ])
+        result = np.zeros(len(rhos))
+        for i, rho in enumerate(rhos):
+            m = pf.BsmBasketChoi2018((0.15, 0.30), rho=rho, weight=np.array([1.0, -1.0]))
+            m.set_num_params(lam=9)
+            result[i] = m.price(100.0, spot, texp=1.0)
+        np.testing.assert_almost_equal(result, result2, decimal=6)
+
+    def test_basket_B1_strike(self):
+        """
+        Table 6: set B1, basket option with varying K (lam=9, M=125).
+        N=4, T=5, S=100, w=1/4, sigma=40%, rho=50%, r=q=0.
+        Fast prices with lam=9 differ from converged prices by at most 1.5e-4.
+        """
+        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.5)
+        m.set_num_params(lam=9)
+        strike = np.arange(50, 151, 10, dtype=float)
+        result = m.price(strike, 100.0 * np.ones(4), texp=5.0)
+        result2 = np.array([
+            54.3101761, 47.4811265, 41.5225192, 36.3517843, 31.8768032,
+            28.0073695, 24.6605295, 21.7625789, 19.2493294, 17.0655420, 15.1640103,
+        ])
+        np.testing.assert_almost_equal(result, result2, decimal=3)
+
+    def test_basket_B1_rho(self):
+        """
+        Table 7: set B1, basket option with varying rho (K=100, lam=9).
+        N=4, T=5, S=100, w=1/4, sigma=40%, r=q=0.
+        For rho<=0.80: fast prices accurate to 3 decimal places (M>=27).
+        For rho=0.95: only M=8 nodes; fast price error ~3e-3 (per paper FP Err=-3.1e-3).
+        """
+        spot = 100.0 * np.ones(4)
+
+        # rho in [-0.10, 0.80]: M >= 27, accurate to 3 decimal places
+        rhos   = [-0.10, 0.10, 0.30, 0.50, 0.80]
+        result2 = np.array([17.7569163, 21.6920965, 25.0292992, 28.0073695, 32.0412265])
+        result = np.zeros(len(rhos))
+        for i, rho in enumerate(rhos):
+            m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=rho)
+            m.set_num_params(lam=9)
+            result[i] = m.price(100.0, spot, texp=5.0)
+        np.testing.assert_almost_equal(result, result2, decimal=3)
+
+        # rho=0.95: M=8, coarser — test to 2 decimal places only
+        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.95)
+        m.set_num_params(lam=9)
+        np.testing.assert_almost_equal(m.price(100.0, spot, texp=5.0), 33.9186874, decimal=2)
+
+
 if __name__ == "__main__":
     print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()

@@ -42,6 +42,7 @@ from .multiasset import (
     BsmSpreadBjerksund2014,
     NormBasket,
     BsmBasketLevy1992,
+    BsmBasketJu2002,
     BsmMax2,
     BsmBasketMilevsky1998,
     BsmBasket1Bm, BsmBasketChoi2018,
