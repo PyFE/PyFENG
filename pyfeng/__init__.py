@@ -1,4 +1,5 @@
-from .util import MathConsts, MathFuncs, DistHelperLnShift
+from .util import MathConsts, MathFuncs
+from .disthelper import DistLognormal, DistGamma, DistInvGauss, DistGig
 
 # the order is sensitive because of `price_barrier` method. Put it before .bsm
 from .norm import Norm

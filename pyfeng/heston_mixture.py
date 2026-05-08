@@ -4,7 +4,7 @@ import scipy.stats as spst
 from . import sv_abc as sv
 from . import heston
 from . import heston_mc
-from . import quad
+from .disthelper import DistGamma, DistInvGauss
 
 
 class HestonMixture(heston.HestonABC, sv.SvMixtureABC):
@@ -25,7 +25,7 @@ class HestonMixture(heston.HestonABC, sv.SvMixtureABC):
 
         pp = spst.poisson.pmf(pois, nc / 2)
         for (i, pi) in enumerate(pp):
-            xi, wi = quad.Gamma(n_quad, shape=df / 2 + i)
+            xi, wi = DistGamma(shape=df / 2 + i).quad(n_quad)
 
             pois_list.append(np.full(n_quad, i))
             xx_list.append(2 * xi)
@@ -57,7 +57,7 @@ class HestonMixture(heston.HestonABC, sv.SvMixtureABC):
         var, avgvar, ww2 = [], [], []
 
         for i, var_i in enumerate(var_t):
-            xi, wi = quad.InvGauss(7, avgvar_m[i], ig_lam[i])
+            xi, wi = DistInvGauss(mu=avgvar_m[i], lam=ig_lam[i]).quad(7)
 
             var.append(np.full_like(xi, var_i))
             avgvar.append(xi)
