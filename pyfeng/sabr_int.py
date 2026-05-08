@@ -6,7 +6,8 @@ import scipy.special as spsp
 import scipy.stats as spst
 import scipy.integrate as spint
 from .opt_abc import MassZeroABC
-from .util import MathFuncs, DistHelperLnShift
+from .util import MathFuncs
+from .disthelper import DistLognormal
 
 
 class SabrMixtureABC(sabr.SabrABC, MassZeroABC):
@@ -176,14 +177,14 @@ class SabrMixture(SabrMixtureABC):
     def cond_avgvar(self, vovn, zhat):
 
         if np.isscalar(self.n_quad):
-            m1, var_scaled, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
 
             w2 = np.ones_like(zhat)
             if self.dist.lower() == 'm1':
                 r_var = m1
                 r_vol = np.sqrt(r_var)
             elif self.dist.lower() == 'ln':
-                r_var = m1 / np.sqrt(np.sqrt(1 + var_scaled))
+                r_var = m1 / np.sqrt(np.sqrt(1 + coef_var))
                 r_vol = np.sqrt(r_var)
             else:
                 ValueError(f'Unkown distribution: {self.dist}')
@@ -192,9 +193,8 @@ class SabrMixture(SabrMixtureABC):
             return r_var, r_vol, w2
 
         else:
-            m1, sig, ratio = self.cond_avgvar_lnshift_params(vovn, zhat, self.sln_lam)
-            sln = DistHelperLnShift(mu=m1, sig=sig, lam=ratio)
-            avgvar, w2 = sln.quad(self.n_quad[1])
+            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+            avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
             r_vol = np.sqrt(avgvar)
 
             return avgvar, r_vol, w2

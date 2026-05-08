@@ -2,7 +2,7 @@ import numpy as np
 from .bsm import Bsm
 from .opt_abc import OptABC
 from .params import VarGammaParams, NigParams
-from . import quad as quad_mod
+from .disthelper import DistGamma, DistInvGauss
 
 class VarGammaABC(VarGammaParams, OptABC):
     """
@@ -170,7 +170,7 @@ class VarGammaQuad(VarGammaABC):
 
     def quad(self, texp, var_rate):
         """Gauss-Laguerre quadrature for Gamma(shape=texp/var_rate, scale=var_rate) subordinator."""
-        return quad_mod.Gamma(self.n_quad, shape=texp/var_rate, scale=var_rate)
+        return DistGamma(shape=texp/var_rate, rate=1.0/var_rate).quad(self.n_quad)
 
     def price(self, strike, spot, texp, cp=1):
         fwd, df, _ = self._fwd_factor(spot, texp)
@@ -212,7 +212,7 @@ class ExpNigQuad(NigABC):
 
     def quad(self, texp, var_rate):
         """IG quadrature for IG(mu=texp, lam=texp^2/var_rate) subordinator."""
-        return quad_mod.InvGauss(self.n_quad, mu=texp, lam=texp**2/var_rate)
+        return DistInvGauss(mu=texp, lam=texp**2/var_rate).quad(self.n_quad)
 
     # price() is identical to VarGammaQuad — alias rather than duplicate.
     price = VarGammaQuad.price
