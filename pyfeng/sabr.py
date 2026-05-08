@@ -17,7 +17,8 @@ from .opt_abc import OptABC, MassZeroABC
 from . import bsm
 from . import norm
 from . import cev
-from .util import MathFuncs, DistHelperLnShift
+from .util import MathFuncs
+from .disthelper import DistLognormal
 from .params import SabrParams
 
 class SabrABC(SabrParams, OptABC):
@@ -158,39 +159,16 @@ class SabrABC(SabrParams, OptABC):
         vovn2 = vovn**2
         if vovn2 < 0.01:
             # When vovn is small, calculation is unstable. so use expansions.
-            var_scaled = vovn2*(1/3 - (6 - zhat**2)/45*vovn2)
+            coef_var = vovn2*(1/3 - (6 - zhat**2)/45*vovn2)
             skew = np.sqrt(vovn2*(108/25 - (4/875)*(51*zhat**2 - 716)*vovn2))
             exkur = vovn2 * (276/35 - (8/175)*(9*zhat**2 - 158)*vovn2)
         else:
-            var_scaled = np.divide(mc2, m1**2)
+            coef_var = np.divide(mc2, m1**2)
             skew = np.divide(mc3, mc2**1.5)
             exkur = np.divide(mc4, mc2**2) - 3.0
 
-        return m1*exp, var_scaled, skew, exkur
+        return m1*exp, coef_var, skew, exkur
 
-    @staticmethod
-    def cond_avgvar_lnshift_params(vovn, zhat, ratio=1.):
-        """
-        Find the prameters (mu, sigma, ratio) to fit moments
-
-            Y ~ (1 - ratio) * mu + ratio * mu * exp(sigma * Z - sigma^2/2)
-
-        Args:
-            vovn: vov * sqrt(texp)
-            zhat: Z - 0.5*vov
-            ratio: ratio for the lognormal distribution. 1.0 by default
-
-        Returns:
-            (mean, sig, ratio)
-        """
-
-        # only ratio cares, so use remove_exp=True
-        # but multiply exp(vovn * z) to m1 before returning
-        m1, var_scaled, skew, exkur = SabrABC.cond_avgvar_mvsk(vovn, zhat)
-        sln = DistHelperLnShift(lam=ratio)
-        sln.fit(mvs=[m1, var_scaled, skew], lam=ratio)
-
-        return m1, sln.sig, sln.lam
 
 
     @staticmethod
