@@ -1,5 +1,5 @@
 from .util import MathConsts, MathFuncs
-from .disthelper import DistLognormal, DistGamma, DistInvGauss, DistGig
+from .disthelper import DistLognormal, DistGamma, DistInvGauss, DistGig, DistGh, DistNig
 
 # the order is sensitive because of `price_barrier` method. Put it before .bsm
 from .norm import Norm

@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.special as spsp
 import scipy.optimize as spop
+import scipy.stats as spst
 from .util import MathFuncs
 
 
@@ -526,3 +527,178 @@ class DistGig:
             w *= ratio
 
         return x, w
+
+
+class DistGh:
+    """
+    Generalized Hyperbolic (GH) distribution.
+
+    Normal variance-mean mixture:
+        X = mu + beta*W + sqrt(W)*Z,  Z ~ N(0,1),  W ~ GIG(gamma, delta, p)
+
+    Uses the (gamma, delta) parametrization from Choi et al. (2021), where
+    gamma and delta are the GIG parameters directly.  The Wikipedia-style
+    steepness parameter alpha is a derived property: alpha = sqrt(gamma^2 + beta^2).
+
+    Parameters:
+        mu    (real):  location shift
+        beta  (real):  asymmetry / skewness weight
+        gamma (> 0):   GIG concentration; controls tail decay
+        delta (> 0):   GIG scale
+        p     (real):  GIG index; p = -1/2 gives NIG, p = 1 gives hyperbolic
+
+    References:
+        Choi J, Du Y, Song Q (2021) Inverse Gaussian quadrature and finite
+        normal-mixture approximation of the generalized hyperbolic distribution.
+        Journal of Computational and Applied Mathematics 388:113302.
+        https://doi.org/10.1016/j.cam.2020.113302
+    """
+
+    mu = 0.0
+    beta = 0.0
+    gamma = 1.0
+    delta = 1.0
+    p = -0.5
+    _n_quad = 32  # backing store for n_quad property
+    quad_x = None  # cached quadrature nodes; recomputed when n_quad is set
+    quad_w = None  # cached quadrature weights; recomputed when n_quad is set
+
+    def __init__(self, mu=0.0, beta=0.0, gamma=1.0, delta=1.0, p=-0.5, n_quad=32):
+        self.mu = mu
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.p = p
+        self.n_quad = n_quad  # triggers setter → computes quad_x, quad_w
+
+    @property
+    def n_quad(self):
+        return self._n_quad
+
+    @n_quad.setter
+    def n_quad(self, n):
+        self._n_quad = n
+        self.quad_x, self.quad_w = self.mixer().quad(n)
+
+    @property
+    def alpha(self):
+        """Steepness: alpha = sqrt(gamma^2 + beta^2)."""
+        return np.sqrt(self.gamma**2 + self.beta**2)
+
+    @property
+    def sigma(self):
+        """Concentration: sigma = sqrt(gamma * delta)."""
+        return np.sqrt(self.gamma * self.delta)
+
+    @property
+    def beta_tilde(self):
+        """Normalised asymmetry: beta_tilde = beta * sqrt(delta / gamma)."""
+        return self.beta * np.sqrt(self.delta / self.gamma)
+
+    def mixer(self):
+        """GIG mixing distribution DistGig(gamma, delta, p)."""
+        return DistGig(gamma=self.gamma, delta=self.delta, p=self.p)
+
+    def mvsk(self):
+        """
+        Mean, variance, skewness, excess kurtosis via GIG quadrature.
+
+        Uses conditional normal moment formulas:
+            E[X^k | W=w] expressed in terms of a = mu + beta*w and w.
+
+        Returns:
+            (mean, variance, skewness, excess_kurtosis)
+        """
+        xw, ww = self.quad_x, self.quad_w
+        mu, beta = self.mu, self.beta
+        a = mu + beta * xw          # conditional mean E[X | W=xw]
+        m1 = ww @ a
+        m2 = ww @ (a**2 + xw)
+        m3 = ww @ (a**3 + 3*a*xw)
+        m4 = ww @ (a**4 + 6*a**2*xw + 3*xw**2)
+        mc2 = m2 - m1**2
+        mc3 = m3 - 3*m2*m1 + 2*m1**3
+        mc4 = m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4
+        return m1, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
+
+    def mc4(self):
+        """
+        First four central moments: (mean, variance, mc3, mc4).
+
+        Returns:
+            (m1, mc2, mc3, mc4)
+        """
+        m1, mc2, skew, exkurt = self.mvsk()
+        return m1, mc2, skew * mc2**1.5, (exkurt + 3.0) * mc2**2
+
+    def cdf(self, y):
+        """
+        CDF via GIG quadrature (Eq. 3 in Choi et al. 2021):
+            F(y) = sum_k w_k * Phi((y - mu - beta*x_k) / sqrt(x_k))
+
+        Args:
+            y: scalar or array of evaluation points
+
+        Returns:
+            CDF values (same shape as y)
+        """
+        x, w = self.quad_x, self.quad_w
+        scalar = np.ndim(y) == 0
+        y = np.atleast_1d(y)
+        z = (y[:, None] - self.mu - self.beta * x[None, :]) / np.sqrt(x[None, :])
+        out = spst.norm.cdf(z) @ w
+        return float(out[0]) if scalar else out
+
+    def ppf(self, q):
+        """
+        Percent-point function (inverse CDF) at probability level q.
+
+        Uses brentq; accuracy governed by self.n_quad.
+
+        Args:
+            q: probability level (0 < q < 1), scalar
+
+        Returns:
+            y such that F(y) ≈ q
+        """
+        x_r, w_r = self.quad_x, self.quad_w
+        mu, beta = self.mu, self.beta
+        def cdf_f(y):
+            return w_r @ spst.norm.cdf((y - mu - beta * x_r) / np.sqrt(x_r))
+        m1  = mu + beta * (w_r @ x_r)
+        mc2 = (w_r @ x_r) + beta**2 * ((w_r @ x_r**2) - (w_r @ x_r)**2)
+        std = np.sqrt(max(mc2, 1e-30))
+        # Expand bracket until it straddles q (needed for heavy-tailed distributions)
+        lo, hi = m1 - 20*std, m1 + 20*std
+        for factor in [50, 100, 200, 500]:
+            if cdf_f(lo) < q < cdf_f(hi):
+                break
+            lo, hi = m1 - factor*std, m1 + factor*std
+        return spop.brentq(lambda y: cdf_f(y) - q, lo, hi, xtol=1e-12)
+
+
+class DistNig(DistGh):
+    """
+    Normal Inverse Gaussian (NIG) distribution.
+
+    Special case of the GH distribution with p = -1/2.  The GIG mixing
+    distribution reduces to the inverse Gaussian IG(gamma, delta).
+
+    Parameters:
+        mu    (real):  location shift
+        beta  (real):  asymmetry parameter
+        gamma (> 0):   concentration; gamma = sqrt(alpha^2 - beta^2)
+        delta (> 0):   scale
+
+    References:
+        Barndorff-Nielsen OE (1997) Normal inverse Gaussian distributions and
+        stochastic volatility modelling. Scandinavian Journal of Statistics 24:1–13.
+        https://doi.org/10.1111/1467-9469.00045
+    """
+
+    def __init__(self, mu=0.0, beta=0.0, gamma=1.0, delta=1.0, n_quad=32):
+        super().__init__(mu=mu, beta=beta, gamma=gamma, delta=delta, p=-0.5, n_quad=n_quad)
+
+    def mixer(self):
+        """IG mixing distribution (exact NIG mixer; p = -1/2 special case of GIG)."""
+        return DistInvGauss.from_gig(self.gamma, self.delta)
