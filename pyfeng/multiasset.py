@@ -119,13 +119,114 @@ class NormBasket(MaParams, OptABC):
         return df * price
 
 
-class BsmBasketLevy1992(NormBasket):
+class BsmBasketJu2002(MaParams, OptABC):
     """
-    Basket option pricing with the log-normal approximation of Levy & Turnbull (1992)
+    Basket option pricing using Ju's (2002) Taylor-expansion of the characteristic
+    function ratio around zero volatility, accurate to O(σ⁶).
+
+    When ``correction_ju2002 = False`` the higher-order correction is skipped and
+    the price reduces to the log-normal moment-matching approximation of
+    Levy & Turnbull (1992), which is what :class:`BsmBasketLevy1992` uses.
+
+    References:
+        - Ju E (2002) Pricing Asian and Basket Options Via Taylor Expansion. Journal of
+          Computational Finance 5(3):79–103
+        - Levy E, Turnbull S (1992) Average intelligence. Risk 1992:53–57
+        - Krekel M, de Kock J, Korn R, Man T-K (2004) An analysis of pricing methods for
+          basket options. Wilmott Magazine 2004:82–89
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> strike = np.arange(50, 151, 10)
+        >>> m = pf.BsmBasketJu2002(sigma=0.4*np.ones(4), rho=0.5)
+        >>> m.price(strike, spot=100*np.ones(4), texp=5)
+        array([54.31, 47.48, 41.52, 36.36, 31.88, 28.01, 24.67, 21.77, 19.26, 17.07, 15.17])
+    """
+
+    correction_ju2002 = True
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_factor(spot, texp)
+
+        # Weighted forwards and covariance matrix scaled by texp
+        fw = fwd * self.weight               # w_i * F_i,  shape (n_asset,)
+        cov_t = self.cov_m * texp            # σ_i σ_j ρ_ij T,  shape (n,n)
+
+        # First two moments of the basket (Levy 1992)
+        exp_cov_t = np.exp(cov_t)
+        m1 = fw.sum(axis=-1)                 # E[B]   = Σ w_i F_i
+        m2 = np.sum((fw @ exp_cov_t) * fw, axis=-1)  # E[B²] = Σ_ij w_i F_i exp(cov_t_ij) w_j F_j
+
+        std = np.sqrt(np.log(m2 / m1**2))
+        base = df * Bsm.price_formula(strike, m1, std, texp=1.0, cp=cp, is_fwd=True)
+
+        if not self.correction_ju2002:
+            return base
+
+        # ---- Ju (2002) correction terms -------------------------------------
+        av_a = fw @ cov_t                    # Σ_j cov_t[i,j] F_j,  shape (..., n)
+
+        u2_0 = m1**2                         # u2(z=0) = (Σ w_i F_i)²
+        u2_1 = np.sum(av_a * fw, axis=-1)              # d u2/d(z²) at z=0
+        u2_2 = np.sum((fw @ cov_t**2) * fw, axis=-1)   # d²/d(z²)² (elementwise **)
+        u2_3 = np.sum((fw @ cov_t**3) * fw, axis=-1)   # d³         (elementwise **)
+
+        # Taylor coefficients a1, a2, a3 of the CF ratio at z=1
+        a1 = -u2_1 / (2 * u2_0)
+        a2 = 2 * a1**2 - u2_2 / (2 * u2_0)
+        a3 = 6 * a1 * a2 - 4 * a1**3 - u2_3 / (2 * u2_0)
+
+        # Composite moment quantities
+        e_a12_a2 = 2 * np.sum(fw * av_a**2, axis=-1)
+        e_a13_a3 = 6 * np.sum(fw * av_a**3, axis=-1)
+        e_a12_a22 = 8 * np.sum(((av_a * fw) @ cov_t) * (av_a * fw), axis=-1) + 2 * u2_1 * u2_2
+        e_a1_a2_a3 = 6 * np.sum((fw @ cov_t**2) * (av_a * fw), axis=-1)
+        sqrt_fw = np.sqrt(fw)
+        temp  = sqrt_fw[..., :, None] * cov_t * sqrt_fw[..., None, :]  # (..., n, n)
+        e_a23 = 8 * np.einsum('...ij,...jk,...ki->...', temp, temp, temp)
+
+        # b coefficients at z=1
+        b1 = e_a12_a2 / (4 * m1**3)
+        b2 = a1**2 - a2 / 2
+
+        # c coefficients at z=1
+        c1 = -a1 * b1
+        c2 = (9 * e_a12_a22 + 4 * e_a13_a3) / (144 * m1**4)
+        c3 = (4 * e_a1_a2_a3 + e_a23) / (48 * m1**3)
+        c4 = a1 * a2 - 2 * a1**3 / 3 - a3 / 6
+
+        # jd2/jd3/jd4: Ju's d_i(z) coefficients evaluated at z=1  (d1 unused)
+        jd2 = (0.5 * (10 * a1**2 + a2 - 6 * b1 + 2 * b2)
+               - (128 * a1**3 / 3 - a3 / 6 + 2 * a1 * b1 - a1 * b2
+                  + 50 * c1 - 11 * c2 + 3 * c3 - c4))
+        jd3 = (2 * a1**2 - b1
+               - (88 * a1**3 + 3 * a1 * (5 * b1 - 2 * b2)
+                  + 3 * (35 * c1 - 6 * c2 + c3)) / 3)
+        jd4 = -20 * a1**3 / 3 + a1 * (-4 * b1 + b2) - 10 * c1 + c2
+
+        z1 = jd2 - jd3 + jd4
+        z2 = jd3 - jd4
+        z3 = jd4
+
+        d2 = np.log(m1/strike)/std - 0.5 * std             # BSM d₂ = (m(1) - log K) / √v(1)
+        p_y = spst.norm.pdf(d2) / std
+        dp_y = p_y * d2 / std
+        d2p_y = p_y * (d2**2 - 1) / std**2
+
+        return base + df * strike * (z1 * p_y + z2 * dp_y + z3 * d2p_y)
+
+
+class BsmBasketLevy1992(BsmBasketJu2002):
+    """
+    Basket option pricing with the log-normal moment-matching approximation of
+    Levy & Turnbull (1992).  Equivalent to :class:`BsmBasketJu2002` with the
+    higher-order correction disabled.
 
     References:
         - Levy E, Turnbull S (1992) Average intelligence. Risk 1992:53–57
-        - Krekel M, de Kock J, Korn R, Man T-K (2004) An analysis of pricing methods for basket options. Wilmott Magazine 2004:82–89
+        - Krekel M, de Kock J, Korn R, Man T-K (2004) An analysis of pricing methods for
+          basket options. Wilmott Magazine 2004:82–89
 
     Examples:
         >>> import numpy as np
@@ -138,21 +239,10 @@ class BsmBasketLevy1992(NormBasket):
                15.19005654])
     """
 
-    def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
-        if fwd.shape[-1] != self.n_asset:
-            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
-
-        fwd_basket = fwd * self.weight
-        m1 = np.sum(fwd_basket, axis=-1)
-        m2 = np.sum(fwd_basket @ np.exp(self.cov_m * texp) * fwd_basket, axis=-1)
-
-        sig = np.sqrt(np.log(m2 / (m1 ** 2)) / texp)
-        price = Bsm.price_formula(strike, m1, sig, texp, cp=cp, is_fwd=True)
-        return df * price
+    correction_ju2002 = False
 
 
-class BsmBasketMilevsky1998(NormBasket):
+class BsmBasketMilevsky1998(MaParams, OptABC):
     """
     Basket option pricing with the inverse gamma distribution of Milevsky & Posner (1998)
 
@@ -367,7 +457,7 @@ class BsmBasket1Bm(MaParams, OptABC):
         return price
 
 
-class BsmBasketJsu(NormBasket):
+class BsmBasketJsu(MaParams, OptABC):
     """
 
     Johnson's SU distribution approximation for Basket option pricing under the multiasset BSM model.
@@ -480,7 +570,7 @@ class BsmBasketJsu(NormBasket):
         return df * price
 
 
-class BsmBasketChoi2018(NormBasket):
+class BsmBasketChoi2018(MaParams, OptABC):
     """
     Choi (2018)'s pricing method for Basket/Spread/Asian options
 
