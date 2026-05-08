@@ -652,7 +652,7 @@ class BsmBasketChoi2018(MaParams, OptABC):
         len_scale = svd_d / np.sum(fwd_wts_unit * v1)
 
         if self.n_quad is None:
-            n_quad = np.rint(self.lam * len_scale + 1).astype(int)
+            n_quad = np.rint(self.lam * len_scale + 1).astype(int).tolist()
         else:
             n_quad = self.n_quad
 
@@ -691,11 +691,41 @@ class BsmBasketChoi2018(MaParams, OptABC):
         fwd, df, _ = self._fwd_factor(spot, texp)
 
         v1, f_k, ww = self.v1_fwd_weight(fwd, texp)
-        m_1bm = BsmBasket1Bm(sigma=v1, weight=self.weight)
 
-        price = np.zeros_like(strike, dtype=float)
-        for k, f_k_row in enumerate(f_k):
-            price1 = m_1bm.price(strike, f_k_row * fwd, texp=1.0, cp=cp)
-            price += price1 * ww[k]
+        fw = fwd * self.weight                       # w_k F_k, shape (n_asset,)
+        v1_half_sq = 0.5 * v1**2                     # ½ V_k1²
 
-        return df * price
+        scalar_strike = np.isscalar(strike)
+        strike = np.atleast_1d(np.asarray(strike, dtype=float))
+
+        price = np.zeros(len(strike))
+        delta = np.zeros((len(strike), self.n_asset))  # call Δ_k (Eq. 14), shape (n_strike, n_asset)
+        f_tilde = np.zeros(self.n_asset)               # f̃_k = Σ_m h_m f_k(ž_m)
+
+        for f_k_row, wm in zip(f_k, ww):
+            fac = f_k_row * fw * np.exp(-v1_half_sq)          # Eq. (8) LHS coefficients
+            d_m = -BsmBasket1Bm.root(fac, v1, strike)          # d(ž_m) = −z₁*
+
+            nd1 = spst.norm.cdf(d_m[:, None] + v1)             # N(d+V_k1), (n_strike, n_asset)
+            nd1_cp = nd1 if cp == 1 else 1.0 - nd1             # N(cp·(d+V_k1))
+            nd2_cp = spst.norm.cdf(cp * d_m)                    # N(cp·d), (n_strike,)
+
+            # Price contribution: cp·(Σ_k fw_k f_k N(cp·(d+V_k1)) − K·N(cp·d))
+            price += wm * cp * (np.sum(f_k_row * fw * nd1_cp, axis=-1) - strike * nd2_cp)
+
+            # Call delta accumulation (Eq. 14): D_k = w_k Σ_m h_m f_k(ž_m) N(d+V_k1)
+            delta += wm * f_k_row[None, :] * self.weight[None, :] * nd1
+
+            f_tilde += wm * f_k_row
+
+        # Forward price control variate correction (Eq. 17)
+        fwd_err = fwd * (f_tilde - 1)                 # F_k (f̃_k − 1), shape (n_asset,)
+        if cp == 1:
+            # C' = C − Σ_k D_k F_k (f̃_k − 1)
+            price -= np.sum(delta * fwd_err, axis=-1)
+        else:
+            # P' = P − Σ_k (D_k − w_k) F_k (f̃_k − 1)
+            price -= np.sum((delta - self.weight) * fwd_err, axis=-1)
+
+        price = df * price
+        return price[0] if scalar_strike else price
