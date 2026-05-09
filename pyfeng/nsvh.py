@@ -26,22 +26,28 @@ class NsvhABC(NsvhParams, OptABC):
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
         """
         vovn = self.vov * np.sqrt(texp)
-        ww = np.exp(vovn**2)
-        wlam = np.exp(self.lam * vovn**2)
+        wwm1 = np.expm1(vovn**2)                    # w - 1,  w = exp(S),  S = vov^2 * texp
+        ww = 1.0 + wwm1                             # w
+        wlam = np.exp(self.lam * vovn**2)           # w^lambda
         rho2 = self.rho**2
         rhoc2 = 1 - rho2
 
-        wf1 = (wlam * ww - 1) / (1 + self.lam)
-        wf3 = (wlam * ww**3 - 1) / (3 + self.lam)
-        wf5 = (wlam * ww**5 - 1) / (5 + self.lam)
+        # wf_k = avg_pow(wwm1, k-1+lam) = (w^(k+lam) - 1) / ((k+lam) * wwm1)
+        # so old wf_k (paper) = wwm1 * wf_k here; handles lambda=-1 via L'Hopital in avg_pow
+        wf_1 = MathFuncs.avg_pow(wwm1, self.lam)
+        wf_3 = MathFuncs.avg_pow(wwm1, 2 + self.lam)
+        wf_5 = MathFuncs.avg_pow(wwm1, 4 + self.lam)
 
-        m2 = rho2 * wlam*(ww-1) + rhoc2 * wf1
-        m3 = self.rho*np.sqrt(wlam) * (rho2*wlam*(ww-1)**2*(ww+2) + 3*rhoc2*(wf3 - wf1))
-        m4 = (rho2*wlam*(ww-1))**2 * (ww**2*(ww**2 + 2*ww + 3) - 3) + 6*rho2*rhoc2*wlam*(ww*wf5 - 2*wf3 + wf1) +\
-             1.5*rhoc2**2 * (-wlam*ww*wf5 + (wlam*ww**3 + 1)*wf3 - wf1)
+        m2base = rho2*wlam + rhoc2*wf_1
+        m2 = wwm1 * m2base
 
-        skew = m3 / np.sqrt(m2**3)
-        exkurt = m4 / m2**2 - 3
+        m4 = (rho2*wlam*wwm1)**2 * (ww**2*(ww**2 + 2*ww + 3) - 3) \
+             + 6*rho2*rhoc2*wlam*wwm1 * (ww*wf_5 - 2*wf_3 + wf_1) \
+             + 1.5*rhoc2**2*wwm1 * (-wlam*ww*wf_5 + (wlam*ww**3 + 1)*wf_3 - wf_1)
+
+        skew = self.rho * np.sqrt(wlam) * (rho2*wlam*wwm1*(ww + 2) + 3*rhoc2*(wf_3 - wf_1)) \
+               / (np.sqrt(wwm1) * m2base**(3/2))
+        exkurt = m4 / (wwm1 * m2base)**2 - 3
 
         return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
@@ -137,22 +143,22 @@ class Nsvh1(NsvhABC):
             (variance, skewness, and ex-kurtosis)
         """
         vovn = self.vov * np.sqrt(texp)
-        ww_m1 = np.expm1(vovn**2)
-        ww, ww_p1 = ww_m1 + 1., ww_m1 + 2.
+        wwm1 = np.expm1(vovn**2)
+        ww = 1.0 + wwm1
         rho2 = self.rho**2
 
-        m2base = ww_p1 + rho2*ww_m1
-        m2 = (ww_m1/2) * m2base
+        m2base = ww + 1 + rho2*wwm1
+        m2 = wwm1/2 * m2base
 
-        c31 = 3 * ww_p1**2
-        c33 = ww_m1 * (ww + 3)
+        c31 = 3*(ww + 1)**2
+        c33 = wwm1 * (ww + 3)
 
-        k0 = ww_p1**3 * (ww**2 + 3)
-        k2 = 6 * ww_p1**2 * (ww*(ww*(ww + 1)+3)-1)
-        k4 = ww_m1 * (ww*(ww*(ww*(ww + 4)+10)+12) - 3)
+        k0 = (ww + 1)**3 * (ww**2 + 3)
+        k2 = 2*c31 * (ww*(ww*(ww + 1)+3)-1)
+        k4 = wwm1 * (ww*(ww*(ww*(ww + 4)+10)+12) - 3)
 
-        skew = self.rho * np.sqrt(ww_m1*ww/2) * (c31 + rho2*c33) / np.sqrt(m2base**3)
-        exkurt = (ww_m1/2) * (k0 + rho2*(k2 + rho2*k4)) / m2base**2
+        skew = self.rho * np.sqrt(wwm1*ww/2) * (c31 + rho2*c33) / np.sqrt(m2base**3)
+        exkurt = (wwm1/2) * (k0 + rho2*(k2 + rho2*k4)) / m2base**2
 
         return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
