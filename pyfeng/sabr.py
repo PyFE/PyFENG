@@ -175,7 +175,7 @@ class SabrABC(SabrParams, OptABC):
     def avgvar_mnc4(vovn):
         """
         First 4 non-central(raw) moments of the normalized average variance:
-        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        (1/T) int_0^T e^{2*vov Z_t - vov^2 Z_t} = int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
         where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
 
         The implementation is not stable for very small value of vovn. Use avgvar_mvsk instead.
@@ -216,7 +216,7 @@ class SabrABC(SabrParams, OptABC):
     def avgvar_mvsk(vovn):
         """
         mean and variance of the normalized average variance:
-        (1/T) \int_0^T e^{2*vov Z_t - vov^2 Z_t} = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
+        (1/T) int_0^T e^{2*vov Z_t - vov^2 Z_t} = int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
         where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
 
         Args:
@@ -449,7 +449,7 @@ class SabrNormVolApprox(SabrVolApproxABC):
         if beta is not None and not np.isclose(beta, 0.0):
             warnings.warn(f"Ignoring beta = {beta}.")
         self.is_atmvol = is_atmvol
-        super().__init__(sigma, vov, rho, beta=0, intr=intr, divr=divr, is_fwd=is_fwd)
+        super().__init__(sigma, beta=0, vov=vov, rho=rho, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price_vsk(self, texp=1):
         """
@@ -466,13 +466,14 @@ class SabrNormVolApprox(SabrVolApproxABC):
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967
         """
         vovn = self.vov * np.sqrt(texp)
-        m2 = np.expm1(vovn**2)
-        ww = m2 + 1
+        wwm1 = np.expm1(vovn**2)
+        ww = 1.0 + wwm1
+        rho2 = self.rho**2
 
-        skew = self.rho * np.sqrt(m2) * (ww+2)
-        exkurt = m2 * ((4*self.rho**2 + 1)/5 * (ww*(ww*(ww + 3) + 6) + 5) + 1)
+        skew = self.rho * np.sqrt(wwm1) * (ww + 2)
+        exkurt = wwm1 * ((4*rho2 + 1)/5*(ww*(ww*(ww + 3) + 6) + 5) + 1)
 
-        return m2*(self.sigma/self.vov)**2, skew, exkurt
+        return wwm1*(self.sigma/self.vov)**2, skew, exkurt
 
     def vol_for_price(self, strike, spot, texp):
         fwd = self.forward(spot, texp)
