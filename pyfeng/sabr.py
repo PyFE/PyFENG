@@ -159,11 +159,11 @@ class SabrABC(SabrParams, OptABC):
         vovn2 = vovn**2
         if vovn2 < 0.01:
             # When vovn is small, calculation is unstable. so use expansions.
-            coef_var = vovn2*(1/3 - (6 - zhat**2)/45*vovn2)
+            coef_var = np.sqrt(vovn2*(1/3 - (6 - zhat**2)/45*vovn2))
             skew = np.sqrt(vovn2*(108/25 - (4/875)*(51*zhat**2 - 716)*vovn2))
             exkur = vovn2 * (276/35 - (8/175)*(9*zhat**2 - 158)*vovn2)
         else:
-            coef_var = np.divide(mc2, m1**2)
+            coef_var = np.divide(np.sqrt(mc2), m1)
             skew = np.divide(mc3, mc2**1.5)
             exkur = np.divide(mc4, mc2**2) - 3.0
 
@@ -223,7 +223,7 @@ class SabrABC(SabrParams, OptABC):
             vovn: vov * sqrt(texp)
 
         Returns:
-            (mean, coef_var, skewness, ex-kurtosis) where coef_var = Var / mean^2
+            (mean, coef_var, skewness, ex-kurtosis) where coef_var = std / mean
 
         References
             - McGhee WA (2021) An artificial neural network representation of the SABR stochastic volatility model. Journal of Computational Finance
@@ -234,13 +234,13 @@ class SabrABC(SabrParams, OptABC):
         #
         # Key identities (all verified algebraically):
         #   Var(I) = m2*(ww-1)^3/vovn^4  [expand (10+6w+3w^2+w^3)(w-1)^3 = w^6-15w^2+24w-10]
-        #   coef_var = Var/mean^2 = vovn2*m2*m = m2*(ww-1)  [no division -> stable at vovn=0]
+        #   coef_var = std/mean = sqrt(Var/mean^2) = sqrt(vovn2*m2*m)  [no division -> stable at vovn=0]
         #   skew numerator factors as (ww-1)^5 * P(ww) where P is degree-10; spot-checked at ww=2:
         #     315*mu3 numerator = 29392, polyval([1,5,...,336]/315, 2)*315 = 29392  (match)
         #   exkurt numerator factors as (ww-1)^7 * Q(ww) where Q is degree-21 (-> ww^28 matches m4)
         #
         # Edge case vovn=0: avg_exp(0)=1 (handled by MathFuncs.avg_exp), ww=1, coef_var=0, s=0, k=0.
-        # Previously returned Var(I); changed to coef_var=Var/mean^2 for consistency with
+        # Previously returned Var(I); changed to coef_var=std/mean for consistency with
         # cond_avgvar_mvsk. Tests in test_sabr.py updated accordingly (2026-05-08).
 
         vovn2 = vovn**2
@@ -248,7 +248,7 @@ class SabrABC(SabrParams, OptABC):
         ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
-        coef_var = vovn2 * m2 * m    # Var/mean^2 = m2*(ww-1); If vov2 -> 0, coef_var = (4/3) vovn^2
+        coef_var = np.sqrt(vovn2 * m2 * m)    # std/mean = sqrt(Var/mean^2); If vov2 -> 0, coef_var ≈ (2/sqrt(3)) vovn
 
         coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
         s = vovn * np.sqrt(m) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness

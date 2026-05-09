@@ -95,7 +95,7 @@ class TestSabr(unittest.TestCase):
         for vovn in [0.2, 0.4, 0.8, 1.0]:
             m1, cv, s, k = m.avgvar_mvsk(vovn)
             mvsk = sms_m.mnc2mvsk(m.avgvar_mnc4(vovn))
-            np.testing.assert_allclose(np.array([m1, cv * m1**2, s, k]), mvsk)  # cv = coef_var = Var/mean^2
+            np.testing.assert_allclose(np.array([m1, (cv * m1)**2, s, k]), mvsk)  # cv = std/mean
 
         #### Unconditional avgvar: mean/var == E(conditional mean/var)
         for vovn in [0.1, 0.2, 0.4, 0.6, 0.8]:  # test fail in m4 when vovn > 0.8

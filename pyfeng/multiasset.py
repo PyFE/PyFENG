@@ -128,7 +128,7 @@ class BsmBasketABC(MaParams, OptABC):
 
     def price_mvsk(self, fwd, texp, order=4):
         """
-        Mean, coefficient of variation squared, skewness, and excess kurtosis of the basket.
+        Mean, coefficient of variation, skewness, and excess kurtosis of the basket.
 
         Each asset follows $F_i(T) = v_i \\exp(\\sigma_i Z_i \\sqrt{T} - \\frac{1}{2}\\sigma_i^2 T)$
         where $v_i = w_i F_i(0)$ and $Z_i$ are correlated standard normals with covariance
@@ -153,8 +153,8 @@ class BsmBasketABC(MaParams, OptABC):
         $m_2$ is a single matrix product; $m_3$ uses two; $m_4$ uses a reshape-matmul-reshape
         on $N_{ijk} = P_{ik} P_{jk}$.  All are $O(n^k)$ but fully vectorised.
 
-        The second return value is the coefficient of variation squared,
-        $\\widetilde{\\beta} = \\mathrm{Var}(B) / E[B]^2 = m_2/m_1^2 - 1$,
+        The second return value is the coefficient of variation,
+        $\\widetilde{\\beta} = \\sqrt{\\mathrm{Var}(B)} / E[B] = \\sqrt{m_2/m_1^2 - 1}$,
         consistent with :class:`DistLognormal`.
 
         Args:
@@ -171,12 +171,12 @@ class BsmBasketABC(MaParams, OptABC):
         m1 = v.sum()
         M2 = np.outer(v, v) * P             # M2[i,j] = v_i v_j P_ij
         m2 = M2.sum()
-        coef_var = m2 / m1 ** 2 - 1         # Var(B) / E[B]^2
+        coef_var = np.sqrt(m2 / m1**2 - 1)  # std(B) / E[B]
 
         if order == 2:
             return m1, coef_var
 
-        var = coef_var * m1 ** 2
+        var = (coef_var * m1)**2
 
         # m3 = Σ_{ijk} v_i v_j v_k P_ij P_ik P_jk
         #    = sum( (P * v) ⊙ (M2 @ P) )

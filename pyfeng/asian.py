@@ -24,15 +24,15 @@ class BsmAsianJsu(BsmParams, OptABC):
     Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
 
     References:
-        [1] Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
-        with higher moments. The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
+        Posner SE, Milevsky MA (1998) Valuing exotic options by approximating the SPD
+        with higher moments. The Journal of Financial Engineering 7(2). https://ssrn.com/abstract=108539
 
-        [2] Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
-        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+        Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model.
+        Journal of Futures Markets 39(2):186–204. https://doi.org/10.1002/fut.21967
 
     """
 
-    def price_mom(self, texp, n=1):
+    def price_mnc(self, texp, n=1):
         """
 
         The n-th raw moment of S_bar/spot = (1/T)∫(S_t/spot) dt with spot=1.
@@ -43,8 +43,8 @@ class BsmAsianJsu(BsmParams, OptABC):
             n: moment order
 
         References:
-            Geman, H., & Yor, M. (1993). Bessel processes, Asian options, and perpetuities.
-            Mathematical finance, 3(4), 349-375.
+            Geman H, Yor M (1993) Bessel processes, Asian options, and perpetuities.
+            Mathematical Finance 3(4):349–375.
 
         Returns: the nth moment (at spot=1)
 
@@ -102,9 +102,9 @@ class BsmAsianJsu(BsmParams, OptABC):
                  - 4p(p+1)(p+5)*A^3*B^3 + p(p+1)(p+2)*A^4*B^6
 
         Derived from Geman-Yor (1993) formula via Lagrange interpolation over d_j coefficients;
-        replaces the O(n^2) Python loop in price_mom() with a single vectorised expression.
+        replaces the O(n^2) Python loop in price_mnc() with a single vectorised expression.
 
-        KNOWN BUG: division by zero when p = 0, i.e. r = q.  No fix implemented (same as price_mom()).
+        KNOWN BUG: division by zero when p = 0, i.e. r = q.  No fix implemented (same as price_mnc()).
 
         Args:
             texp: time to expiry
@@ -113,7 +113,7 @@ class BsmAsianJsu(BsmParams, OptABC):
             (m1, m2, m3, m4) — raw moments at spot=1
         """
         # [Verified: Claude Sonnet 4.6, 2026-05-08]
-        # Derived from Geman-Yor (1993) formula (see price_mom() docstring for notation).
+        # Derived from Geman-Yor (1993) formula (see price_mnc() docstring for notation).
         # p = 2*(r-q)/sigma^2 = 2*beta + 1  (beta = (r-q-sigma^2/2)/sigma^2).
         # Exponents: Sigma_j*T = j*(r-q)*T + j*(j-1)/2 * sigma^2*T = j*u + j*(j-1)/2 * v
         #   -> e^{Sigma_j*T} = A^j * B^{j*(j-1)/2}:  e0=1, e1=A, e2=A^2*B, e3=A^3*B^3, e4=A^4*B^6
@@ -153,25 +153,30 @@ class BsmAsianJsu(BsmParams, OptABC):
 
         return m1, m2, m3, m4
 
-    def price_mc4(self, texp):
+    def price_mvsk(self, texp):
         """
-        First 4 central moments of S_bar at spot=1.
-        Multiply mu1 by spot and mu_n (n>=2) by spot^n to recover the actual central moments.
+        Mean, coef_var, skewness, and raw kurtosis of S_bar at spot=1.
 
-        For small v = sigma^2*T the raw-moment formulas have 1/v^n factors that individually
-        blow up while their combination is O(v^{n-1}).  Switch to Taylor series for v < 0.01:
+        coef_var = std / mean = sqrt(mu2) / mu1 is scale-invariant (spot cancels).
+        Rescale: mean *= spot; coef_var, skew, kurt are all scale-invariant.
 
-            mu2 = v/3 + (5p+2)*v^2/24 + O(v^3)
+        For small v = sigma^2*T the raw-moment formulas have 1/v^n singularities that
+        cancel analytically.  mu2 uses the aa/bb form (no blow-up); mu3/mu4 switch to
+        Taylor at v < 0.01:
+
+            mu2: aa/bb form, finite everywhere; Taylor for precision only
             mu3 = 2*v^2/5 + O(v^3)          [independent of p to leading order]
             mu4 = v^2/3 + O(v^3)             [normal-distribution limit 3*mu2^2]
 
         where p = 2*(r-q)/sigma^2.
 
+        KNOWN BUG: division by zero when p = 0, i.e. r = q.
+
         Args:
             texp: time to expiry
 
         Returns:
-            (mu1, mu2, mu3, mu4) — mean and central moments 2–4 at spot=1
+            (mean, coef_var, skewness, raw kurtosis) at spot=1
         """
         # [Verified: Claude Sonnet 4.6, 2026-05-08]
         # Taylor derivation (fixed p, expand in v):
@@ -185,7 +190,7 @@ class BsmAsianJsu(BsmParams, OptABC):
         u = (self.intr - self.divr) * texp
         A = np.exp(u)
         B = np.exp(v)
-        p = 2.0 * (self.intr - self.divr) / self.sigma**2                # 2*(r-q)/sigma^2
+        p = 2.0 * (self.intr - self.divr) / self.sigma**2   # 2*(r-q)/sigma^2
 
         A2B  = A * A * B
         A3B3 = A2B  * A * B * B
@@ -210,47 +215,22 @@ class BsmAsianJsu(BsmParams, OptABC):
             + p*(p+1)*(p+2)*A4B6
         ) / (p*(p+1)*(p+2)*(p+3)*(p+4)*(p+5)*(p+6))
 
-        # mu2: use aa=avg_exp(u), bb=avg_exp(v) so A=1+aa*u, B=1+bb*v.
-        # Substituting into m2-m1² removes the p²v² denominator entirely:
-        #   mu2 = [4*(bb-aa)/v + 4p*aa*bb + aa²*(p²*bb*v - 3p-2)] / ((p+1)(p+2))
-        # (bb-aa)/v → (2-p)/4 + v*(4-p²)/24 as v→0 (finite, no blow-up).
-        # Taylor only needed for numerical precision when bb ≈ aa ≈ 1.
+        # mu2: aa=m1=avg_exp(u), bb=avg_exp(v) → p²v² denominator cancels algebraically.
+        # (bb-m1)/v → (2-p)/4 as v→0 (finite); Taylor branch for precision only.
         bb = MathFuncs.avg_exp(v)
         diff_over_v = np.where(v < 0.01, (2-p)/4 + v*(4-p**2)/24, (bb-m1)/v)
         mu2 = (4*diff_over_v + 4*p*m1*bb + m1**2*(p**2*bb*v - 3*p - 2)) / ((p+1)*(p+2))
 
-        mu3_full = m3 - 3*m2*m1 + 2*m1**3
-        mu4_full = m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4
+        mu3 = np.where(v < 0.01, 2*v**2/5,       m3 - 3*m2*m1 + 2*m1**3)
+        mu4 = np.where(v < 0.01, v**2/3,  m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4)
 
-        mu3_small = 2*v**2 / 5
-        mu4_small = v**2 / 3
-
-        mu3 = np.where(v < 0.01, mu3_small, mu3_full)
-        mu4 = np.where(v < 0.01, mu4_small, mu4_full)
-
-        return m1, mu2, mu3, mu4
-
-    def price_mvsk(self, texp):
-        """
-        Return mean, coef_var, skewness, raw kurtosis of S_bar at spot=1.
-        coef_var = std / mean = sqrt(mu2) / mu1 is scale-invariant (spot cancels).
-        Rescale: mean *= spot; coef_var, skew, kurt are all scale-invariant.
-
-        Args:
-            texp: time to expiry
-
-        Returns: (mean, coef_var, skewness, raw kurtosis) at spot=1
-
-        """
-        # coef_var = sqrt(mu2)/mu1;  skew = mu3/mu2^(3/2);  raw kurt = mu4/mu2^2.
-        # Caller (price()) uses var = (coef_var * mu * spot)^2 after rescaling mean.
-        mu, var, mu3, mu4 = self.price_mc4(texp)
-        std = np.sqrt(var)
-        coef_var = std / mu
+        # coef_var = std/mean;  skew = mu3/mu2^(3/2);  raw kurt = mu4/mu2^2.
+        std = np.sqrt(mu2)
+        coef_var = std / m1
         skew = mu3 / std**3
-        kurt = mu4 / var**2
+        kurt = mu4 / mu2**2
 
-        return mu, coef_var, skew, kurt
+        return m1, coef_var, skew, kurt
 
     def price(self, strike, spot, texp, cp=1):
         """
