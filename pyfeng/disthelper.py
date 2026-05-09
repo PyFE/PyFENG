@@ -109,18 +109,46 @@ class DistLognormal:
 
     def quad(self, n_quad):
         """
-        Gauss–Hermite quadrature nodes and weights.
+        Gauss-Hermite quadrature nodes and weights with a Girsanov shift.
+
+        Standard Gauss-Hermite quadrature approximates E_{N(0,1)}[f(Z)] using nodes z_i and
+        weights w_i with sum(w_i) = 1. A naive application to the lognormal would use
+        x_i = mu * exp(sig*z_i - sig^2/2) and unmodified weights, which is correct but
+        numerically inefficient for large sig (the integrand mass is far from the N(0,1) nodes).
+
+        Instead we apply a Girsanov shift nu = sig/2, reinterpreting the N(0,1) nodes as samples
+        under N(sig/2, 1) and compensating the weights by the Radon-Nikodym derivative. This
+        lets the nodes be placed where the lognormal integrand has most of its mass.
+
+        Substituting Z = z + sig/2 (z are the standard Hermite nodes) into the lognormal:
+            Y = mu * (1 - lam + lam * exp(sig*Z - sig^2/2))
+              = mu * (1 - lam + lam * exp(sig*z))            [sig^2/2 cancels]
+
+        The weight correction (RN derivative dN(0,1)/dN(sig/2,1)) is:
+            w_i  <-  w_i * exp(-sig*z_i/2 - sig^2/8)
+
+        The key is that Hermite nodes are symmetric (z_i and -z_i are paired with equal weights), so:
+            C := sum(w_i * exp(-sig*z_i/2)) = sum(w_i * exp(+sig*z_i/2))
+
+        Before normalisation: sum(w_tilde_i) = C  and  sum(w_tilde_i * x_i) = mu * C.
+        After normalisation w /= sum(w), both properties hold EXACTLY for any n_quad:
+            sum(w_i)       = 1
+            sum(w_i * x_i) = mu
 
         Args:
             n_quad: number of quadrature points.
 
         Returns:
-            (nodes, weights)
+            (x, w): nodes x_i and weights w_i; sum(w_i) = 1 and sum(w_i * x_i) = mu.
         """
-        z, w, w_sum = spsp.roots_hermitenorm(n_quad, mu=True)
-        w /= w_sum
-        z = self.mu * (1 + self.lam * np.expm1(self.sig * (z - self.sig / 2)))
-        return z, w
+        z, w = spsp.roots_hermitenorm(n_quad)
+
+        # Girsanov shift nu = sig/2: tmp = exp(sig*z/2), so tmp^2 = exp(sig*z)
+        tmp = np.exp(0.5*self.sig*z)
+        w *= np.exp(-self.sig**2/8) / tmp   # RN derivative: exp(-sig*z/2 - sig^2/8)
+        w /= np.sum(w)                       # renormalize against finite-quadrature error
+        x = self.mu * (1 - self.lam + self.lam * tmp**2)  # mu * (1 - lam + lam*exp(sig*z))
+        return x, w
 
 
 class DistGamma:
