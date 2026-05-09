@@ -114,7 +114,7 @@ class SabrABC(SabrParams, OptABC):
     @staticmethod
     def cond_avgvar_mvsk(vovn, zhat, mnc=False):
         """
-        Mean, scaled variance, skewness, and ex-kurtosis of the conditional average variance.
+        Mean, coefficient of variation, skewness, and ex-kurtosis of the conditional average variance.
 
         int_0^1 exp{2 vovn Z_s - vovn^2 s} ds | Z_1 - (vovn/2) = z
              conditional on z = log(sigma_T/sigma_0) / (vov*sqrt(T))
@@ -127,7 +127,7 @@ class SabrABC(SabrParams, OptABC):
             mnc: if True, return (mean, mnc2, mnc3, mnc4)
 
         Returns:
-            (mean, scaled var, skewness, ex-kurtosis) or (mean, mnc2, mnc3, mnc4)
+            (mean, coef_var, skewness, ex-kurtosis) or (mean, mnc2, mnc3, mnc4)
 
         References:
             - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model. J Futures Mark 39:186–204. https://doi.org/10.1002/fut.21967

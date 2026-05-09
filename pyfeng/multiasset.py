@@ -231,7 +231,7 @@ class BsmBasketJu2002(BsmBasketABC):
 
         # First two moments of the basket (Levy 1992)
         m1, coef_var = self.price_mvsk(fwd, texp, order=2)
-        std = np.sqrt(np.log1p(coef_var))
+        std = np.sqrt(np.log1p(coef_var**2))
         base = df * Bsm.price_formula(strike, m1, std, texp=1.0, cp=cp, is_fwd=True)
 
         if not self.correction_ju2002:
@@ -341,7 +341,7 @@ class BsmBasketMilevsky1998(BsmBasketABC):
 
         m1, coef_var = self.price_mvsk(fwd, texp, order=2)
 
-        alpha = 1 / coef_var + 2
+        alpha = 1 / coef_var**2 + 2
         beta = (alpha - 1) * m1
 
         price = InvGam.price_formula(
