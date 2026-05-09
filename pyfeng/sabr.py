@@ -331,8 +331,8 @@ class SabrHagan2002(SabrVolApproxABC):
     SABR model with Hagan's implied volatility approximation for 0<beta<=1.
 
     References:
-        Hagan, P. S., Kumar, D., Lesniewski, A. S., & Woodward, D. E. (2002). Managing Smile Risk.
-        Wilmott, September, 84–108.
+        Hagan PS, Kumar D, Lesniewski AS, Woodward DE (2002) Managing smile risk.
+        Wilmott September:84–108.
 
     Examples:
         >>> import numpy as np
@@ -493,7 +493,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, MassZeroABC):
     The CEV volatility approximation of the SABR model based on Theorem 1 of Choi & Wu (2019)
 
     References:
-        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
+        - Choi J, Wu L (2019) The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
     Examples:
         >>> import numpy as np
@@ -585,7 +585,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, MassZeroABC):
     The CEV volatility approximation of the SABR modelbased on Theorem 2 of Choi & Wu (2019)
 
     References:
-        - Choi, J., & Wu, L. (2019). The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
+        - Choi J, Wu L (2019) The equivalent constant-elasticity-of-variance (CEV) volatility of the stochastic-alpha-beta-rho (SABR) model. ArXiv:1911.13123 [q-Fin]. https://arxiv.org/abs/1911.13123
 
     Examples:
         >>> import numpy as np
@@ -731,9 +731,9 @@ class SabrLorig2017(SabrVolApproxABC):
     Third-order BSM volatilty approximation of the SABR model by Lorig et al. (2017)
 
     References:
-        Lorig, M., Pagliarani, S., & Pascucci, A. (2017). Explicit Implied Volatilities
-        for Multifactor Local-Stochastic Volatility Models.
-        Mathematical Finance, 27(3), 926–960. https://doi.org/10.1111/mafi.12105
+        Lorig M, Pagliarani S, Pascucci A (2017) Explicit implied volatilities
+        for multifactor local-stochastic volatility models.
+        Mathematical Finance 27(3):926–960. https://doi.org/10.1111/mafi.12105
     """
 
     _base_beta = 1.0  # should not be changed

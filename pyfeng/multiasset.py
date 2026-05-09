@@ -536,11 +536,11 @@ class BsmBasketJsu(BsmBasketABC):
     Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
 
     References:
-        - Posner, S. E., & Milevsky, M. A. (1998). Valuing exotic options by approximating the SPD
-        with higher moments. The Journal of Financial Engineering, 7(2). https://ssrn.com/abstract=108539
+        - Posner SE, Milevsky MA (1998) Valuing exotic options by approximating the SPD
+        with higher moments. The Journal of Financial Engineering 7(2). https://ssrn.com/abstract=108539
 
-        - Choi, J., Liu, C., & Seo, B. K. (2019). Hyperbolic normal stochastic volatility model.
-        Journal of Futures Markets, 39(2), 186–204. https://doi.org/10.1002/fut.21967
+        - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model.
+        Journal of Futures Markets 39(2):186–204. https://doi.org/10.1002/fut.21967
 
     """
 
