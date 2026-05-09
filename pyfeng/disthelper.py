@@ -125,13 +125,16 @@ class DistLognormal:
               = mu * (1 - lam + lam * exp(sig*z))            [sig^2/2 cancels]
 
         The weight correction (RN derivative dN(0,1)/dN(sig/2,1)) is:
-            w_i  <-  w_i * exp(-sig*z_i/2 - sig^2/8)
+            w_tilde_i = w_i * exp(-sig*z_i/2 - sig^2/8)
 
-        The key is that Hermite nodes are symmetric (z_i and -z_i are paired with equal weights), so:
+        Before normalisation, using the MGF of N(0,1) and holding to quadrature accuracy:
+            sum(w_tilde_i)       = exp(-sig^2/8) * E[exp(-sig*Z/2)] = exp(-sig^2/8)*exp(+sig^2/8) = 1
+            sum(w_tilde_i * x_i) = mu * exp(-sig^2/8) * E[exp(+sig*Z/2)] = mu*exp(-sig^2/8)*exp(+sig^2/8) = mu
+
+        The normalisation w /= sum(w) makes both properties hold EXACTLY for any n_quad.
+        The key is that Hermite nodes are symmetric (z_i and -z_i paired with equal weights), so:
             C := sum(w_i * exp(-sig*z_i/2)) = sum(w_i * exp(+sig*z_i/2))
-
-        Before normalisation: sum(w_tilde_i) = C  and  sum(w_tilde_i * x_i) = mu * C.
-        After normalisation w /= sum(w), both properties hold EXACTLY for any n_quad:
+        giving sum(w_tilde_i) = C and sum(w_tilde_i * x_i) = mu * C. After dividing by C:
             sum(w_i)       = 1
             sum(w_i * x_i) = mu
 
@@ -146,7 +149,9 @@ class DistLognormal:
         # Girsanov shift nu = sig/2: tmp = exp(sig*z/2), so tmp^2 = exp(sig*z)
         tmp = np.exp(0.5*self.sig*z)
         w *= np.exp(-self.sig**2/8) / tmp   # RN derivative: exp(-sig*z/2 - sig^2/8)
-        w /= np.sum(w)                       # renormalize against finite-quadrature error
+        # Normalisation is the key: Hermite symmetry gives sum(w*exp(-sig*z/2)) = sum(w*exp(+sig*z/2)) = C,
+        # so sum(w_tilde) = C and sum(w_tilde * x) = mu*C. Dividing by C enforces BOTH exactly.
+        w /= np.sum(w)
         x = self.mu * (1 - self.lam + self.lam * tmp**2)  # mu * (1 - lam + lam*exp(sig*z))
         return x, w
 
