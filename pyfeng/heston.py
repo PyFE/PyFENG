@@ -44,6 +44,12 @@ class HestonABC(HestonParams, OptABC):
         Returns:
             mean, variance
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Exact CIR conditional moments: dV = κ(θ-V)dt + ν√V dW.
+        # Mean: E[V_{t+dt}|V_t=v0] = θ + (v0-θ)e^{-κdt}  ✓
+        # Variance: with avg=(1-e)/κdt (=avg_exp(-κdt)), expanding gives
+        #   s2 = ν²/κ * [v0*e*(1-e) + θ*(1-e)²/2]
+        # which matches the exact formula Var = v0*(ν²/κ)*(e^{-κdt}-e^{-2κdt}) + θ*(ν²/2κ)*(1-e^{-κdt})²  ✓
         if var0 is None:
             var0 = self.sigma
 
@@ -83,6 +89,31 @@ class HestonABC(HestonParams, OptABC):
             Ball C, Roma A (1994) Stochastic Volatility Option Pricing.
             Journal of Financial and Quantitative Analysis 29:589–607. Appendix B.
         """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # All cumulants derived via Ball & Roma (1994) App. B: the affine log-MGF of J_T=T*I_T
+        # is  log E[e^{λJ_T}] = A(λ,T) + B(λ,T)*v0,  where B satisfies the Riccati ODE
+        #   B' = -κB + (ν²/2)B² + λ,  B(0)=0
+        # and A' = κθB, A(0)=0.  Differentiating w.r.t. λ at λ=0 and letting bₙ=∂ⁿB/∂λⁿ|₀:
+        #   b₁' = -κb₁ + 1,   b₂' = -κb₂ + ν²b₁²,   b₃' = -κb₃ + 3ν²b₁b₂  (bₙ(0)=0)
+        # κₙ[J_T] = κθ∫₀ᵀbₙ dt + bₙ(T)*v0;  κₙ[I_T] = κₙ[J_T]/Tⁿ.
+        #
+        # Let u=κT, e=exp(-u), φ=(1-e)/u=avg_exp(-u), x0=v0-θ.
+        #
+        # Mean: E[I_T] = θ + x0*φ  (direct integration of E[V_t], or κ₁[I_T])  ✓
+        #
+        # Variance: b₁=(1-e^{-κt})/κ, solve b₂ ODE explicitly:
+        #   b₂(T) = ν²/κ³ * (1-2ue-e²)
+        #   ∫₀ᵀb₂ dt = ν²/κ³ * [T(1+2e) - (1-e)(5+e)/(2κ)]  [identity: (5-4e-e²)=(5+e)(1-e)]
+        # Code bracket B = θ-2x0*e + (v0-2.5θ+(v0-θ/2)e)*φ expands to
+        #   B = θ-2x0*e + (1-e)/u*[v0(1+e) - θ(5+e)/2]  =  derived expression  ✓
+        # Small-u check: B = v0*u²/3 + O(u³), Var[I_T] → ν²v0T/3 as T→0  ✓
+        #
+        # 3rd central moment (= κ₃[J_T]/T³):
+        # Direct formula c3_full = (a3+b3*v0)/T³ suffers catastrophic cancellation for small κT:
+        # a3 and b3*v0 are individually O(T⁴/κ) but cancel to O(T⁵), giving c3=O(T²).
+        # Taylor series c3_small used for mr_t<0.1; leading term ν⁴T²v0/5 confirmed from
+        # κ=0 limit (b₃(T)~ν⁴T⁵/5, κ₃[J_T]/T³~ν⁴T²v0/5).
+        # Explicit b₃(T) and ∫b₃ dt expressions not verified analytically.
         if var0 is None:
             var0 = self.sigma
 

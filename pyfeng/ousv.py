@@ -248,7 +248,7 @@ class OusvSchobelZhu1998(OusvABC):
     options the Ornstein-Uhlenbeck driven stochastic volatility process.
 
     References:
-        - Schöbel, R., & Zhu, J. (1999). Stochastic Volatility With an Ornstein–Uhlenbeck Process: an Extension. Review of Finance, 3(1), 23–46. https://doi.org/10.1023/A:1009803506170
+        - Schöbel R, Zhu J (1999) Stochastic volatility with an Ornstein–Uhlenbeck process: an extension. Review of Finance 3(1):23–46. https://doi.org/10.1023/A:1009803506170
 
     Examples:
         >>> import pyfeng as pf

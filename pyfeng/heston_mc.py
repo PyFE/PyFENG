@@ -909,7 +909,7 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
     Heston simulation scheme Poisson-conditioned time discretization quadrature
 
     References:
-        - Choi & Kwok (2023). Simulation schemes for the Heston model with Poisson conditioning. Working paper.
+        - Choi J, Kwok YK (2023) Simulation schemes for the Heston model with Poisson conditioning. Working paper.
 
     Examples:
         >>> import numpy as np
@@ -1009,7 +1009,7 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
     This scheme enhances the gamma expansion of Glasserman & Kim (2011).
 
     References:
-        - Choi & Kwok (2023). Simulation schemes for the Heston model with Poisson conditioning. Working paper.
+        - Choi J, Kwok YK (2023) Simulation schemes for the Heston model with Poisson conditioning. Working paper.
         - Glasserman P, Kim K-K (2011) Gamma expansion of the Heston stochastic volatility model. Finance Stoch 15:267–296. https://doi.org/10.1007/s00780-009-0115-y
 
     Examples:

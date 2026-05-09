@@ -96,10 +96,10 @@ class RoughHestonABC(RoughHestonParams, OptABC):
         Returns:
             Log price MGF
 
-        We use the characteristic function in Eq (4.5) of El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models
+        We use the characteristic function in Eq (4.5) of El Euch O, Rosenbaum M (2019) The characteristic function of rough Heston models
 
         References:
-            - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models https://doi.org/10.1111/mafi.12173
+            - El Euch O, Rosenbaum M (2019) The characteristic function of rough Heston models. https://doi.org/10.1111/mafi.12173
         """
         delta = 1/100
         self.delta = delta
@@ -211,11 +211,11 @@ class RoughHestonABC(RoughHestonParams, OptABC):
         """
         Log price MGF under the rough Heston model.
         The moment-generating function in Eq (2) in the reference paper, which is from Eq (4.5) of
-        El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models was employed
+        El Euch O, Rosenbaum M (2019) The characteristic function of rough Heston models was employed
 
         References:
-            - Giorgia Callegaro, Martino Grasselli, Gilles Pagès (2020) Fast Hybrid Schemes for Fractional Riccati Equations (Rough Is Not So Tough). Mathematics of Operations Research 46(1):221-254.https://doi.org/10.1287/moor.2020.1054
-            - El Euch, O., Rosenbaum, M.: (2019) The characteristic function of rough Heston models https://doi.org/10.1111/mafi.12173
+            - Callegaro G, Grasselli M, Pagès G (2020) Fast hybrid schemes for fractional Riccati equations (rough is not so tough). Mathematics of Operations Research 46(1):221–254. https://doi.org/10.1287/moor.2020.1054
+            - El Euch O, Rosenbaum M (2019) The characteristic function of rough Heston models. https://doi.org/10.1111/mafi.12173
         """
         mr = self.mr
         theta = self.theta

@@ -169,7 +169,7 @@ class Nsvh1(NsvhABC):
         Returns: (sigma, vov, rho)
 
         References:
-            Tuenter, H. J. H. (2001). An algorithm to determine the parameters of SU-curves in the johnson system of probabillity distributions by moment matching. Journal of Statistical Computation and Simulation, 70(4), 325–347. https://doi.org/10.1080/00949650108812126
+            Tuenter HJH (2001) An algorithm to determine the parameters of SU-curves in the Johnson system of probability distributions by moment matching. Journal of Statistical Computation and Simulation 70(4):325–347. https://doi.org/10.1080/00949650108812126
         """
         assert exkurt > 0
         beta1 = skew**2

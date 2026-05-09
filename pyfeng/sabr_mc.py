@@ -155,8 +155,8 @@ class SabrMcTimeDisc(SabrMcABC):
         zhat = self.rv_normal(spawn=0) - vovn/2.
         sigma_t = sigma_0 * np.exp(vovn * zhat)
 
-        m1, var_scaled, skew, exkur = self.cond_avgvar_mvsk(vovn, zhat)
-        sig = np.sqrt(np.log1p(var_scaled))
+        m1, coef_var, skew, exkur = self.cond_avgvar_mvsk(vovn, zhat)
+        sig = np.sqrt(np.log1p(coef_var**2))
         avgvar = sigma_0**2 * m1 * np.exp(sig*(self.rv_normal(spawn=2) - sig/2.))
 
         return sigma_t, avgvar
