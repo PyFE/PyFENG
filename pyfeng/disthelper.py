@@ -2,9 +2,6 @@ import numpy as np
 import scipy.special as spsp
 import scipy.optimize as spop
 import scipy.stats as spst
-from .util import MathFuncs
-
-
 class DistLognormal:
     """
     Shifted lognormal distribution:
@@ -17,14 +14,12 @@ class DistLognormal:
     sig = 0.0
     lam = 1.0
     validate = False
-    _ww = 0.0  # exp(sig^2) - 1  (normalized variance)
 
     def __init__(self, sig=1.0, lam=1.0, mu=1.0, validate=False):
         self.sig = sig
         self.lam = lam
         self.mu = mu
         self.validate = validate
-        self._ww = MathFuncs.avg_exp(sig**2) * sig**2
 
     @classmethod
     def from_mv(cls, mean, coef_var, lam=1.0):
@@ -50,9 +45,10 @@ class DistLognormal:
         Returns:
             (mean, coef_var, skewness, excess_kurtosis)
         """
-        coef_var = self.lam * np.sqrt(self._ww)
-        skew = np.sqrt(self._ww) * (self._ww + 3)
-        exkur = self._ww * (16 + self._ww * (15 + self._ww * (6 + self._ww)))
+        ww = np.expm1(self.sig**2)
+        coef_var = self.lam * np.sqrt(ww)
+        skew = np.sqrt(ww) * (ww + 3)
+        exkur = ww * (16 + ww * (15 + ww * (6 + ww)))
         return self.mu, coef_var, skew, exkur
 
     def mc4(self):
@@ -89,14 +85,13 @@ class DistLognormal:
                     raise ValueError("lam must be specified when mvs has only 2 elements.")
             else:
                 self.lam = lam
-            self._ww = (mvs[1] / self.lam)**2
-            self.sig = np.sqrt(np.log1p(self._ww))
+            ww = (mvs[1] / self.lam)**2
+            self.sig = np.sqrt(np.log1p(ww))
         else:
             s = mvs[2]
             sqrt_w = 2 * np.sinh(np.arccosh(1 + 0.5 * s**2) / 6)
             self.lam = mvs[1] / sqrt_w
-            self._ww = sqrt_w**2
-            self.sig = np.sqrt(np.log1p(self._ww))
+            self.sig = np.sqrt(np.log1p(sqrt_w**2))
 
         if self.validate:
             n = 2 if len(mvs) == 2 or lam is not None else 3
