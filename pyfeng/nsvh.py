@@ -162,59 +162,65 @@ class Nsvh1(NsvhABC):
 
         return m2 * (self.sigma/self.vov)**2, skew, exkurt
 
-    def calibrate_vsk(self, var, skew, exkurt, texp=1, setval=False):
+    @classmethod
+    def from_vsk(cls, vsk, texp=1, intr=0.0, divr=0.0, is_fwd=False):
+        """
+        Construct a Nsvh1 instance calibrated to (variance, skewness, ex-kurtosis).
+
+        Args:
+            vsk: (variance, skewness, ex-kurtosis). ex-kurtosis must be > 0.
+            texp: time to expiry
+            intr: interest rate
+            divr: dividend/convenience yield
+            is_fwd: if True, treat spot as forward price
+
+        Returns:
+            Nsvh1 instance with calibrated (sigma, vov, rho)
+        """
+        obj = cls(sigma=1.0, intr=intr, divr=divr, is_fwd=is_fwd)
+        obj.fit(vsk, texp=texp)
+        return obj
+
+    def fit(self, vsk, texp=1):
         """
         Calibrate parameters to the moments: variance, skewness, ex-kurtosis.
 
         Args:
+            vsk: (variance, skewness, ex-kurtosis). ex-kurtosis must be > 0.
             texp: time to expiry
-            var: variance
-            skew: skewness
-            exkurt: ex-kurtosis. should be > 0.
-
-        Returns: (sigma, vov, rho)
 
         References:
             Tuenter HJH (2001) An algorithm to determine the parameters of SU-curves in the Johnson system of probability distributions by moment matching. Journal of Statistical Computation and Simulation 70(4):325–347. https://doi.org/10.1080/00949650108812126
         """
+        var, skew, exkurt = vsk
         assert exkurt > 0
         beta1 = skew**2
         beta2 = exkurt + 3
 
-        # min of w search
+        # min of ww search
         roots = np.roots(np.array([1, 2, 3, 0, -3 - beta2]))
         roots = roots[(roots.real > 0) & np.isclose(roots.imag, 0)]
         assert len(roots) == 1
-        w_min = roots.real[0]
-        w_max = np.sqrt(-1 + np.sqrt(2 * (beta2 - 1)))
+        ww_min = roots.real[0]
+        ww_max = np.sqrt(-1 + np.sqrt(2 * (beta2 - 1)))
 
-        def f_beta1(w):
-            term1 = np.sqrt(4 + 2 * (w * w - (beta2 + 3) / (w * w + 2 * w + 3)))
-            return (w + 1 - term1) * (w + 1 + 0.5 * term1)**2 - beta1
+        def f_beta1(ww):
+            term1 = np.sqrt(4 + 2 * (ww * ww - (beta2 + 3) / (ww * ww + 2 * ww + 3)))
+            return (ww + 1 - term1) * (ww + 1 + 0.5 * term1)**2 - beta1
 
-        assert f_beta1(w_min) >= 0
+        assert f_beta1(ww_min) >= 0
 
+        # root finding for ww = exp(S) = exp(vov^2 * texp)
+        # NOTE: rho=±1 (lognormal limit) places the root exactly at ww_max where m→0,
+        # so (ww_root-1)/m amplifies any floating-point error in ww_root and reduces precision.
+        ww_root = spop.brentq(f_beta1, ww_min, ww_max)
+        m = -2 + np.sqrt(4 + 2 * (ww_root**2 - (beta2 + 3) / (ww_root**2 + 2 * ww_root + 3)))
+        term = (ww_root + 1) / (2 * ww_root) * ((ww_root - 1) / m - 1)  # sinh^2(Omega) = rho^2 / rhoc^2
 
-        # root finding for w = np.exp(S) = np.exp(vov^2 texp)
-        w_root = spop.brentq(f_beta1, w_min, w_max)
-        m = -2 + np.sqrt(4 + 2 * (w_root**2 - (beta2 + 3) / (w_root**2 + 2 * w_root + 3)))
-        term = (w_root + 1) / (2 * w_root) * ((w_root - 1) / m - 1)  # - sinh(Omega) = rho / rhoc*
-
-        # if term is slightly negative, next line error in sqrt
-        if abs(term) < np.finfo(float).eps * 100:
-            term = 0.0
-
-        rho = np.sign(skew) * np.sqrt(1 - 1 / (1 + term))
-        vov = np.sqrt(np.log(w_root) / texp)
-        m2 = 0.5 * (w_root - 1) * ((w_root + 1) + rho**2 * (w_root - 1))
-        sig0 = np.sqrt(var / m2) * vov
-
-        if setval:
-            self.sigma = sig0
-            self.vov = vov
-            self.rho = rho
-
-        return sig0, vov, rho
+        self.rho = np.sign(skew) * np.sqrt(np.fmax(term, 0.0) / (1 + term))
+        self.vov = np.sqrt(np.log(ww_root) / texp)
+        m2 = 0.5 * (ww_root - 1) * ((ww_root + 1) + self.rho**2 * (ww_root - 1))
+        self.sigma = np.sqrt(var / m2) * self.vov
 
 
 class NsvhMc(NsvhABC):

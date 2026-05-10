@@ -26,7 +26,22 @@ class TestNsvhPriceVsk(unittest.TestCase):
         (0.15, 0.2, 0.0, 5.0),
         (0.4, 1.0, -0.7, 0.25),
         (0.05, 0.6, 0.6, 3.0),
+        #(0.2, 0.3,  1.0, 1.0),  # rho=+1: lognormal limit
+        #(0.2, 0.3, -1.0, 1.0),  # rho=-1: lognormal limit
     ]
+
+    def test_fit_roundtrip(self):
+        """fit(price_vsk(...)) recovers the original parameters (interior rho only)."""
+        for sigma, vov, rho, texp in self.PARAMS_INTERIOR:
+            m = pf.Nsvh1(sigma=sigma, vov=vov, rho=rho)
+            mvs = m.price_vsk(texp=texp)
+            m2 = pf.Nsvh1.from_vsk(mvs, texp=texp)
+            np.testing.assert_allclose(m2.sigma, sigma, rtol=1e-10,
+                err_msg=f"sigma mismatch: {sigma}, {vov}, {rho}, {texp}")
+            np.testing.assert_allclose(m2.vov, vov, rtol=1e-10,
+                err_msg=f"vov mismatch: {sigma}, {vov}, {rho}, {texp}")
+            np.testing.assert_allclose(m2.rho, rho, rtol=1e-10,
+                err_msg=f"rho mismatch: {sigma}, {vov}, {rho}, {texp}")
 
     def test_price_vsk_lam0_vs_sabrnorm(self):
         """
