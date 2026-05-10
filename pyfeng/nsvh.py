@@ -214,13 +214,14 @@ class Nsvh1(NsvhABC):
         # NOTE: rho=±1 (lognormal limit) places the root exactly at ww_max where m→0,
         # so (ww_root-1)/m amplifies any floating-point error in ww_root and reduces precision.
         ww_root = spop.brentq(f_beta1, ww_min, ww_max)
-        m = -2 + np.sqrt(4 + 2 * (ww_root**2 - (beta2 + 3) / (ww_root**2 + 2 * ww_root + 3)))
-        term = (ww_root + 1) / (2 * ww_root) * ((ww_root - 1) / m - 1)  # sinh^2(Omega) = rho^2 / rhoc^2
-
-        self.rho = np.sign(skew) * np.sqrt(np.fmax(term, 0.0) / (1 + term))
+        x = 2 * (ww_root**2 - (beta2 + 3) / (ww_root**2 + 2 * ww_root + 3))
+        m = x / (2 + np.sqrt(4 + x))  # stable form of -2 + sqrt(4 + x); avoids cancellation when x -> 0 (rho -> +-1)
+        # rho^2 = (ww+1)(ww-1-m) / ((ww-1)(ww+1+m));  stable at rho=±1 where m->0
+        rho2 = (ww_root + 1) * (ww_root - 1 - m) / ((ww_root - 1) * (ww_root + 1 + m))
+        self.rho = np.sign(skew) * np.sqrt(np.fmax(rho2, 0.0))
         self.vov = np.sqrt(np.log(ww_root) / texp)
-        m2 = 0.5 * (ww_root - 1) * ((ww_root + 1) + self.rho**2 * (ww_root - 1))
-        self.sigma = np.sqrt(var / m2) * self.vov
+        m2base = (ww_root + 1) + self.rho**2 * (ww_root - 1)
+        self.sigma = np.sqrt(2 * var / ((ww_root - 1) * m2base)) * self.vov
 
 
 class NsvhMc(NsvhABC):

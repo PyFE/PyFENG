@@ -26,13 +26,13 @@ class TestNsvhPriceVsk(unittest.TestCase):
         (0.15, 0.2, 0.0, 5.0),
         (0.4, 1.0, -0.7, 0.25),
         (0.05, 0.6, 0.6, 3.0),
-        #(0.2, 0.3,  1.0, 1.0),  # rho=+1: lognormal limit
-        #(0.2, 0.3, -1.0, 1.0),  # rho=-1: lognormal limit
+        (0.2, 0.3,  1.0, 1.0),  # rho=+1: lognormal limit
+        (0.2, 0.3, -1.0, 1.0),  # rho=-1: lognormal limit
     ]
 
     def test_fit_roundtrip(self):
-        """fit(price_vsk(...)) recovers the original parameters (interior rho only)."""
-        for sigma, vov, rho, texp in self.PARAMS_INTERIOR:
+        """fit(price_vsk(...)) recovers the original parameters."""
+        for sigma, vov, rho, texp in self.PARAMS:
             m = pf.Nsvh1(sigma=sigma, vov=vov, rho=rho)
             mvs = m.price_vsk(texp=texp)
             m2 = pf.Nsvh1.from_vsk(mvs, texp=texp)
