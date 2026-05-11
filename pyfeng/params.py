@@ -180,6 +180,7 @@ class BsmParams(BaseParams):
     model_type: ClassVar[str] = "Bsm"
 
 
+
 @dataclass
 class NormParams(BaseParams):
     """Parameters for the Bachelier (Normal / absolute-diffusion) model."""
