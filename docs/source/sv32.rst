@@ -1,6 +1,6 @@
 3/2 Stochastic Volatility Model
 ==========================
-.. automodule:: pyfeng.sv32_mc2
+.. automodule:: pyfeng.sv32_mc
    :members: Sv32McTimeStep, Sv32McBaldeaux2012Exact, Sv32McChoiKwok2023Ig
    :inherited-members:
    :exclude-members: Sv32McABC

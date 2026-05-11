@@ -206,6 +206,27 @@ class TestCevGreeks(unittest.TestCase):
                 self._check_greeks(m, strike=strike, spot=spot, texp=texp, cp=cp)
 
 
+class TestParamValidation(unittest.TestCase):
+    """Parameter validation checks for Cev and Bsm."""
+
+    def test_cev_beta_zero_raises(self):
+        with self.assertRaises(ValueError):
+            pf.Cev(sigma=0.3, beta=0.0)
+
+    def test_cev_beta_negative_raises(self):
+        with self.assertRaises(ValueError):
+            pf.Cev(sigma=0.3, beta=-0.5)
+
+    def test_cev_beta_one_raises(self):
+        with self.assertRaises(ValueError):
+            pf.Cev(sigma=0.3, beta=1.0)
+
+    def test_cev_beta_valid(self):
+        pf.Cev(sigma=0.3, beta=0.5)   # should not raise
+        pf.Cev(sigma=0.3, beta=1.5)   # beta > 1 is allowed
+
+
+
 if __name__ == "__main__":
     print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()
