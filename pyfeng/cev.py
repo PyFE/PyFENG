@@ -85,39 +85,111 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         alpha = sigma/np.power(fwd, betac)
         var = np.maximum(alpha**2 * texp, np.finfo(float).eps) * betac**2 * MathFuncs.avg_exp(2*(intr-divr)*betac*texp)
 
-        xx = 1.0 / var
-        yy = np.power(strike/fwd, 2*betac) * xx
+        z0 = 1.0 / var                              # z_0
+        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
-        # Need to clean up the case beta > 0
-        if beta > 1.0:
-            raise ValueError("Cannot handle beta value higher than 1.0")
+        sf = spst.ncx2.sf
+        cdf = spst.ncx2.cdf
 
-        ncx2_sf = spst.ncx2.sf
-        ncx2_cdf = spst.ncx2.cdf
-
-        # Computing call and put is a bit of computtion waste, but do this for vectorization.
-        price = np.where(
-            cp > 0,
-            fwd*ncx2_sf(yy, 2 + betac_inv, xx) - strike*ncx2_cdf(xx, betac_inv, yy),
-            strike*ncx2_sf(xx, betac_inv, yy) - fwd*ncx2_cdf(yy, 2 + betac_inv, xx),
-        )
+        # Theorem 5 (Schroder 1989).  ν = 1/(2|β*|), so 2ν = |betac_inv|.
+        # β < 1: 2ν = betac_inv,  2+2ν = 2+betac_inv;  (z_0, z_K) = (z0, zK)
+        # β > 1: 2ν = -betac_inv, 2+2ν = 2-betac_inv;  roles swap: (z_0, z_K) → (zK, z0)
+        if beta < 1.0:
+            price = np.where(
+                cp > 0,
+                fwd*sf(zK, 2 + betac_inv, z0) - strike*cdf(z0, betac_inv, zK),
+                strike*sf(z0, betac_inv, zK) - fwd*cdf(zK, 2 + betac_inv, z0),
+            )
+        else:
+            price = np.where(
+                cp > 0,
+                fwd*sf(z0, -betac_inv, zK) - strike*cdf(zK, 2 - betac_inv, z0),
+                strike*sf(zK, 2 - betac_inv, z0) - fwd*cdf(z0, -betac_inv, zK),
+            )
         return df*price
 
+    @staticmethod
+    def price_std(sigma, k, beta=0.5, sign=1, type=1):
+        """
+        Standardized CEV option price / price-to-vega / vega (F₀ = 1, T = 1, no rates).
+
+        Effective variance: V = β*²σ², centrality: z₀ = 1/V, z_K = k^{2β*}·z₀,
+        degrees of freedom: 2ν = 1/β* (β < 1) or −1/β* (β > 1), β* = 1 − β.
+
+        type = −1: vega  𝒱 = (2/|σβ*|) · f_χ²(z_K; 2+2ν, z₀)
+        type =  1: price-to-vega  (default)
+            sign = +1:   C / 𝒱 = (|σβ*|/2) · [Q(z_K; 2+2ν, z₀) − k·P(z₀; 2ν, z_K)] / f
+            sign = −1:  (F₀−C)/𝒱 = (|σβ*|/2) · [P(z_K; 2+2ν, z₀) + k·P(z₀; 2ν, z_K)] / f
+        type =  0: price  C = Q(z_K; 2+2ν, z₀) − k·P(z₀; 2ν, z_K)  (Schroder 1989)
+
+        For β > 1 the z₀ / z_K roles swap and the NCX2 degrees of freedom change sign.
+
+        Args:
+            sigma: CEV volatility
+            k: strike ratio K/F₀ (not log-strike)
+            beta: elasticity parameter (default 0.5); must satisfy β ≠ 1
+            sign: +1 for C/𝒱 (default); −1 for (F₀−C)/𝒱
+            type: 0 for price, 1 for price-to-vega (default), −1 for vega
+
+        Returns:
+            Standardized price, price-to-vega, or vega
+
+        References:
+            Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
+        betac = 1.0 - beta
+        betac_inv = 1.0 / betac
+
+        var = betac**2 * sigma**2
+        z0 = 1.0 / var
+        zK = np.power(k, 2 * betac) * z0
+
+        if beta < 1.0:
+            f1 = spst.ncx2.pdf(zK, 2 + betac_inv, z0)
+            if type == -1:
+                return 2.0 / (sigma * betac) * f1
+            if sign > 0:
+                rv_num = spst.ncx2.sf(zK, 2 + betac_inv, z0) - k * spst.ncx2.cdf(z0, betac_inv, zK)
+            else:
+                rv_num = spst.ncx2.cdf(zK, 2 + betac_inv, z0) + k * spst.ncx2.cdf(z0, betac_inv, zK)
+            coeff = sigma * betac / 2
+        else:
+            f1 = spst.ncx2.pdf(z0, 2 - betac_inv, zK)
+            if type == -1:
+                return -2.0 / (sigma * betac) * f1
+            if sign > 0:
+                rv_num = spst.ncx2.sf(z0, -betac_inv, zK) - k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+            else:
+                rv_num = spst.ncx2.cdf(z0, -betac_inv, zK) + k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+            coeff = -sigma * betac / 2  # > 0 since betac < 0
+
+        if type == 0:
+            return rv_num
+        return rv_num * coeff / f1
+
     def delta(self, strike, spot, texp, cp=1):
+        """
+        CEV option delta (∂C/∂F_0).
+
+        Simplified single-term expressions derived by differentiating the equivalent
+        price form (Theorem 6); the exchange lemma F_0 f(z_K;2+2ν,z_0) = K f(z_0;2+2ν,z_K)
+        cancels all boundary terms.
+
+        References:
+            - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
         fwd, df, divf = self._fwd_factor(spot, texp)
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
-
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        z0 = 1.0 / var                              # z_0  (F_0-normalised)
+        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
         if self.beta < 1.0:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(yy, 2 + betac_inv, xx)\
-                    + 2*xx*betac*(spst.ncx2.pdf(yy, 4 + betac_inv, xx) - (strike/fwd)*spst.ncx2.pdf(xx, betac_inv, yy))
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(zK, betac_inv, z0)
         else:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(xx, -betac_inv, yy)\
-                    - 2*xx*betac*(spst.ncx2.pdf(xx, -betac_inv, yy) - (strike/fwd)*spst.ncx2.pdf(yy, 4 - betac_inv, xx))
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(z0, 2 - betac_inv, zK)
 
         delta *= df if self.is_fwd else divf
         return delta
@@ -130,32 +202,39 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
 
         alpha = self.sigma/np.power(fwd, betac)
         var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = 1.0/var
-        yy = np.power(strike/fwd, 2*betac) * xx
+        z0 = 1.0/var
+        zK = np.power(strike/fwd, 2*betac) * z0
 
-        cdf = np.where(cp > 0, spst.ncx2.cdf(xx, betac_inv, yy), spst.ncx2.sf(xx, betac_inv, yy))
+        cdf = np.where(cp > 0, spst.ncx2.cdf(z0, betac_inv, zK), spst.ncx2.sf(z0, betac_inv, zK))
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
+        """
+        CEV option gamma (∂²C/∂F_0²).
+
+        Simplified single-term expression Γ = (2|β*| z_0/F_0) f_χ²(·; 2+2ν, ·),
+        obtained by differentiating the single-term delta.
+
+        References:
+            - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        z0 = 1.0 / var                              # z_0  (F_0-normalised)
+        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
-
+        # In the F_0=1 frame: 2|β*| z0 · f_χ²; rescale back by 1/fwd.
+        # (divf²/df) converts forward-gamma to spot-gamma.
         if self.beta < 1.0:
-            gamma = (2 + betac_inv - xx)*spst.ncx2.pdf(yy, 4 + betac_inv, xx) \
-                    + xx*spst.ncx2.pdf(yy, 6 + betac_inv, xx) \
-                    + strike/fwd*(xx*spst.ncx2.pdf(xx, betac_inv, yy) - yy*spst.ncx2.pdf(xx, 2 + betac_inv, yy))
+            gamma = 2*betac * z0 * spst.ncx2.pdf(zK, 2 + betac_inv, z0)
         else:
-            gamma = (xx*spst.ncx2.pdf(xx, -betac_inv, yy) - yy*spst.ncx2.pdf(xx, 2 - betac_inv, yy)) \
-                    + strike/fwd*((2 - betac_inv - xx)*spst.ncx2.pdf(yy, 4 - betac_inv, xx)
-                                  + xx*spst.ncx2.pdf(yy, 6 - betac_inv, xx))
+            gamma = -2*betac * z0 * spst.ncx2.pdf(z0, 2 - betac_inv, zK)
 
-        gamma *= 2*(divf*betac)**2/df*xx/fwd
+        gamma *= divf**2 / (df * fwd)   # rescale 1/fwd, then fwd→spot conversion
 
         if self.is_fwd:
             gamma *= (df/divf)**2
@@ -163,27 +242,65 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         return gamma
 
     def vega(self, strike, spot, texp, cp=1):
+        """
+        CEV option vega (∂C/∂σ) with respect to the CEV parameter σ in dF = σ F^β dW.
+
+        Simplified single-term expression V = (2F_0/σβ*) f_χ²(·; 2+2ν, ·), derived via
+        the exchange lemma (cancels the z_K bracket) and Theorem 2 (collapses the
+        remaining two-term sum into one).  In the F_0=1 frame the prefactor is 2/(αβ*);
+        rescaling to actual F_0 introduces the factor F_0^β (since σ = α·F_0^{β*}).
+
+        References:
+            - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
         fwd, df, divf = self._fwd_factor(spot, texp)
 
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
-
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        z0 = 1.0 / var                              # z_0  (F_0-normalised)
+        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
         if self.beta < 1.0:
-            vega = -fwd*spst.ncx2.pdf(yy, 4 + betac_inv, xx) + strike*spst.ncx2.pdf(xx, betac_inv, yy)
+            vega = 2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(zK, 2 + betac_inv, z0)
         else:
-            vega = fwd*spst.ncx2.pdf(xx, -betac_inv, yy) - strike*spst.ncx2.pdf(yy, 4 - betac_inv, xx)
+            vega = -2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(z0, 2 - betac_inv, zK)
 
-        sigma = self.sigma*np.power(spot, -betac)
-        vega *= df*2*xx/sigma
-        return vega
+        return df * vega
 
     def theta(self, strike, spot, texp, cp=1):
-        ### Need to implement this
-        return self.theta_numeric(strike, spot, texp, cp=cp)
+        """
+        CEV option theta (∂C/∂t, calendar-time convention; negative for long calls).
+
+        Direct derivation.  The discounted call price C(F, T) depends on σ and T
+        only through the effective variance V(T) = β*²σ²T·avg_exp(ρT), ρ = 2β*(r-q).
+        Its time derivative is
+
+            dV/dT = β*²σ² e^{ρT},   so   dV/dT · σ/(2V) = σ e^{ρT} / (2T·avg_exp(ρT)).
+
+        The chain rule ∂C/∂σ = (2V/σ) ∂C/∂V therefore gives
+
+            ∂C/∂T = (r-q)·S·Δ − r·C + V′(T)·σ/(2V)·v,
+
+        where Δ = ∂C/∂S is the spot delta (zero for is_fwd=True) and v = ∂C/∂σ is the
+        CEV vega.  Calendar theta Θ = ∂C/∂t = −∂C/∂T:
+
+            Θ = r·C − (r-q)·S·Δ − σ e^{ρT} / (2T·avg_exp(ρT)) · v.
+
+        References:
+            - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
+        betac = 1.0 - self.beta
+        rho_T = 2 * betac * (self.intr - self.divr) * texp
+        sigma_coeff = self.sigma * np.exp(rho_T) / (2 * texp * MathFuncs.avg_exp(rho_T))
+
+        price = self.price(strike, spot, texp, cp)
+        vega  = self.vega(strike, spot, texp, cp)
+        drift = 0.0 if self.is_fwd else (self.intr - self.divr) * spot * self.delta(strike, spot, texp, cp)
+
+        theta = drift + sigma_coeff * vega - self.intr * price
+        return -theta
 
 
 class CevMc(CevParams, OptABC):
