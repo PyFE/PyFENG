@@ -155,10 +155,10 @@ class BsmAsianJsu(BsmParams, OptABC):
 
     def price_mvsk(self, texp):
         """
-        Mean, coef_var, skewness, and raw kurtosis of S_bar at spot=1.
+        Mean, var_scaled, skewness, and raw kurtosis of S_bar at spot=1.
 
-        coef_var = std / mean = sqrt(mu2) / mu1 is scale-invariant (spot cancels).
-        Rescale: mean *= spot; coef_var, skew, kurt are all scale-invariant.
+        var_scaled = var / mean²  = (std/mean)² = mu2/mu1² is scale-invariant (spot cancels).
+        Rescale: mean *= spot; var_scaled, skew, kurt are all scale-invariant.
 
         For small v = sigma^2*T the raw-moment formulas have 1/v^n singularities that
         cancel analytically.  mu2 uses the aa/bb form (no blow-up); mu3/mu4 switch to
@@ -176,7 +176,7 @@ class BsmAsianJsu(BsmParams, OptABC):
             texp: time to expiry
 
         Returns:
-            (mean, coef_var, skewness, raw kurtosis) at spot=1
+            (mean, var_scaled, skewness, raw kurtosis) at spot=1
         """
         # [Verified: Claude Sonnet 4.6, 2026-05-08]
         # Taylor derivation (fixed p, expand in v):
@@ -224,13 +224,12 @@ class BsmAsianJsu(BsmParams, OptABC):
         mu3 = np.where(v < 0.01, 2*v**2/5,       m3 - 3*m2*m1 + 2*m1**3)
         mu4 = np.where(v < 0.01, v**2/3,  m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4)
 
-        # coef_var = std/mean;  skew = mu3/mu2^(3/2);  raw kurt = mu4/mu2^2.
-        std = np.sqrt(mu2)
-        coef_var = std / m1
-        skew = mu3 / std**3
+        # var_scaled = var/mean²;  skew = mu3/mu2^(3/2);  raw kurt = mu4/mu2^2.
+        var_scaled = mu2 / m1**2
+        skew = mu3 / mu2**1.5
         kurt = mu4 / mu2**2
 
-        return m1, coef_var, skew, kurt
+        return m1, var_scaled, skew, kurt
 
     def price(self, strike, spot, texp, cp=1):
         """
@@ -246,13 +245,11 @@ class BsmAsianJsu(BsmParams, OptABC):
         """
         df = np.exp(-texp * self.intr)
 
-        mu, coef_var, skew, kurt = self.price_mvsk(texp)
+        mu, var_scaled, skew, kurt = self.price_mvsk(texp)
         mu *= spot
-        var = (coef_var * mu)**2
-
-        m = nsvh.Nsvh1(sigma=self.sigma, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
-        m.calibrate_vsk(var, skew, kurt - 3, texp, setval=True)
-        price = m.price(strike, mu, texp, cp)
+        price = nsvh.Nsvh1.from_vsk(
+            (var_scaled * mu**2, skew, kurt - 3), texp=texp, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd
+        ).price(strike, mu, texp, cp)
 
         return df * price
 

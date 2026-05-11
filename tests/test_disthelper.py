@@ -12,8 +12,8 @@ class TestDistHelperScipyStats(unittest.TestCase):
     Compare mvsk() against scipy_stats().stats('mvsk') for each distribution.
 
     mvsk() convention:
-        DistGamma / DistInvGauss / DistGig  →  (mean, coef_var, skewness, excess_kurtosis)
-        DistGh / DistNig                    →  (mean, variance,  skewness, excess_kurtosis)
+        DistGamma / DistInvGauss / DistGig  →  (mean, var_scaled, skewness, excess_kurtosis)
+        DistGh / DistNig                    →  (mean, variance,   skewness, excess_kurtosis)
 
     scipy stats('mvsk') always returns (mean, variance, skewness, excess_kurtosis).
     """
@@ -31,8 +31,8 @@ class TestDistHelperScipyStats(unittest.TestCase):
     def test_gamma(self):
         for kw in self.GAMMA_PARAMS:
             d = DistGamma(**kw)
-            mean, cv, skew, exkurt = d.mvsk()
-            var = (cv * mean) ** 2
+            mean, var_scaled, skew, exkurt = d.mvsk()
+            var = var_scaled * mean**2
             sm, sv, ss, sk = d.scipy_stats().stats('mvsk')
             np.testing.assert_allclose(mean,   sm, rtol=self.rtol, err_msg=f"Gamma mean {kw}")
             np.testing.assert_allclose(var,    sv, rtol=self.rtol, err_msg=f"Gamma var {kw}")
@@ -50,8 +50,8 @@ class TestDistHelperScipyStats(unittest.TestCase):
     def test_invgauss(self):
         for kw in self.IG_PARAMS:
             d = DistInvGauss(**kw)
-            mean, cv, skew, exkurt = d.mvsk()
-            var = (cv * mean) ** 2
+            mean, var_scaled, skew, exkurt = d.mvsk()
+            var = var_scaled * mean**2
             sm, sv, ss, sk = d.scipy_stats().stats('mvsk')
             np.testing.assert_allclose(mean,   sm, rtol=self.rtol, err_msg=f"IG mean {kw}")
             np.testing.assert_allclose(var,    sv, rtol=self.rtol, err_msg=f"IG var {kw}")
@@ -69,8 +69,8 @@ class TestDistHelperScipyStats(unittest.TestCase):
     def test_gig(self):
         for kw in self.GIG_PARAMS:
             d = DistGig(**kw)
-            mean, cv, skew, exkurt = d.mvsk()
-            var = (cv * mean) ** 2
+            mean, var_scaled, skew, exkurt = d.mvsk()
+            var = var_scaled * mean**2
             sm, sv, ss, sk = d.scipy_stats().stats('mvsk')
             np.testing.assert_allclose(mean,   sm, rtol=self.rtol, err_msg=f"GIG mean {kw}")
             np.testing.assert_allclose(var,    sv, rtol=self.rtol, err_msg=f"GIG var {kw}")

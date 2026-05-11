@@ -2,8 +2,8 @@ import abc
 import numpy as np
 from .sv_abc import CondMcBsmABC
 from .params import Sv32Params
+from .heston import CirModel
 from .mgf2mom import Mgf2Mom
-from . import heston_mc
 import scipy.optimize as spop
 import scipy.special as spsp
 import scipy.stats as spst
@@ -11,15 +11,15 @@ import scipy.stats as spst
 
 class Sv32McABC(Sv32Params, CondMcBsmABC):
     scheme = None
-    _m_heston = None
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True):
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-
-        mr = self.mr * self.theta
-        theta = (self.mr + self.vov ** 2) / mr
-        self._m_heston = heston_mc.HestonMcAndersen2008(1/self.sigma, self.vov, self.rho, mr, theta)
-        self._m_heston.set_num_params(n_path, dt, rn_seed, antithetic)
+    @property
+    def cir(self):
+        """CirModel for the reciprocal process 1/V under the 3/2 model.
+        The parameters follow from dV = mr·V·(θ - V)dt + vov·V^{3/2}dW,
+        so 1/V follows a CIR with κ = mr·θ, θ_cir = (mr + vov²)/(mr·θ), ξ = vov.
+        """
+        mr_new = self.mr * self.theta
+        return CirModel(sigma=self.vov, mr=mr_new, theta=(self.mr + self.vov**2) / mr_new)
 
     @abc.abstractmethod
     def cond_states_step(self, dt, var_0):
@@ -102,8 +102,8 @@ class Sv32McABC(Sv32Params, CondMcBsmABC):
         Returns:
             (integarted variance / dt)
         """
-        phi, _ = self._m_heston.phi_exp(dt)
-        nu = self._m_heston.chi_dim()/2 - 1
+        phi, _ = self.cir.phi_exp(dt)
+        nu = self.cir.chi_dim()/2 - 1
 
         vov2dt = self.vov**2 * dt
         d1_nu_bb = 4 / vov2dt / nu
@@ -121,8 +121,9 @@ class Sv32McABC(Sv32Params, CondMcBsmABC):
             var = d2_nu_bb * d1 - d1_nu_bb**2 * spsp.polygamma(1, eta + nu + 1)
             d1 *= -d1_nu_bb
 
-        var[var < 0] = 1e-64
-        return d1, var
+        var_scaled = var / d1**2
+        var_scaled[var_scaled < 0] = 1e-64
+        return d1, var_scaled
 
     def cond_spot_sigma(self, texp, var_0):
         tobs = self.tobs(texp)
@@ -188,11 +189,11 @@ class Sv32McTimeStep(Sv32McABC):
             var_t = self.var_step_euler(var_0, dt, milstein=milstein)
         elif self.scheme == 2:
             # Euler (or Milstein) scheme
-            var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+            var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rng_spawn[0])
             np.divide(1.0, var_t, out=var_t)
         elif self.scheme == 3:
             # Euler (or Milstein) scheme
-            var_t, _ = self._m_heston.var_step_pois_gamma(dt, 1 / var_0)
+            var_t, _ = self.cir.draw_pois_gamma(dt, 1 / var_0, self.rng_spawn[0], self.rng_spawn[1])
             np.divide(1.0, var_t, out=var_t)
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
@@ -220,8 +221,8 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
 
     def cond_avgvar_laplace(self, bb, dt, var_0, var_t, eta=None):
         vov2dt = self.vov**2 * dt
-        phi, _ = self._m_heston.phi_exp(dt)
-        nu = self._m_heston.chi_dim()/2 - 1
+        phi, _ = self.cir.phi_exp(dt)
+        nu = self.cir.chi_dim()/2 - 1
         nu_bb = np.sqrt(nu**2 + 8*bb/vov2dt)
         zz = phi / np.sqrt(var_0 * var_t)
 
@@ -285,7 +286,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t = self._m_heston.var_step_ncx2(dt, 1 / var_0)
+        var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rng_spawn[0])
         np.divide(1.0, var_t, out=var_t)
 
         avgvar = self.draw_cond_avgvar(dt, var_0, var_t)
@@ -297,33 +298,28 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
 
     dist = 'ig'
 
-    def draw_from_mv(self, mean, var, dist):
+    def draw_from_mv(self, mean, var_scaled, dist):
         """
-        Draw RNs from distributions with mean and variance matched
+        Draw RNs from distributions with mean and var_scaled matched.
         Args:
             mean: mean (1d array)
-            var: variance (1d array)
+            var_scaled: scaled variance (= variance / mean^2, 1d array)
             dist: distribution. 'ig' for IG, 'ga' for Gamma, 'ln' for log-normal
 
         Returns:
-            RNs with size of mean/variance
+            RNs with size of mean/var_scaled
         """
         idx = (mean > np.finfo(float).eps)
         avgvar = np.zeros_like(mean)
         mean = mean[idx]
-        var = var[idx]
+        var_scaled = var_scaled[idx]
 
         if dist.lower() == 'ig':
-            # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
-            # RNG.wald takes the same parameters
-            lam = mean ** 3 / var
-            avgvar[idx] = self.rng_spawn[1].wald(mean=mean, scale=lam)
+            avgvar[idx] = self.rng_spawn[1].wald(mean=mean, scale=mean / var_scaled)
         elif dist.lower() == 'ga':
-            scale = var / mean
-            shape = mean / scale
-            avgvar[idx] = scale * self.rng_spawn[1].standard_gamma(shape=shape)
+            avgvar[idx] = var_scaled * mean * self.rng_spawn[1].standard_gamma(shape=1 / var_scaled)
         elif dist.lower() == 'ln':
-            scale = np.sqrt(np.log1p(var/mean**2))
+            scale = np.sqrt(np.log1p(var_scaled))
             avgvar[idx] = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
         else:
             raise ValueError(f"Incorrect distribution: {dist}.")
@@ -351,7 +347,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             return np.log(self.cond_avgvar_laplace(-np.asarray(bb, dtype=complex), dt, var_0, var_t))
 
         cum = Mgf2Mom(cumgenfunc_cond).moments(2)
-        return cum[0], cum[1]
+        return cum[0], cum[1] / cum[0]**2
 
     def cond_states_step_invlap(self, var_0, texp):
         """
@@ -363,8 +359,8 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t, eta = self._m_heston.var_step_pois_gamma(texp, 1 / var_0)
-        # var_t = self._m_heston.var_step_ncx2(1/var_0, dt)
+        var_t, eta = self.cir.draw_pois_gamma(texp, 1 / var_0, self.rng_spawn[0], self.rng_spawn[1])
+
         np.divide(1.0, var_t, out=var_t)
         # print('eta', eta.min(), eta.mean(), eta.max())
 
@@ -413,10 +409,9 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             (var_t, avgvar)
         """
 
-        # var_t, _ = self._m_heston.var_step_pois_gamma(1/var_0, dt)
-        var_t = self._m_heston.var_step_ncx2(dt, 1/var_0)
+        var_t = self.cir.draw_ncx2(dt, 1/var_0, self.rng_spawn[0])
         np.divide(1.0, var_t, out=var_t)
-        m1, var = self.cond_avgvar_mv(dt, var_0, var_t, eta=None)
-        avgvar = self.draw_from_mv(m1, var, self.dist)
+        m1, var_scaled = self.cond_avgvar_mv(dt, var_0, var_t, eta=None)
+        avgvar = self.draw_from_mv(m1, var_scaled, self.dist)
 
         return var_t, avgvar

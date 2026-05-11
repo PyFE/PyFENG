@@ -107,8 +107,8 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
         assert np.isclose(self.rho, 0.0)
 
         vovn = self.vov * np.sqrt(texp)
-        m1, cv, *_ = self.avgvar_mvsk(vovn)
-        avgvar, ww = DistLognormal.from_mv(m1, cv).quad(self.n_quad)
+        m1, var_scaled, *_ = self.avgvar_mvsk(vovn)
+        avgvar, ww = DistLognormal.from_mv(m1, var_scaled).quad(self.n_quad)
 
         return np.full(self.n_quad, 1.0), np.sqrt(avgvar), ww
 
@@ -149,8 +149,8 @@ class SabrMixtureChoi(SabrMixtureABC):
         w0 = w0[:, None]
         zhat = zhat[:, None]
 
-        m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-        avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
+        m1, var_scaled, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+        avgvar, w2 = DistLognormal.from_mv(m1, var_scaled, lam=self.sln_lam).quad(self.n_quad[1])
 
         r_vol = rhoc * np.sqrt(avgvar)
         w0123 = w0 * w2

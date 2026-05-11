@@ -22,34 +22,34 @@ class DistLognormal:
         self.validate = validate
 
     @classmethod
-    def from_mv(cls, mean, coef_var, lam=1.0):
+    def from_mv(cls, mean, var_scaled, lam=1.0):
         """
-        Construct from mean and coefficient of variation (coef_var = std/mean).
+        Construct from mean and scaled variance (var_scaled = var/mean²  = (std/mean)²).
 
         Args:
             mean: distribution mean
-            coef_var: coefficient of variation (std / mean)
+            var_scaled: scaled variance (var / mean²  = (std/mean)²)
             lam: lambda parameter (default 1.0, plain lognormal)
 
         Returns:
-            DistLognormal instance calibrated to (mean, coef_var)
+            DistLognormal instance calibrated to (mean, var_scaled)
         """
         obj = cls()
-        obj.fit([mean, coef_var], lam=lam)
+        obj.fit([mean, var_scaled], lam=lam)
         return obj
 
     def mvsk(self):
         """
-        Mean, coefficient of variation (coef_var = std/mean), skewness, excess kurtosis.
+        Mean, scaled variance (var_scaled = var/mean²  = (std/mean)²), skewness, excess kurtosis.
 
         Returns:
-            (mean, coef_var, skewness, excess_kurtosis)
+            (mean, var_scaled, skewness, excess_kurtosis)
         """
         ww = np.expm1(self.sig**2)
-        coef_var = self.lam * np.sqrt(ww)
+        var_scaled = self.lam**2 * ww
         skew = np.sqrt(ww) * (ww + 3)
         exkur = ww * (16 + ww * (15 + ww * (6 + ww)))
-        return self.mu, coef_var, skew, exkur
+        return self.mu, var_scaled, skew, exkur
 
     def mc4(self):
         """
@@ -58,8 +58,8 @@ class DistLognormal:
         Returns:
             (m1, mc2, mc3, mc4)
         """
-        m1, cv, s, k = self.mvsk()
-        mc2 = (cv * m1)**2
+        m1, vs, s, k = self.mvsk()
+        mc2 = vs * m1**2
         mc3 = s * mc2**1.5
         mc4 = (k + 3.0) * mc2**2
         return m1, mc2, mc3, mc4
@@ -69,8 +69,8 @@ class DistLognormal:
         Calibrate parameters from moments.
 
         Args:
-            mvs: (mean, coef_var) or (mean, coef_var, skewness).
-                 coef_var = std / mean.
+            mvs: (mean, var_scaled) or (mean, var_scaled, skewness).
+                 var_scaled = var / mean²  = (std/mean)².
                  If skewness is provided, lam is calibrated; otherwise self.lam is used.
             lam: override for lam when len(mvs) == 2.
         """
@@ -85,12 +85,12 @@ class DistLognormal:
                     raise ValueError("lam must be specified when mvs has only 2 elements.")
             else:
                 self.lam = lam
-            ww = (mvs[1] / self.lam)**2
+            ww = mvs[1] / self.lam**2
             self.sig = np.sqrt(np.log1p(ww))
         else:
             s = mvs[2]
             sqrt_w = 2 * np.sinh(np.arccosh(1 + 0.5 * s**2) / 6)
-            self.lam = mvs[1] / sqrt_w
+            self.lam = np.sqrt(mvs[1]) / sqrt_w
             self.sig = np.sqrt(np.log1p(sqrt_w**2))
 
         if self.validate:
@@ -160,6 +160,25 @@ class DistLognormal:
             return x, w, zhat
         return x, w
 
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the shifted lognormal distribution.
+
+        Distribution parameters (sig, mu, lam) may be numpy arrays and are
+        broadcast against the generated standard-normal draws.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to standard_normal)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        z = rng.standard_normal(n_sample)
+        return self.mu * (1 - self.lam + self.lam * np.exp(self.sig * z - 0.5 * self.sig**2))
+
 
 class DistGamma:
     """
@@ -184,19 +203,19 @@ class DistGamma:
         self.rate = rate
 
     @classmethod
-    def from_mv(cls, mean, coef_var):
+    def from_mv(cls, mean, var_scaled):
         """
-        Construct from mean and coefficient of variation (coef_var = std/mean).
+        Construct from mean and scaled variance (var_scaled = var/mean²  = (std/mean)²).
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); equals 1/sqrt(shape)
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); equals 1/shape
 
         Returns:
-            DistGamma instance with shape = 1/coef_var², rate = 1/(coef_var² * mean)
+            DistGamma instance with shape = 1/var_scaled, rate = 1/(var_scaled * mean)
         """
         obj = cls()
-        obj.fit(mean, coef_var)
+        obj.fit(mean, var_scaled)
         return obj
 
     @property
@@ -205,16 +224,16 @@ class DistGamma:
 
     def mvsk(self):
         """
-        Mean, coefficient of variation (coef_var = std/mean), skewness, excess kurtosis.
+        Mean, scaled variance (var_scaled = var/mean²  = (std/mean)²), skewness, excess kurtosis.
 
         Returns:
-            (mean, coef_var, skewness, excess_kurtosis)
+            (mean, var_scaled, skewness, excess_kurtosis)
         """
         mean = self.shape / self.rate
-        coef_var = 1.0 / np.sqrt(self.shape)
+        var_scaled = 1.0 / self.shape
         skew = 2.0 / np.sqrt(self.shape)
         exkurt = 6.0 / self.shape
-        return mean, coef_var, skew, exkurt
+        return mean, var_scaled, skew, exkurt
 
     def mc4(self):
         """
@@ -223,22 +242,22 @@ class DistGamma:
         Returns:
             (m1, mc2, mc3, mc4)
         """
-        m1, cv, skew, exkurt = self.mvsk()
-        var = (cv * m1)**2
+        m1, var_scaled, skew, exkurt = self.mvsk()
+        var = var_scaled * m1**2
         mc3 = skew * var**1.5
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
-    def fit(self, mean, coef_var):
+    def fit(self, mean, var_scaled):
         """
-        Calibrate shape and rate from mean and coefficient of variation.
+        Calibrate shape and rate from mean and scaled variance.
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); > 0
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); > 0
         """
-        self.shape = 1.0 / coef_var**2
-        self.rate = 1.0 / (coef_var**2 * mean)
+        self.shape = 1.0 / var_scaled
+        self.rate = 1.0 / (var_scaled * mean)
 
     def scipy_stats(self):
         """
@@ -275,6 +294,24 @@ class DistGamma:
         w /= w_sum
         return x, w
 
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the Gamma distribution.
+
+        Distribution parameters (shape, rate) may be numpy arrays; numpy
+        broadcasts them against size and raises if they are inconsistent.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to standard_gamma)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        return rng.standard_gamma(self.shape, size=n_sample) / self.rate
+
 
 class DistInvGauss:
     """
@@ -303,19 +340,19 @@ class DistInvGauss:
         self.lam = lam
 
     @classmethod
-    def from_mv(cls, mean, coef_var):
+    def from_mv(cls, mean, var_scaled):
         """
-        Construct from mean and coefficient of variation (coef_var = std/mean).
+        Construct from mean and scaled variance (var_scaled = var/mean²  = (std/mean)²).
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); equals sqrt(mu/lam)
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); equals mu/lam
 
         Returns:
-            DistInvGauss instance with mu=mean, lam=mean/coef_var²
+            DistInvGauss instance with mu=mean, lam=mean/var_scaled
         """
         obj = cls()
-        obj.fit(mean, coef_var)
+        obj.fit(mean, var_scaled)
         return obj
 
     @classmethod
@@ -345,16 +382,16 @@ class DistInvGauss:
 
     def mvsk(self):
         """
-        Mean, coefficient of variation (coef_var = std/mean), skewness, excess kurtosis.
+        Mean, scaled variance (var_scaled = var/mean²  = (std/mean)²), skewness, excess kurtosis.
 
         Returns:
-            (mean, coef_var, skewness, excess_kurtosis)
+            (mean, var_scaled, skewness, excess_kurtosis)
         """
         mean = self.mu
-        coef_var = np.sqrt(self.mu / self.lam)
+        var_scaled = self.mu / self.lam
         skew = 3.0 * np.sqrt(self.mu / self.lam)
         exkurt = 15.0 * self.mu / self.lam
-        return mean, coef_var, skew, exkurt
+        return mean, var_scaled, skew, exkurt
 
     def mc4(self):
         """
@@ -363,22 +400,22 @@ class DistInvGauss:
         Returns:
             (m1, mc2, mc3, mc4)
         """
-        m1, cv, skew, exkurt = self.mvsk()
-        var = (cv * m1)**2
+        m1, var_scaled, skew, exkurt = self.mvsk()
+        var = var_scaled * m1**2
         mc3 = skew * var**1.5
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
-    def fit(self, mean, coef_var):
+    def fit(self, mean, var_scaled):
         """
-        Calibrate mu and lam from mean and coefficient of variation.
+        Calibrate mu and lam from mean and scaled variance.
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); equals sqrt(mu/lam)
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); equals mu/lam
         """
         self.mu = mean
-        self.lam = mean / coef_var**2
+        self.lam = mean / var_scaled
 
     def scipy_stats(self):
         """
@@ -427,6 +464,24 @@ class DistInvGauss:
 
         return x, w
 
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the Inverse Gaussian distribution.
+
+        Distribution parameters (mu, lam) may be numpy arrays; numpy
+        broadcasts them against size and raises if they are inconsistent.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to wald)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        return rng.wald(self.mu, self.lam, size=n_sample)
+
 
 class DistGig:
     """
@@ -463,20 +518,20 @@ class DistGig:
         self.p = p
 
     @classmethod
-    def from_mv(cls, mean, coef_var, p=-0.5):
+    def from_mv(cls, mean, var_scaled, p=-0.5):
         """
-        Construct from mean and coefficient of variation (coef_var = std/mean) with fixed p.
+        Construct from mean and scaled variance (var_scaled = var/mean²  = (std/mean)²) with fixed p.
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); > 0
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); > 0
             p: index parameter (default -0.5, i.e. Inverse Gaussian)
 
         Returns:
-            DistGig instance calibrated to (mean, coef_var) with given p
+            DistGig instance calibrated to (mean, var_scaled) with given p
         """
         obj = cls(p=p)
-        obj.fit(mean, coef_var)
+        obj.fit(mean, var_scaled)
         return obj
 
     def mnc(self, r):
@@ -491,10 +546,10 @@ class DistGig:
 
     def mvsk(self):
         """
-        Mean, coefficient of variation (coef_var = std/mean), skewness, excess kurtosis.
+        Mean, scaled variance (var_scaled = var/mean²  = (std/mean)²), skewness, excess kurtosis.
 
         Returns:
-            (mean, coef_var, skewness, excess_kurtosis)
+            (mean, var_scaled, skewness, excess_kurtosis)
         """
         m1, m2, m3, m4 = self.mnc([1, 2, 3, 4])
         var = m2 - m1**2
@@ -502,8 +557,8 @@ class DistGig:
         mc4 = m4 - 4 * m3 * m1 + 6 * m2 * m1**2 - 3 * m1**4
         skew = mc3 / var**1.5
         exkurt = mc4 / var**2 - 3.0
-        coef_var = np.sqrt(var) / m1
-        return m1, coef_var, skew, exkurt
+        var_scaled = var / m1**2
+        return m1, var_scaled, skew, exkurt
 
     def mc4(self):
         """
@@ -512,32 +567,32 @@ class DistGig:
         Returns:
             (m1, mc2, mc3, mc4)
         """
-        m1, cv, skew, exkurt = self.mvsk()
-        var = (cv * m1)**2
+        m1, var_scaled, skew, exkurt = self.mvsk()
+        var = var_scaled * m1**2
         mc3 = skew * var**1.5
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
-    def fit(self, mean, coef_var):
+    def fit(self, mean, var_scaled):
         """
-        Calibrate gamma and delta from mean and coefficient of variation with p fixed.
+        Calibrate gamma and delta from mean and scaled variance with p fixed.
 
-        coef_var = std/mean depends only on the product η = gamma*delta (for fixed p),
+        var_scaled = var/mean² depends only on the product η = gamma*delta (for fixed p),
         which is found by a scalar root-find.  The scale rho = delta/gamma is then set from
         the mean.
 
         Args:
             mean: distribution mean (> 0)
-            coef_var: coefficient of variation (std / mean); > 0
+            var_scaled: scaled variance (var / mean²  = (std/mean)²); > 0
         """
         def cv2_err(eta):
             # kve = kv * exp(eta); exp factors cancel in ratios → numerically stable
             kve_p = spsp.kve(self.p, eta)
             r1 = spsp.kve(self.p + 1, eta) / kve_p
             r2 = spsp.kve(self.p + 2, eta) / kve_p
-            return (r2 - r1**2) / r1**2 - coef_var**2
+            return (r2 - r1**2) / r1**2 - var_scaled
 
-        # coef_var² is decreasing in η; bracket: large η → coef_var ≈ 0, small η → coef_var large
+        # var_scaled is decreasing in η; bracket: large η → var_scaled ≈ 0, small η → var_scaled large
         eta = spop.brentq(cv2_err, 1e-6, 1e4)
 
         kve_p = spsp.kve(self.p, eta)
