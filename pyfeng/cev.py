@@ -26,12 +26,13 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         fwd = self.forward(spot, texp)
 
         betac = 1.0 - self.beta
-        a = 0.5 / betac  # shape parameter of gamma
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        x = 0.5 * np.power(fwd, 2*betac) / var
+        a = 0.5 / betac  # shape parameter of gamma distribution
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        x = 0.5 / var  # = z_0 / 2
 
         if log:
-            log_mass = (a - 1)*np.log(x) - x - np.log(spsp.gamma(a))
+            log_mass = (a - 1)*np.log(x) - x - spsp.loggamma(a)
             log_mass += np.log1p((a - 1)/x*(1 + (a - 2)/x*(1 + (a - 3)/x*(1 + (a - 4)/x))))
             with np.errstate(divide="ignore"):
                 log_mass = np.where(x > 100, log_mass, np.log(spst.gamma.sf(x=x, a=a)))
@@ -107,14 +108,14 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         fwd, df, divf = self._fwd_factor(spot, texp)
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        xx = 1.0 / var                              # z_0  (F_0-normalised)
+        yy = np.power(strike/fwd, 2*betac) * xx     # z_K = (K/F_0)^{2β*} z_0
 
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var    # z_0
-        yy = np.power(strike, 2*betac) / var  # z_K
-
-        # Delta = Q_χ²(z_K; 2ν, z_0) for β<1,  Q_χ²(z_0; 2+2ν, z_K) for β>1
-        # Derived by differentiating the Theorem 6 equivalent price form;
-        # boundary terms cancel via the exchange lemma F_0 f(z_K;2+2ν,z_0) = K f(z_0;2+2ν,z_K).
+        # Delta = Q_χ²(z_K; 2ν, z_0) for β<1,  Q_χ²(z_0; 2+2ν, z_K) for β>1.
+        # Boundary terms vanish because yy is F_0-independent (∂yy/∂F_0 = 0),
+        # and the exchange lemma kills the xx-derivative residual.
         if self.beta < 1.0:
             delta = 0.5*(cp - 1) + spst.ncx2.sf(yy, betac_inv, xx)
         else:
@@ -142,20 +143,20 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
 
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        xx = 1.0 / var                              # z_0  (F_0-normalised)
+        yy = np.power(strike/fwd, 2*betac) * xx     # z_K = (K/F_0)^{2β*} z_0
 
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var    # z_0
-        yy = np.power(strike, 2*betac) / var  # z_K
-
-        # Γ = ∂Δ/∂F_0 = (2|β*| z_0/F_0) f_χ²(z_K; 2+2ν, z_0)  for β<1
-        #              = (2|β*| z_0/F_0) f_χ²(z_0; 2+2ν, z_K)  for β>1
-        # Factor (divf/df)²·df converts forward-gamma to spot-gamma.
+        # Γ_fwd = ∂Δ/∂F_0 = (2|β*| xx / fwd) f_χ²(·; 2+2ν, ·)
+        # In the F_0=1 frame: 2|β*| xx · f_χ²; rescale back by 1/fwd.
+        # (divf²/df) converts forward-gamma to spot-gamma.
         if self.beta < 1.0:
-            gamma = 2*betac*xx/fwd * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
+            gamma = 2*betac * xx * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
         else:
-            gamma = -2*betac*xx/fwd * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
+            gamma = -2*betac * xx * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
 
-        gamma *= (divf**2/df)
+        gamma *= divf**2 / (df * fwd)   # rescale 1/fwd, then fwd→spot conversion
 
         if self.is_fwd:
             gamma *= (df/divf)**2
@@ -167,20 +168,19 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
 
         betac = 1.0 - self.beta
         betac_inv = 1.0/betac
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        xx = 1.0 / var                              # z_0  (F_0-normalised)
+        yy = np.power(strike/fwd, 2*betac) * xx     # z_K = (K/F_0)^{2β*} z_0
 
-        var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var    # z_0
-        yy = np.power(strike, 2*betac) / var  # z_K
-
-        # V = ∂C/∂σ = (2F_0/σβ*) f_χ²(z_K; 2+2ν, z_0)  for β<1
-        #           = (2F_0/σ|β*|) f_χ²(z_0; 2+2ν, z_K)  for β>1
-        # σ here is the CEV parameter (dF = σ F^β dW).
-        # Derivation: z_0-terms from Theorem 5 differentiation; z_K bracket cancels by
-        # exchange lemma; Theorem 2 collapses the remaining two-term sum.
+        # V = ∂C/∂σ (CEV σ in dF = σ F^β dW).
+        # In the F_0=1 frame: V_1 = (2/αβ*) f_χ²(·; 2+2ν, ·).
+        # Rescale to actual F_0: multiply by fwd^β, since
+        #   2F_0/(σβ*) = 2F_0^β/(αβ*)  [using σ = α·F_0^{β*}, β+β*=1].
         if self.beta < 1.0:
-            vega = 2*fwd / (self.sigma * betac) * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
+            vega = 2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
         else:
-            vega = -2*fwd / (self.sigma * betac) * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
+            vega = -2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
 
         return df * vega
 
