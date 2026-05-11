@@ -26,7 +26,7 @@ from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 # Other SV models
 from .garch import GarchMcTimeDisc, GarchUncorrBaroneAdesi2004
 
-from .heston import HestonUncorrBallRoma1994
+from .heston import CirModel, HestonUncorrBallRoma1994
 from .heston_mc import (
     HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
     HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd

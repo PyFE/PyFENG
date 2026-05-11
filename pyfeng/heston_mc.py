@@ -606,7 +606,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(aa):
-            return np.log(self.x2_avgvar_mgf(aa, dt, 1))
+            return np.log(self.x2_avgvar_mgf(np.asarray(aa, dtype=complex), dt, 1))
 
         cum = Mgf2Mom(cumgenfunc_cond).moments(2)
         return cum[0], cum[1]

@@ -6,6 +6,147 @@ from .util import MathFuncs
 from .params import HestonParams
 
 
+class CirModel:
+    """
+    Cox-Ingersoll-Ross (CIR) process:
+
+        dV_t = mr * (theta - V_t) dt + sigma * sqrt(V_t) dW_t
+
+    Parameters:
+        mr    (κ > 0): mean-reversion speed
+        theta (θ > 0): long-run mean
+        sigma (ξ > 0): diffusion coefficient
+
+    References:
+        Cox JC, Ingersoll JE, Ross SA (1985) A theory of the term structure
+        of interest rates. Econometrica 53:385–407.
+        https://doi.org/10.2307/1911242
+
+    # [Created: Claude Sonnet 4.6, 2026-05-10]
+    """
+
+    sigma: float = 0.2
+    mr: float = 1.0
+    theta: float = 0.04
+
+    def __init__(self, sigma=0.2, mr=1.0, theta=0.04):
+        self.sigma = sigma
+        self.mr = mr
+        self.theta = theta
+
+    def log_mgf(self, uu, texp, v0):
+        """
+        Log-MGF of the integrated CIR process J_T = ∫₀ᵀ V_t dt:
+
+            log E[exp(uu · J_T) | V_0 = v0] = A(T, uu) + B(T, uu) · v0
+
+        with γ = √(κ² − 2·uu·ξ²) and Δ = 2γ + (κ+γ)(e^{γT}−1):
+
+            B(T, uu) = 2·uu·(e^{γT}−1) / Δ
+            A(T, uu) = (κθ/ξ²) · [(κ+γ)T − 2 ln(Δ / 2γ)]
+
+        The log(Δ/2γ) = log1p((κ+γ)/(2γ) · (e^{γT}−1)) form is used for
+        numerical stability when γT or uu is small.  Valid for uu < κ²/(2ξ²).
+
+        Args:
+            uu: MGF argument (uu < κ²/(2ξ²))
+            texp: time horizon T (> 0)
+            v0: initial value V_0 (≥ 0)
+
+        Returns:
+            log-MGF value A(T, uu) + B(T, uu) · v0
+        """
+        gamma = np.sqrt(self.mr**2 - 2 * uu * self.sigma**2)
+        expm1_gT = np.expm1(gamma * texp)
+        Delta = 2*gamma + (self.mr + gamma) * expm1_gT
+        B = 2 * uu * expm1_gT / Delta
+        A = self.mr * self.theta / self.sigma**2 * (
+            (self.mr + gamma) * texp - 2 * np.log1p((self.mr + gamma) / (2*gamma) * expm1_gT)
+        )
+        return A + B * v0
+
+    def mgf(self, uu, texp, v0):
+        """
+        MGF of the integrated CIR process J_T = ∫₀ᵀ V_t dt:
+
+            E[exp(uu · J_T) | V_0 = v0]
+
+        Valid for uu < κ²/(2ξ²).
+
+        Args:
+            uu: MGF argument
+            texp: time horizon T (> 0)
+            v0: initial value V_0 (≥ 0)
+
+        Returns:
+            MGF value
+        """
+        return np.exp(self.log_mgf(uu, texp, v0))
+
+    def cum4_numeric(self, texp, v0):
+        """
+        First four cumulants of V_T given V_0 = v0 via numerical differentiation.
+
+        V_T | V_0 follows a scaled noncentral χ²: V_T = α·W, W ~ χ²(d, λ), where
+
+            α = ξ²(1 − e^{−κT}) / (4κ)
+            d = 4κθ / ξ²
+            λ = v0·e^{−κT} / α
+
+        The MGF is M(u) = (1 − 2αu)^{−d/2} · exp(λαu / (1 − 2αu)), valid for u < 1/(2α).
+        The first two cumulants match mv exactly: κ₁ = E[V_T], κ₂ = Var[V_T].
+
+        Args:
+            texp: time horizon T (> 0)
+            v0: initial value V_0 (≥ 0)
+
+        Returns:
+            (κ₁, κ₂, κ₃, κ₄): first four cumulants of V_T
+        """
+        from .mgf2mom import Mgf2Mom
+        mr_t = self.mr * texp
+        alpha = self.sigma**2 * (-np.expm1(-mr_t)) / (4 * self.mr)
+        d = 4 * self.mr * self.theta / self.sigma**2
+        lam = v0 * np.exp(-mr_t) / alpha
+
+        def mgf_vt(u):
+            u = np.asarray(u, dtype=complex)
+            return np.exp(-(d/2) * np.log1p(-2*alpha*u) + lam * alpha * u / (1 - 2*alpha*u))
+
+        cum = Mgf2Mom(mgf_vt).cumulants(4)
+        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
+
+    def mv(self, dt, v0):
+        """
+        Mean and variance of V(t+dt) given V(t) = v0.
+
+        Exact CIR conditional moments for dV = κ(θ−V)dt + ξ√V dW:
+
+            E[V_{t+dt} | V_t = v0] = θ + (v0 − θ) e^{−κdt}
+            Var[V_{t+dt} | V_t = v0] = ξ²·dt·φ·(v0·e^{−κdt} + θ·κdt·φ / 2)
+
+        where φ = avg_exp(−κdt) = (1 − e^{−κdt}) / (κdt).
+
+        Args:
+            dt: time step
+            v0: initial value V(t) = v0
+
+        Returns:
+            (mean, variance)
+        """
+        # [Verified: Claude Sonnet 4.6, 2026-05-08]
+        # Mean: E[V_{t+dt}|V_t=v0] = θ + (v0-θ)e^{-κdt}  ✓
+        # Variance: with φ=avg_exp(-κdt)=(1-e)/κdt, expanding gives
+        #   s2 = ξ²/κ * [v0*e*(1-e) + θ*(1-e)²/2]
+        # which matches Var = v0*(ξ²/κ)*(e^{-κdt}-e^{-2κdt}) + θ*(ξ²/2κ)*(1-e^{-κdt})²  ✓
+        mr_t = self.mr * dt
+        e_mr = np.exp(-mr_t)
+        mean = self.theta + (v0 - self.theta) * e_mr
+        avg = MathFuncs.avg_exp(-mr_t)
+        var = self.sigma**2 * dt * avg * (v0 * e_mr + self.theta * mr_t * avg / 2)
+        return mean, var
+
+
 class HestonABC(HestonParams, OptABC):
 
     def chi_dim(self):
@@ -35,30 +176,21 @@ class HestonABC(HestonParams, OptABC):
 
     def var_mv(self, dt, var0=None):
         """
-        Mean and variance of the variance V(t+dt) given V(t) = var_0
+        Mean and variance of the variance V(t+dt) given V(t) = var_0.
+
+        Delegates to CirModel.mv with vov as the CIR diffusion coefficient (ξ)
+        and var0 as the initial value.
 
         Args:
-            var0: initial variance
             dt: time step
+            var0: initial variance (default: self.sigma)
 
         Returns:
-            mean, variance
+            (mean, variance)
         """
-        # [Verified: Claude Sonnet 4.6, 2026-05-08]
-        # Exact CIR conditional moments: dV = κ(θ-V)dt + ν√V dW.
-        # Mean: E[V_{t+dt}|V_t=v0] = θ + (v0-θ)e^{-κdt}  ✓
-        # Variance: with avg=(1-e)/κdt (=avg_exp(-κdt)), expanding gives
-        #   s2 = ν²/κ * [v0*e*(1-e) + θ*(1-e)²/2]
-        # which matches the exact formula Var = v0*(ν²/κ)*(e^{-κdt}-e^{-2κdt}) + θ*(ν²/2κ)*(1-e^{-κdt})²  ✓
         if var0 is None:
             var0 = self.sigma
-
-        mr_t = self.mr*dt
-        e_mr = np.exp(-mr_t)
-        m = self.theta + (var0 - self.theta)*e_mr
-        avg = MathFuncs.avg_exp(-mr_t)
-        s2 = self.vov**2 * dt * avg * (var0*e_mr + self.theta*mr_t*avg/2)
-        return m, s2
+        return CirModel(mr=self.mr, theta=self.theta, sigma=self.vov).mv(dt, v0=var0)
 
     def avgvar_mv(self, texp, var0=None):
         """
