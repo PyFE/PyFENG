@@ -32,7 +32,7 @@ from .heston_mc import (
     HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd
 )
 
-from .rheston_mc import RoughHestonMcMaWu2022
+from .heston_rough_mc import RoughHestonMcMaWu2022
 
 from .ousv import OusvUncorrBallRoma1994, OusvMcTimeDisc, OusvMcChoi2025KL
 from .svi import Svi

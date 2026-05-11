@@ -4,10 +4,10 @@ import scipy.fft as spfft
 import scipy.special as spsp
 import scipy.interpolate as spinterp
 import scipy.integrate as spint
-from . import ousv
-from . import heston
-from . import rheston
-from . import sv32
+from .ousv import OusvABC
+from .heston import HestonABC
+from .heston_rough import RoughHestonABC
+from .sv32 import Sv32ABC
 from .bsm import Bsm
 from .opt_abc import OptABC
 from .params import GarchParams, CgmyParams
@@ -136,7 +136,7 @@ class ExpNigFft(NigABC, FftABC):
     """
 
 
-class HestonFft(heston.HestonABC, FftABC):
+class HestonFft(HestonABC, FftABC):
     """
     Heston model option pricing with FFT
 
@@ -155,7 +155,7 @@ class HestonFft(heston.HestonABC, FftABC):
     """
 
 
-class RoughHestonFft(rheston.RoughHestonABC, FftABC):
+class RoughHestonFft(RoughHestonABC, FftABC):
     """
     Rough Heston model option pricing with FFT.
 
@@ -186,14 +186,14 @@ class RoughHestonFft(rheston.RoughHestonABC, FftABC):
 
 
 
-class OusvFft(ousv.OusvABC, FftABC):
+class OusvFft(OusvABC, FftABC):
     """
     OUSV model option pricing with FFT
 
     """
 
 
-class Sv32Fft(sv32.Sv32ABC, FftABC):
+class Sv32Fft(Sv32ABC, FftABC):
     """
     3/2 model option pricing with Fourier inversion
 

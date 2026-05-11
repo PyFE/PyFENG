@@ -28,7 +28,7 @@
    sv_fft
    ousv
    garch
-   rheston
+   heston_rough
    sv32
 
 .. toctree::
