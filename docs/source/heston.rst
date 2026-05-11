@@ -12,7 +12,3 @@ Heston Model
    :exclude-members: HestonMcABC
    :noindex:
 
-.. automodule:: pyfeng.heston_mixture
-   :members: HestonMixture
-   :inherited-members:
-   :noindex:

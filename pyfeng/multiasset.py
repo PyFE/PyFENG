@@ -153,17 +153,17 @@ class BsmBasketABC(MaParams, OptABC):
         $m_2$ is a single matrix product; $m_3$ uses two; $m_4$ uses a reshape-matmul-reshape
         on $N_{ijk} = P_{ik} P_{jk}$.  All are $O(n^k)$ but fully vectorised.
 
-        The second return value is the coefficient of variation,
-        $\\widetilde{\\beta} = \\sqrt{\\mathrm{Var}(B)} / E[B] = \\sqrt{m_2/m_1^2 - 1}$,
+        The second return value is the scaled variance,
+        $\\widetilde{\\beta}^2 = \\mathrm{Var}(B) / E[B]^2 = m_2/m_1^2 - 1$,
         consistent with :class:`DistLognormal`.
 
         Args:
             fwd: forward price array (n_asset,)
             texp: time to expiry
-            order: 2 returns ``(mean, coef_var)``; 4 (default) returns ``(mean, coef_var, skew, exkurt)``
+            order: 2 returns ``(mean, var_scaled)``; 4 (default) returns ``(mean, var_scaled, skew, exkurt)``
 
         Returns:
-            ``(mean, coef_var)`` if *order* = 2, else ``(mean, coef_var, skew, exkurt)``
+            ``(mean, var_scaled)`` if *order* = 2, else ``(mean, var_scaled, skew, exkurt)``
         """
         P = np.exp(self.cov_m * texp)                       # P[i,j] = exp(σ_i σ_j ρ_ij T)
         v = np.asarray(fwd).ravel() * self.weight           # weighted forwards, shape (n_asset,)
@@ -171,12 +171,12 @@ class BsmBasketABC(MaParams, OptABC):
         m1 = v.sum()
         M2 = np.outer(v, v) * P             # M2[i,j] = v_i v_j P_ij
         m2 = M2.sum()
-        coef_var = np.sqrt(m2 / m1**2 - 1)  # std(B) / E[B]
+        var_scaled = m2 / m1**2 - 1  # Var(B) / E[B]²
 
         if order == 2:
-            return m1, coef_var
+            return m1, var_scaled
 
-        var = (coef_var * m1)**2
+        var = var_scaled * m1**2
 
         # m3 = Σ_{ijk} v_i v_j v_k P_ij P_ik P_jk
         #    = sum( (P * v) ⊙ (M2 @ P) )
@@ -192,7 +192,7 @@ class BsmBasketABC(MaParams, OptABC):
         skew = (m3 - m1 ** 3 - 3 * m2 * m1 + 3 * m1 ** 3) / var ** 1.5
         exkurt = (m4 - 3 * m1 ** 4 - 4 * m3 * m1 + 6 * m2 * m1 ** 2) / var ** 2 - 3
 
-        return m1, coef_var, skew, exkurt
+        return m1, var_scaled, skew, exkurt
 
 
 class BsmBasketJu2002(BsmBasketABC):
@@ -230,8 +230,8 @@ class BsmBasketJu2002(BsmBasketABC):
         cov_t = self.cov_m * texp            # σ_i σ_j ρ_ij T,  shape (n,n)
 
         # First two moments of the basket (Levy 1992)
-        m1, coef_var = self.price_mvsk(fwd, texp, order=2)
-        std = np.sqrt(np.log1p(coef_var**2))
+        m1, var_scaled = self.price_mvsk(fwd, texp, order=2)
+        std = np.sqrt(np.log1p(var_scaled))
         base = df * Bsm.price_formula(strike, m1, std, texp=1.0, cp=cp, is_fwd=True)
 
         if not self.correction_ju2002:
@@ -339,9 +339,9 @@ class BsmBasketMilevsky1998(BsmBasketABC):
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
-        m1, coef_var = self.price_mvsk(fwd, texp, order=2)
+        m1, var_scaled = self.price_mvsk(fwd, texp, order=2)
 
-        alpha = 1 / coef_var**2 + 2
+        alpha = 1 / var_scaled + 2
         beta = (alpha - 1) * m1
 
         price = InvGam.price_formula(
@@ -550,11 +550,9 @@ class BsmBasketJsu(BsmBasketABC):
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
         fwd_basket = fwd @ self.weight
-        m1, coef_var, skew, exkurt = self.price_mvsk(fwd, texp)
+        m1, var_scaled, skew, exkurt = self.price_mvsk(fwd, texp)
 
-        m = Nsvh1(sigma=self.sigma)
-        m.calibrate_vsk(coef_var * m1**2, skew, exkurt, texp, setval=True)
-        price = m.price(strike, fwd_basket, texp, cp)
+        price = Nsvh1.from_vsk((var_scaled * m1**2, skew, exkurt), texp=texp).price(strike, fwd_basket, texp, cp)
 
         return df * price
 
