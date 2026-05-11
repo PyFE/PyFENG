@@ -2,6 +2,7 @@ import numpy as np
 import scipy.special as spsp
 from .opt_abc import OptABC
 from .params import Sv32Params
+from .heston import CirModel
 
 
 class Sv32ABC(Sv32Params, OptABC):
@@ -13,6 +14,15 @@ class Sv32ABC(Sv32Params, OptABC):
     """
 
     expo_max = np.log(np.finfo(np.float32).max)
+
+    @property
+    def cir(self):
+        """CirModel for the reciprocal process 1/V under the 3/2 model.
+        The parameters follow from dV = mr·V·(θ - V)dt + vov·V^{3/2}dW,
+        so 1/V follows a CIR with κ = mr·θ, θ_cir = (mr + vov²)/(mr·θ), ξ = vov.
+        """
+        mr_new = self.mr * self.theta
+        return CirModel(sigma=self.vov, mr=mr_new, theta=(self.mr + self.vov**2) / mr_new)
 
     @staticmethod
     def hyp1f1_complex(a, b, x):

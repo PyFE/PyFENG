@@ -146,33 +146,119 @@ class CirModel:
         var = self.sigma**2 * dt * avg * (v0 * e_mr + self.theta * mr_t * avg / 2)
         return mean, var
 
+    def chi_dim(self):
+        """Noncentral chi-squared degrees of freedom: 4·θ·κ/σ²."""
+        return 4 * self.theta * self.mr / self.sigma**2
+
+    def avg_mv(self, texp, v0):
+        """
+        Mean, variance, and 3rd central moment of the average variance I_T = (1/T)∫v dt
+        under the CIR process given V(0) = v0.
+
+        Args:
+            texp: time horizon T
+            v0: initial value V(0)
+
+        Returns:
+            (mean, variance, c3) where c3 = E[(I_T − E[I_T])³]
+
+        References:
+            Ball C, Roma A (1994) Stochastic Volatility Option Pricing.
+            Journal of Financial and Quantitative Analysis 29:589–607. Appendix B.
+        """
+        mr_t = self.mr * texp
+        e_mr = np.exp(-mr_t)
+        phi = MathFuncs.avg_exp(-mr_t)
+        x0 = v0 - self.theta
+        mean = self.theta + x0 * phi
+        var = (self.theta - 2*x0*e_mr) + (v0 - 2.5*self.theta + (v0 - self.theta/2)*e_mr) * phi
+        var *= (self.sigma / mr_t)**2 * texp
+
+        fac = (self.sigma / self.mr)**4 / self.mr
+
+        b3 = 3*fac * ((1 + 0.5*e_mr*(1 - e_mr*(2 + e_mr))) - mr_t*e_mr*(1 + mr_t + 2*e_mr))
+        int_b3 = fac*texp * ((3 - 11*phi + e_mr*(9 - 3.5*phi + e_mr*(3 - 0.5*phi))) + 3*mr_t*e_mr)
+        a3 = self.mr * self.theta * int_b3
+
+        v0f = float(v0)
+        c3_small = (self.sigma**2 * texp)**2 * (v0f/5 + mr_t*(self.theta/30 - 17*v0f/60) + mr_t**2*(3*v0f/14 - 17*self.theta/420))
+        c3_full = (a3 + b3 * v0f) / texp**3
+        c3 = np.where(mr_t < 0.1, c3_small, c3_full)
+
+        return mean, var, c3
+
+    def phi_exp(self, dt):
+        """phi and exp(-κ·dt/2) used in NCX2/Poisson-Gamma steps."""
+        exp_h = np.exp(-self.mr * dt / 2)
+        phi = 4 * self.mr / self.sigma**2 / (1/exp_h - exp_h)
+        return phi, exp_h
+
+    def draw_euler(self, dt, v0, rng, milstein=False):
+        """
+        Euler (or Milstein) step for the CIR variance process.
+
+        Args:
+            dt: time step
+            v0: initial variance (array)
+            rng: numpy random Generator
+            milstein: enable Milstein correction (default False)
+
+        Returns:
+            variance after dt (floored at 0)
+        """
+        zz = rng.standard_normal(size=np.shape(v0))
+        v_t = v0 + self.mr * (self.theta - v0) * dt + np.sqrt(v0) * self.sigma * zz
+        if milstein:
+            v_t = v_t + 0.25 * self.sigma**2 * (zz**2 - dt)
+        return np.maximum(v_t, 0.0)
+
+    def draw_ncx2(self, dt, v0, rng):
+        """
+        Exact CIR step by drawing from the noncentral chi-squared distribution.
+
+        Args:
+            dt: time step
+            v0: initial variance (array)
+            rng: numpy random Generator
+
+        Returns:
+            variance after dt
+        """
+        chi_df = 4 * self.mr * self.theta / self.sigma**2
+        phi, exp_h = self.phi_exp(dt)
+        return (exp_h / phi) * rng.noncentral_chisquare(
+            df=chi_df, nonc=v0 * exp_h * phi, size=np.shape(v0)
+        )
+
+    def draw_pois_gamma(self, dt, v0, rng_gamma, rng_pois):
+        """
+        Exact CIR step via Poisson-mixture Gamma (NCX2 decomposition).
+
+        Args:
+            dt: time step
+            v0: initial variance (array)
+            rng_gamma: numpy random Generator for Gamma draws
+            rng_pois: numpy random Generator for Poisson draws
+
+        Returns:
+            (variance after dt, Poisson RV used)
+        """
+        chi_df = 4 * self.mr * self.theta / self.sigma**2
+        phi, exp_h = self.phi_exp(dt)
+        chi_nonc = v0 * exp_h * phi
+        pois = rng_pois.poisson(chi_nonc / 2, size=np.shape(v0))
+        v_t = (exp_h / phi) * 2 * rng_gamma.standard_gamma(
+            shape=chi_df / 2 + pois, size=np.shape(v0)
+        )
+        return v_t, pois
 
 class HestonABC(HestonParams, OptABC):
 
-    def chi_dim(self):
-        """
-        Noncentral Chi-square (NCX) distribution's degree of freedom
+    @property
+    def cir(self):
+        """CirModel instance for the variance process (ξ = vov, κ = mr, θ = theta)."""
+        return CirModel(sigma=self.vov, mr=self.mr, theta=self.theta)
 
-        Returns:
-            degree of freedom (scalar)
-        """
-        chi_dim = 4 * self.theta * self.mr / self.vov**2
-        return chi_dim
-
-    def chi_lambda(self, dt):
-        """
-        Noncentral Chi-square (NCX) distribution's noncentrality parameter
-
-        Returns:
-            noncentrality parameter (scalar)
-        """
-        chi_lambda = 4 * self.sigma * self.mr / self.vov**2 / np.expm1(self.mr*dt)
-        return chi_lambda
-
-    def phi_exp(self, texp):
-        exp = np.exp(-self.mr*texp/2)
-        phi = 4*self.mr / self.vov**2 / (1/exp - exp)
-        return phi, exp
 
     def var_mv(self, dt, var0=None):
         """
@@ -190,25 +276,12 @@ class HestonABC(HestonParams, OptABC):
         """
         if var0 is None:
             var0 = self.sigma
-        return CirModel(mr=self.mr, theta=self.theta, sigma=self.vov).mv(dt, v0=var0)
+        return self.cir.mv(dt, v0=var0)
 
     def avgvar_mv(self, texp, var0=None):
         """
-        Mean, variance, and 3rd central moment of the average variance I_T = (1/T)∫v dt
-        under the CIR process.
-
-        The 3rd central moment equals the 3rd cumulant κ₃(I_T) = κ₃(J_T)/T³
-        where J_T = T·I_T.  The cumulants of J_T are computed by differentiating
-        the log-MGF three times w.r.t. λ at λ=0, giving the linear ODE chain:
-
-            b₁' = −κb₁ + 1
-            b₂' = −κb₂ + ν²b₁²
-            b₃' = −κb₃ + 3ν²b₁b₂
-
-        with b_n(0)=0 and κ_n(J_T) = κθ∫₀ᵀ b_n dt + b_n(T)·v₀.
-
-        Note: var0 is taken as an argument (rather than using self.sigma) because
-        this method is also called by var_step_qe in HestonMcAndersen2008.
+        Mean, variance, and 3rd central moment of the average variance I_T = (1/T)∫v dt.
+        Delegates to CirModel.avg_mv.
 
         Args:
             texp: time to expiry
@@ -216,70 +289,10 @@ class HestonABC(HestonParams, OptABC):
 
         Returns:
             (mean, variance, c3) where c3 = E[(I_T − E[I_T])³]
-
-        References:
-            Ball C, Roma A (1994) Stochastic Volatility Option Pricing.
-            Journal of Financial and Quantitative Analysis 29:589–607. Appendix B.
         """
-        # [Verified: Claude Sonnet 4.6, 2026-05-08]
-        # All cumulants derived via Ball & Roma (1994) App. B: the affine log-MGF of J_T=T*I_T
-        # is  log E[e^{λJ_T}] = A(λ,T) + B(λ,T)*v0,  where B satisfies the Riccati ODE
-        #   B' = -κB + (ν²/2)B² + λ,  B(0)=0
-        # and A' = κθB, A(0)=0.  Differentiating w.r.t. λ at λ=0 and letting bₙ=∂ⁿB/∂λⁿ|₀:
-        #   b₁' = -κb₁ + 1,   b₂' = -κb₂ + ν²b₁²,   b₃' = -κb₃ + 3ν²b₁b₂  (bₙ(0)=0)
-        # κₙ[J_T] = κθ∫₀ᵀbₙ dt + bₙ(T)*v0;  κₙ[I_T] = κₙ[J_T]/Tⁿ.
-        #
-        # Let u=κT, e=exp(-u), φ=(1-e)/u=avg_exp(-u), x0=v0-θ.
-        #
-        # Mean: E[I_T] = θ + x0*φ  (direct integration of E[V_t], or κ₁[I_T])  ✓
-        #
-        # Variance: b₁=(1-e^{-κt})/κ, solve b₂ ODE explicitly:
-        #   b₂(T) = ν²/κ³ * (1-2ue-e²)
-        #   ∫₀ᵀb₂ dt = ν²/κ³ * [T(1+2e) - (1-e)(5+e)/(2κ)]  [identity: (5-4e-e²)=(5+e)(1-e)]
-        # Code bracket B = θ-2x0*e + (v0-2.5θ+(v0-θ/2)e)*φ expands to
-        #   B = θ-2x0*e + (1-e)/u*[v0(1+e) - θ(5+e)/2]  =  derived expression  ✓
-        # Small-u check: B = v0*u²/3 + O(u³), Var[I_T] → ν²v0T/3 as T→0  ✓
-        #
-        # 3rd central moment (= κ₃[J_T]/T³):
-        # Direct formula c3_full = (a3+b3*v0)/T³ suffers catastrophic cancellation for small κT:
-        # a3 and b3*v0 are individually O(T⁴/κ) but cancel to O(T⁵), giving c3=O(T²).
-        # Taylor series c3_small used for mr_t<0.1; leading term ν⁴T²v0/5 confirmed from
-        # κ=0 limit (b₃(T)~ν⁴T⁵/5, κ₃[J_T]/T³~ν⁴T²v0/5).
-        # Explicit b₃(T) and ∫b₃ dt expressions not verified analytically.
         if var0 is None:
             var0 = self.sigma
-
-        mr_t = self.mr * texp
-        e_mr = np.exp(-mr_t)
-        phi = MathFuncs.avg_exp(-mr_t)
-        x0 = var0 - self.theta
-        mean = self.theta + x0*phi
-        var = (self.theta - 2*x0*e_mr) + (var0 - 2.5*self.theta + (var0 - self.theta/2)*e_mr)*phi
-        var *= (self.vov/mr_t)**2 * texp
-
-        fac = (self.vov/self.mr)**4 / self.mr  # ν⁴/κ⁵
-
-        # b₃(T): degree-2 polynomial in mr_t, coefficients in e_mr/e2/e3
-        b3 = 3*fac * ((1 + 0.5*e_mr*(1 - e_mr*(2 + e_mr))) - mr_t*e_mr*(1 + mr_t + 2*e_mr))
-
-        # ∫₀ᵀ b₃ dt: degree-1 polynomial in mr_t; constant part in Horner form on e_mr
-        int_b3 = fac*texp * ((3 - 11*phi + e_mr*(9 - 3.5*phi + e_mr*(3 - 0.5*phi))) + 3*mr_t*e_mr)
-
-        # a₃(T) = κθ ∫₀ᵀ b₃ dt  (θ-contribution to 3rd cumulant of J_T)
-        a3 = self.mr * self.theta * int_b3
-
-        # 3rd central moment of I_T = J_T/T: c₃(I_T) = κ₃(J_T)/T³
-        # For small mr_t the direct formula (a3+b3*v0)/T³ suffers catastrophic
-        # cancellation (numerator → 0 as T⁵ while each term is O(1)).
-        # Taylor expansion of c3 in mr_t = κT:
-        #   c3 = ν⁴T²·[v₀/5 + u·(θ/30 − 17v₀/60) + u²·(3v₀/14 − 17θ/420) + O(u³)]
-        # where u = mr_t.  Three terms give relative error O(mr_t³) < 1e-3 for mr_t < 0.1.
-        v0 = float(var0)
-        c3_small = (self.vov**2*texp)**2 * (v0/5 + mr_t * (self.theta/30 - 17*v0/60) + mr_t**2 * (3*v0/14 - 17*self.theta/420))
-        c3_full = (a3 + b3 * v0) / texp**3
-        c3 = np.where(mr_t < 0.1, c3_small, c3_full)
-
-        return mean, var, c3
+        return self.cir.avg_mv(texp, var0)
 
     def strike_var_swap_analytic(self, texp, dt):
         """

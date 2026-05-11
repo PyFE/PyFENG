@@ -23,67 +23,6 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
     correct_fwd = False
     correct_martingale = False
 
-    def var_step_euler(self, dt, var_0, milstein=False):
-        """
-        Simulate final variance after dt with Euler/Milstein schemes (scheme = 0, 1)
-
-        Args:
-            dt: time step
-            var_0: initial variance
-            milstein: True or False (default)
-
-        Returns:
-            final variance (at t=T)
-        """
-        zz = self.rv_normal(spawn=0)
-
-        # Euler (or Milstein) scheme
-        var_t = var_0 + self.mr * (self.theta - var_0) * dt + np.sqrt(var_0) * self.vov * zz
-        # Extra-term for Milstein scheme
-        if milstein:
-            var_t += 0.25 * self.vov**2 * (zz**2 - dt)
-
-        var_t[var_t < 0] = 0  # variance should be larger than zero
-        return var_t
-
-    def var_step_ncx2(self, dt, var_0):
-        """
-        Draw final variance after dt from NCX2 distribution (scheme = 0)
-
-        Args:
-            dt: time step
-            var_0: initial variance
-
-        Returns:
-            final variance after dt
-        """
-        chi_df = self.chi_dim()
-        phi, exp = self.phi_exp(dt)
-        chi_nonc = var_0 * exp * phi
-        var_t = (exp / phi) * self.rng_spawn[0].noncentral_chisquare(df=chi_df, nonc=chi_nonc, size=self.n_path)
-        return var_t
-
-    def var_step_pois_gamma(self, dt, var_0):
-        """
-        Draw final variance after dt from NCX2 distribution via Poisson-mixture gamma
-
-        Args:
-            dt: time step
-            var_0: initial variance
-
-        Returns:
-            final variance and poisson RN (at t=T)
-        """
-        chi_df = self.chi_dim()
-        phi, exp = self.phi_exp(dt)
-        chi_nonc = var_0 * exp * phi
-        pois = self.rng_spawn[1].poisson(chi_nonc/2, size=self.n_path)
-        ### I had an idea of approximating the Poisson RV with the mean-var-matched gamma RV
-        ### If chi_nonc is large (>4), sampling Poisson RV is slower than Gamma RV.
-        #pois = self.rng_spawn[1].standard_gamma(chi_nonc/2, size=self.n_path)
-        var_t = (exp / phi) * 2 * self.rng_spawn[0].standard_gamma(shape=chi_df/2 + pois, size=self.n_path)
-        return var_t, pois
-
     def draw_from_mv(self, mean, var_scaled, dist):
         """
         Draw RNs from distributions with mean and var_scaled matched
@@ -356,10 +295,10 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
         References:
             Proposition 3.1 in Tse & Wan (2013)
         """
-        phi, exp = self.phi_exp(dt)
+        phi, exp = self.cir.phi_exp(dt)
         zz = np.sqrt(var_0 * var_t) * phi
 
-        iv_index = 0.5 * self.chi_dim() - 1
+        iv_index = 0.5 * self.cir.chi_dim() - 1
         # ive(): exponentially scaled iv function
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.ive.html
         iv0 = spsp.ive(iv_index, zz)
@@ -401,7 +340,7 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
         fac_x = var_0 + var_t
 
         m_z, vs_z = self.x2star_avgvar_mv(dt, kk=kk)
-        fac_z = 2*m_eta + self.chi_dim()/2
+        fac_z = 2*m_eta + self.cir.chi_dim()/2
 
         m_total = m_x * fac_x + m_z * fac_z
         # variances scale linearly with the factor; reconstruct from var_scaled * m^2 * factor
@@ -467,14 +406,14 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         vov2dt = self.vov**2 * dt
         mrt = self.mr * dt
-        iv_index = 0.5 * self.chi_dim() - 1
+        iv_index = 0.5 * self.cir.chi_dim() - 1
 
         # Note that dt term is additionally multiplied to aa
         # to make it Laplace transform of average variance, not integrated variance
         gamma = np.sqrt(mrt**2 - 2 * vov2dt * aa)
 
         var_mean = np.sqrt(var_0 * var_t)
-        phi_mr, _ = self.phi_exp(dt)
+        phi_mr, _ = self.cir.phi_exp(dt)
         cosh_mr = np.cosh(mrt/2)
 
         exph_gamma = np.exp(-gamma/2)
@@ -585,7 +524,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         # Note that dt term is additionally multiplied to aa
         # to make it Laplace transform of average variance, not integrated variance
         gamma = np.sqrt(mrt**2 - 2 * vov2dt * aa)
-        phi_mr, _ = self.phi_exp(dt)
+        phi_mr, _ = self.cir.phi_exp(dt)
 
         ### mgf without considering branchcut
         # exph_gamma = np.exp(-gamma/2)
@@ -695,10 +634,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         Returns:
             eta (integer >= 0) values (n, )
         """
-        phi, exp = self.phi_exp(dt)
+        phi, exp = self.cir.phi_exp(dt)
         zz = np.sqrt(var_0 * var_t) * phi
 
-        iv_index = 0.5 * self.chi_dim() - 1
+        iv_index = 0.5 * self.cir.chi_dim() - 1
         # Equivalent to
         # p0 = np.power(0.5 * zz, iv_index) / (spsp.iv(iv_index, zz) * spsp.gamma(iv_index + 1))
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.ive.html
@@ -741,7 +680,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def cond_states_step(self, dt, var_0):
 
-        var_t = self.var_step_ncx2(dt=dt, var_0=var_0)
+        var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
         eta = self.draw_eta(dt, var_0, var_t)
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
@@ -749,13 +688,13 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         avgvar = self.draw_x1(dt, var_0, var_t)
         if self.tabulate_x2_z:
-            interp_obj = self.x2_icdf_interp(dt, self.chi_dim() / 2, k1=self.params_hash())
+            interp_obj = self.x2_icdf_interp(dt, self.cir.chi_dim() / 2, k1=self.params_hash())
             avgvar += interp_obj(self.rng_spawn[2].uniform(size=self.n_path))
 
             interp_obj = self.x2_icdf_interp(dt, 2, k1=self.params_hash())
             zz = interp_obj(self.rng_spawn[2].uniform(size=eta.sum()))
         else:
-            avgvar += self.draw_x2(dt, self.chi_dim() / 2, size=self.n_path)
+            avgvar += self.draw_x2(dt, self.cir.chi_dim() / 2, size=self.n_path)
             zz = self.draw_x2(dt, 2.0, size=eta.sum())
 
         total = 0
@@ -803,47 +742,43 @@ class HestonMcAndersen2008(HestonMcABC):
         QE step by Andersen (2008)
 
         Args:
-            var_0: initial variance
             dt: time step
+            var_0: initial variance
 
         Returns:
-           variance after dt
+           (variance after dt, martingale-correction log-increment per path)
         """
-
-        m, psi = self.var_mv(dt, var_0)  # put variance into psi
+        m, psi = self.var_mv(dt, var_0)
         psi /= m**2
 
         zz = self.rv_normal(spawn=0)
 
-        # compute vt(i+1) given psi
-        # psi < psi_c
+        # psi <= psi_c branch: moment-matched normal approximation, Eq (23)
         idx_below = (psi <= self.psi_c)
         ins = 2 / psi[idx_below]
-        b2 = (ins - 1) + np.sqrt(ins * (ins - 1))  # b^2. Eq (27)
+        b2 = (ins - 1) + np.sqrt(ins * (ins - 1))  # b^2, Eq (27)
         a = m[idx_below] / (1 + b2)  # Eq (28)
 
         var_t = np.zeros(self.n_path)
-        var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2  # Eq (23)
+        var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2
 
-        # psi_c < psi
+        # psi > psi_c branch: exponential approximation, Eq (25)
         one_m_u = spst.norm.cdf(zz[~idx_below])  # 1 - U
         var_t_above = np.zeros_like(one_m_u)
 
-        one_m_p = 2 / (psi[~idx_below] + 1)  # 1 - p. Eq (29)
+        one_m_p = 2 / (psi[~idx_below] + 1)  # 1 - p, Eq (29)
         beta = one_m_p / m[~idx_below]  # Eq (30)
 
-        # No need to consider (uu <= pp) & ~idx_below because the var_t value will be zero
         idx_above = (one_m_u <= one_m_p)
         var_t_above[idx_above] = (np.log(one_m_p / one_m_u) / beta)[idx_above]  # Eq (25)
-
         var_t[~idx_below] = var_t_above
 
-        ### Martingale Correction: p 24
+        # Martingale correction: Andersen (2008) p 24, Proposition 7
         k1_half_k3 = dt/4 * self.rho * (2*self.mr/self.vov - self.rho) - self.rho/self.vov  # k1 + k3/2
         aa = k1_half_k3 + 2*self.rho/self.vov  # A in Proposition 7
 
         m_corr = -k1_half_k3 * var_0 + dt * self.rho * self.mr * self.theta / self.vov
-        m_corr[idx_below] += -aa * b2 * a / (1 - 2 * aa * a) + 0.5 * np.log1p(-2 * aa * a)
+        m_corr[idx_below] += -aa * b2 * a / (1 - 2*aa*a) + 0.5*np.log1p(-2*aa*a)
         m_corr[~idx_below] += -np.log1p(-one_m_p + (beta*one_m_p)/(beta - aa))
 
         return var_t, m_corr
@@ -860,15 +795,15 @@ class HestonMcAndersen2008(HestonMcABC):
             milstein = (self.scheme == 1)
             for i in range(n_dt):
                 # Euler (or Milstein) scheme
-                var_t = self.var_step_euler(dt[i], var_t, milstein=milstein)
+                var_t = self.cir.draw_euler(dt[i], var_t, self.rng_spawn[0], milstein=milstein)
                 var_path[i + 1, :] = var_t
         elif self.scheme == 2:
             for i in range(n_dt):
-                var_t = self.var_step_ncx2(dt[i], var_t)
+                var_t = self.cir.draw_ncx2(dt[i], var_t, self.rng_spawn[0])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 3:
             for i in range(n_dt):
-                var_t, _ = self.var_step_pois_gamma(dt[i], var_t)
+                var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rng_spawn[0], self.rng_spawn[1])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
@@ -884,11 +819,11 @@ class HestonMcAndersen2008(HestonMcABC):
         extra = {}
         if self.scheme < 2:
             milstein = (self.scheme == 1)
-            var_t = self.var_step_euler(dt, var_0, milstein=milstein)
+            var_t = self.cir.draw_euler(dt, var_0, self.rng_spawn[0], milstein=milstein)
         elif self.scheme == 2:
-            var_t = self.var_step_ncx2(dt, var_0)
+            var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
         elif self.scheme == 3:
-            var_t, _ = self.var_step_pois_gamma(dt, var_0)
+            var_t, _ = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
         elif self.scheme == 4:
             var_t, m_corr = self.var_step_qe(dt, var_0)
             extra = {'qe_m_corr': m_corr}
@@ -932,14 +867,14 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
         var_t = np.full(self.n_path, var_0)
 
         for i in range(n_dt):
-            var_t, _ = self.var_step_pois_gamma(dt[i], var_t)
+            var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rng_spawn[0], self.rng_spawn[1])
             var_path[i + 1, :] = var_t
 
         return var_path
 
     def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.var_step_pois_gamma(dt, var_0)
+        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
         avgvar_m, avgvar_vs = self.cond_avgvar_mv(dt, var_0, var_t, pois=pois, kk=0)
         extra = {'pois_avgvar_v': avgvar_vs * avgvar_m**2}
 
@@ -993,7 +928,7 @@ class HestonMcTseWan2013(HestonMcABC):
     dist = 'ig'  # can override with 'ga' 'ln' 'n'
 
     def cond_states_step(self, dt, var_0):
-        var_t = self.var_step_ncx2(dt, var_0)
+        var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
         avgvar_m, avgvar_vs = self.cond_avgvar_mv(dt, var_0, var_t, pois=None, kk=0)
         avgvar = self.draw_from_mv(avgvar_m, avgvar_vs, dist=self.dist)
 
@@ -1068,8 +1003,8 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
 
     def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.var_step_pois_gamma(dt, var_0)
-        shape = 0.5*self.chi_dim() + 2*pois
+        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
+        shape = 0.5*self.cir.chi_dim() + 2*pois
 
         # self.draw_x123 returns the average by dt. Need to convert to the int variance by multiplying texp
         avgvar = self.draw_x123(dt, var_0 + var_t, shape)
