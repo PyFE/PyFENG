@@ -113,9 +113,31 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
         return np.full(self.n_quad, 1.0), np.sqrt(avgvar), ww
 
 
-class SabrMixture(SabrMixtureABC):
-    n_quad = (9, 9)
-    dist = 'ln'
+class SabrMixtureChoi(SabrMixtureABC):
+    """
+    SABR model pricing via 2-D Gaussian quadrature over the joint distribution of
+    the terminal volatility ratio (σ_T/σ_0) and the normalised integrated variance
+    (I_0^T = (1/T)∫₀ᵀ (σₜ/σ₀)² dt).
+
+    The method is the quadrature analogue of the Monte-Carlo algorithm in
+    Choi, Hu & Kwok (2026); the quadrature adaptation itself is unpublished.
+    Conditional on σ_T/σ_0 (outer quadrature, n_quad[0] nodes), the terminal
+    forward F̄_T is approximated by the frozen-coefficient CEV formula
+    (single time-step h = T applied to the full expiry).  Conditional on I_0^T
+    (inner quadrature, n_quad[1] nodes, approximated by a shifted log-normal with
+    λ = 5/6), the residual orthogonal component is priced by the base CEV model.
+
+    **Accuracy note**: because a single step h = T is used, the frozen-coefficient
+    approximation degrades for large ``vov * sqrt(texp)``.  Accuracy is reasonable
+    for ``vov * sqrt(texp)`` ≲ 0.5–0.6 but deteriorates noticeably beyond that.
+
+    References:
+        - Choi J, Hu L, Kwok YK (2026) Efficient and accurate simulation of the
+          stochastic-alpha-beta-rho model. European Journal of Operational Research
+          329:166–179. https://doi.org/10.1016/j.ejor.2025.09.027
+    """
+
+    n_quad = (7, 5)
     sln_lam = 5 / 6
 
     def cond_spot_sigma(self, texp, fwd):
