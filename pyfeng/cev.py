@@ -168,6 +168,65 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
             )
         return df*price
 
+    @staticmethod
+    def price_std(sigma, k, beta=0.5, sign=1, type=1):
+        """
+        Standardized CEV option price / price-to-vega / vega (F₀ = 1, T = 1, no rates).
+
+        Effective variance: V = β*²σ², centrality: z₀ = 1/V, z_K = k^{2β*}·z₀,
+        degrees of freedom: 2ν = 1/β* (β < 1) or −1/β* (β > 1), β* = 1 − β.
+
+        type = −1: vega  𝒱 = (2/|σβ*|) · f_χ²(z_K; 2+2ν, z₀)
+        type =  1: price-to-vega  (default)
+            sign = +1:   C / 𝒱 = (|σβ*|/2) · [Q(z_K; 2+2ν, z₀) − k·P(z₀; 2ν, z_K)] / f
+            sign = −1:  (F₀−C)/𝒱 = (|σβ*|/2) · [P(z_K; 2+2ν, z₀) + k·P(z₀; 2ν, z_K)] / f
+        type =  0: price  C = Q(z_K; 2+2ν, z₀) − k·P(z₀; 2ν, z_K)  (Schroder 1989)
+
+        For β > 1 the z₀ / z_K roles swap and the NCX2 degrees of freedom change sign.
+
+        Args:
+            sigma: CEV volatility
+            k: strike ratio K/F₀ (not log-strike)
+            beta: elasticity parameter (default 0.5); must satisfy β ≠ 1
+            sign: +1 for C/𝒱 (default); −1 for (F₀−C)/𝒱
+            type: 0 for price, 1 for price-to-vega (default), −1 for vega
+
+        Returns:
+            Standardized price, price-to-vega, or vega
+
+        References:
+            Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
+        """
+        betac = 1.0 - beta
+        betac_inv = 1.0 / betac
+
+        var = betac**2 * sigma**2
+        z0 = 1.0 / var
+        zK = np.power(k, 2 * betac) * z0
+
+        if beta < 1.0:
+            f1 = spst.ncx2.pdf(zK, 2 + betac_inv, z0)
+            if type == -1:
+                return 2.0 / (sigma * betac) * f1
+            if sign > 0:
+                rv_num = spst.ncx2.sf(zK, 2 + betac_inv, z0) - k * spst.ncx2.cdf(z0, betac_inv, zK)
+            else:
+                rv_num = spst.ncx2.cdf(zK, 2 + betac_inv, z0) + k * spst.ncx2.cdf(z0, betac_inv, zK)
+            coeff = sigma * betac / 2
+        else:
+            f1 = spst.ncx2.pdf(z0, 2 - betac_inv, zK)
+            if type == -1:
+                return -2.0 / (sigma * betac) * f1
+            if sign > 0:
+                rv_num = spst.ncx2.sf(z0, -betac_inv, zK) - k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+            else:
+                rv_num = spst.ncx2.cdf(z0, -betac_inv, zK) + k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+            coeff = -sigma * betac / 2  # > 0 since betac < 0
+
+        if type == 0:
+            return rv_num
+        return rv_num * coeff / f1
+
     def delta(self, strike, spot, texp, cp=1):
         """
         CEV option delta (∂C/∂F_0).
