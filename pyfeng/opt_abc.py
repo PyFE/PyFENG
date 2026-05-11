@@ -320,7 +320,7 @@ class OptABC(abc.ABC):
         Returns:
             theta value
         """
-        dt = self._delta_shock(strike, spot, texp, cp)/100
+        dt = self._theta_shock(strike, spot, texp, cp)
         theta = self.price(strike, spot, texp - dt, cp) - self.price(strike, spot, texp + dt, cp)
         theta /= 2*dt
         return theta
