@@ -160,6 +160,25 @@ class DistLognormal:
             return x, w, zhat
         return x, w
 
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the shifted lognormal distribution.
+
+        Distribution parameters (sig, mu, lam) may be numpy arrays and are
+        broadcast against the generated standard-normal draws.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to standard_normal)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        z = rng.standard_normal(n_sample)
+        return self.mu * (1 - self.lam + self.lam * np.exp(self.sig * z - 0.5 * self.sig**2))
+
 
 class DistGamma:
     """
@@ -274,6 +293,24 @@ class DistGamma:
         x /= self.rate
         w /= w_sum
         return x, w
+
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the Gamma distribution.
+
+        Distribution parameters (shape, rate) may be numpy arrays; numpy
+        broadcasts them against size and raises if they are inconsistent.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to standard_gamma)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        return rng.standard_gamma(self.shape, size=n_sample) / self.rate
 
 
 class DistInvGauss:
@@ -426,6 +463,24 @@ class DistInvGauss:
         x *= self.mu
 
         return x, w
+
+    def draw(self, n_sample=None, rng=None):
+        """
+        Draw random samples from the Inverse Gaussian distribution.
+
+        Distribution parameters (mu, lam) may be numpy arrays; numpy
+        broadcasts them against size and raises if they are inconsistent.
+
+        Args:
+            n_sample: number of samples (int or shape tuple passed to wald)
+            rng: numpy Generator (e.g. np.random.default_rng(seed)). If None, a fresh one is created.
+
+        Returns:
+            array of shape (*param_broadcast_shape, n_sample)
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+        return rng.wald(self.mu, self.lam, size=n_sample)
 
 
 class DistGig:
