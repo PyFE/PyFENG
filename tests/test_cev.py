@@ -86,11 +86,64 @@ class TestCevGreeks(unittest.TestCase):
         for strike in [90, 100, 110]:
             self._check_greeks(m, strike=strike, spot=100, texp=1.0, cp=1)
 
+    def test_beta_gt1(self):
+        """β > 1: price formula uses swapped NCX2 arguments (z_0 ↔ z_K).
+        Small σ → large vega; fixed FD step h=0.001 is ~2% relative, so wider vega_tol."""
+        m = pf.Cev(sigma=0.05, beta=1.5, intr=0.03, divr=0.01)
+        for strike in [90, 100, 110]:
+            for cp in (1, -1):
+                self._check_greeks(m, strike=strike, spot=100, texp=1.0, cp=cp,
+                                   vega_tol=1e-2)
+
+    def test_beta_gt1_rates(self):
+        """β > 1 with short expiry and rates."""
+        m = pf.Cev(sigma=0.08, beta=1.2, intr=0.05, divr=0.02)
+        for strike in [95, 100, 105]:
+            self._check_greeks(m, strike=strike, spot=100, texp=0.5, cp=1,
+                               delta_tol=1e-3, gamma_tol=1e-3, vega_tol=5e-3)
+
     def test_is_fwd(self):
         """is_fwd=True: spot is treated as the forward price."""
         m = pf.Cev(sigma=0.3, beta=0.5, intr=0.05, divr=0.02, is_fwd=True)
         for strike in [90, 100, 110]:
             self._check_greeks(m, strike=strike, spot=100, texp=1.0, cp=1)
+
+    def _check_theta(self, m, strike, spot, texp, cp, *, tol=1e-4):
+        theta1 = m.theta(strike=strike, spot=spot, texp=texp, cp=cp)
+        theta2 = m.theta_numeric(strike=strike, spot=spot, texp=texp, cp=cp)
+        self.assertAlmostEqual(theta1, theta2, delta=tol,
+                               msg=f"theta mismatch: analytic={theta1:.6g}, numeric={theta2:.6g}")
+
+    # ------------------------------------------------------------------ theta
+
+    def test_theta_beta_lt1(self):
+        """Theta consistency, β = 0.5, with and without rates."""
+        m = pf.Cev(sigma=0.4, beta=0.5)
+        for strike in [90, 100, 110]:
+            for cp in (1, -1):
+                self._check_theta(m, strike=strike, spot=100, texp=1.0, cp=cp)
+
+        m2 = pf.Cev(sigma=0.3, beta=0.5, intr=0.05, divr=0.02)
+        for strike in [80, 100, 120]:
+            self._check_theta(m2, strike=strike, spot=100, texp=1.0, cp=1)
+
+    def test_theta_beta_gt1(self):
+        """Theta consistency, β > 1."""
+        m = pf.Cev(sigma=0.05, beta=1.5, intr=0.03, divr=0.01)
+        for strike in [90, 100, 110]:
+            self._check_theta(m, strike=strike, spot=100, texp=1.0, cp=1, tol=1e-4)
+
+    def test_theta_is_fwd(self):
+        """Theta consistency, is_fwd=True (no drift term)."""
+        m = pf.Cev(sigma=0.3, beta=0.5, intr=0.05, divr=0.02, is_fwd=True)
+        for strike in [90, 100, 110]:
+            self._check_theta(m, strike=strike, spot=100, texp=1.0, cp=1)
+
+    def test_theta_long_texp(self):
+        """Theta consistency, β = 0.7, long expiry."""
+        m = pf.Cev(sigma=0.2, beta=0.7, intr=0.02, divr=0.01)
+        for strike in [80, 100, 120]:
+            self._check_theta(m, strike=strike, spot=100, texp=5.0, cp=1)
 
     # ------------------------------------------------------------------ random sweep
 
