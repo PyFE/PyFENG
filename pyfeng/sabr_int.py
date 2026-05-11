@@ -118,45 +118,27 @@ class SabrMixture(SabrMixtureABC):
     dist = 'ln'
     sln_lam = 5 / 6
 
-    def zhat_weight(self, vovn):
-        """
-        The points and weights for the terminal volatility
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            points and weights in column vector
-        """
-        zhat, ww, mu = spsp.roots_hermitenorm(self.n_quad[0], mu=True)
-        ww /= mu
-        zhat = zhat[:, None] - 0.5*vovn
-        ww = ww[:, None]
-        return zhat, ww
-
-    def cond_avgvar(self, vovn, zhat):
-        m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-        avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
-        r_vol = np.sqrt(avgvar)
-        return avgvar, r_vol, w2
-
-
     def cond_spot_sigma(self, texp, fwd):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
         rho_alpha = self.rho * alpha
 
-        zhat, w0 = self.zhat_weight(vovn)  # column vectors
-        r_var, r_vol, w123 = self.cond_avgvar(vovn, zhat)
-        w0123 = w0 * w123
+        sig_t, w0, zhat = DistLognormal(sig=vovn).quad(self.n_quad[0], return_zhat=True)  # sig_t / sig_0
+        sig_t = sig_t[:, None]
+        w0 = w0[:, None]
+        zhat = zhat[:, None]
 
-        r_vol *= rhoc  # matrix
-        exp_plus2 = np.exp(vovn*zhat)
+        m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+        avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
+
+        r_vol = rhoc * np.sqrt(avgvar)
+        w0123 = w0 * w2
 
         if np.isclose(self.beta, 0):
-            fwd_ratio = 1 + (rho_alpha/self.vov) * (exp_plus2 - 1)
+            fwd_ratio = 1 + (rho_alpha/self.vov) * (sig_t - 1)
         elif self.beta > 0:
-            fwd_ratio = rho_alpha * ((exp_plus2 - 1)/self.vov - 0.5*rho_alpha*texp*r_var)
+            fwd_ratio = rho_alpha * ((sig_t - 1)/self.vov - 0.5*rho_alpha*texp*avgvar)
             np.exp(fwd_ratio, out=fwd_ratio)
+            np.fmax(fwd_ratio, 1e-20, out=fwd_ratio)  # prevent CEV blow-up at fwd=0 (tiny^betac would underflow)
         else:
             ValueError(f'Unsupported beta={self.beta}')
 

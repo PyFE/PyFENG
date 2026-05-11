@@ -149,11 +149,12 @@ class DistLognormal:
         zhat, w = spsp.roots_hermitenorm(n_quad)
 
         # Girsanov shift nu = sig/2: tmp = exp(sig*zhat/2), so tmp^2 = exp(sig*zhat)
-        tmp = np.exp(0.5*self.sig*zhat)
-        w *= np.exp(-self.sig**2/8) / tmp   # RN derivative: exp(-sig*zhat/2 - sig^2/8)
+        # sig may be an array (e.g. shape (n0, 1)), so use out-of-place ops for broadcasting.
+        tmp = np.exp(0.5 * self.sig * zhat)               # (..., n_quad) via broadcasting
+        w = w * (np.exp(-self.sig**2/8) / tmp)            # RN derivative: exp(-sig*zhat/2 - sig^2/8)
         # Normalisation is the key: Hermite symmetry gives sum(w*exp(-sig*zhat/2)) = sum(w*exp(+sig*zhat/2)) = C,
         # so sum(w_tilde) = C and sum(w_tilde * x) = mu*C. Dividing by C enforces BOTH exactly.
-        w /= np.sum(w)
+        w /= np.sum(w, axis=-1, keepdims=True)            # keepdims supports both scalar and array sig
         x = self.mu * (1 - self.lam + self.lam * tmp**2)  # mu * (1 - lam + lam*exp(sig*zhat))
         if return_zhat:
             return x, w, zhat
