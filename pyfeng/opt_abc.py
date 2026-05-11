@@ -388,7 +388,9 @@ class OptABC(abc.ABC):
         else:
             return None
 
-    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
+    _smile_model: str = "bsm"
+
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         """
         Equivalent volatility smile for a given model.
 
@@ -400,12 +402,17 @@ class OptABC(abc.ABC):
             spot: spot (or forward) price
             texp: time to expiry
             cp: 1/-1 for call/put. If None, OTM convention is used.
-            model: {'bsm', 'norm'} base model for implied vol inversion
+            model: {'bsm', 'norm'} base model for implied vol inversion.
+                   If None, uses ``self._smile_model``.
 
         Returns:
             implied volatility smile
         """
+        if model is None:
+            model = self._smile_model
         base_model = self._m_smile(model)
+        if base_model is None:
+            raise ValueError(f"Unknown model: {model}")
         if cp is None:
             fwd = self.forward(spot, texp)
             cp = np.where(strike > fwd, 1, -1)  # OTM convention
