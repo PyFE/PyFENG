@@ -209,6 +209,12 @@ class CevParams(BaseParams):
     model_type: ClassVar[str] = "Cev"
     beta: float = 0.5
 
+    def __post_init__(self):
+        if not (self.beta > 0):
+            raise ValueError(f"beta must be > 0, got {self.beta}")
+        if self.beta == 1.0:
+            raise ValueError(f"beta = 1 is not allowed (use the BSM model instead)")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SABR — stochastic CEV: shares beta with CevParams

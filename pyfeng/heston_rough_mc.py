@@ -10,7 +10,7 @@ import numpy as np
 import scipy.special as spsp
 import scipy.integrate as spint
 from .sv_abc import CondMcBsmABC
-from .rheston import RoughHestonABC
+from .heston_rough import RoughHestonABC
 
 
 class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
