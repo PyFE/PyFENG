@@ -14,37 +14,6 @@ class SabrMixtureABC(sabr.SabrABC, MassZeroABC):
 
     correct_fwd = False
 
-    @staticmethod
-    def avgvar_lndist(vovn):
-        """
-        Lognormal distribution parameters (mean, sigma) of the normalized average variance:
-        (1/T) \int_0^T e^{2*vov Z_t - vov^2 t} dt = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            (m1, sig)
-            True distribution should be multiplied by sigma^2 * texp
-
-        References
-            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
-        """
-        vovn2 = vovn**2
-        #ww = np.exp(vovn2)
-        #m1 = np.where(vovn2 > 1e-6, (ww - 1) / vovn2, 1 + vovn2 / 2 * (1 + vovn2 / 3))
-
-        m1 = MathFuncs.avg_exp(vovn2)
-        ww = vovn2 * m1 + 1.
-        var_m1sq_ratio = (10 + ww*(6 + ww*(3 + ww))) / 15 * m1 * vovn2
-        sig = np.sqrt(np.log1p(var_m1sq_ratio))
-        ### Equivalently ....
-        #m2_m1sq_ratio = (5 + ww * (4 + ww * (3 + ww * (2 + ww)))) / 15
-        #sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(m2_m1sq_ratio), 4/3 * vovn2))
-
-        return m1, sig
-
     @abc.abstractmethod
     def cond_spot_sigma(self, texp, fwd):
         # return (fwd, vol, weight) each 1d array
@@ -137,23 +106,17 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
 
         assert np.isclose(self.rho, 0.0)
 
-        m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
+        vovn = self.vov * np.sqrt(texp)
+        m1, cv, *_ = self.avgvar_mvsk(vovn)
+        avgvar, ww = DistLognormal.from_mv(m1, cv).quad(self.n_quad)
 
-        zz, ww = spsp.roots_hermitenorm(self.n_quad)
-        ww /= np.sqrt(2 * np.pi)
-
-        vol_ratio = np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
-
-        return np.full(self.n_quad, 1.0), vol_ratio, ww
+        return np.full(self.n_quad, 1.0), np.sqrt(avgvar), ww
 
 
 class SabrMixture(SabrMixtureABC):
-    n_quad = None
+    n_quad = (9, 9)
     dist = 'ln'
     sln_lam = 5 / 6
-
-    def n_quad_vovn(self, vovn):
-        return self.n_quad or np.floor(3 + 4*vovn)
 
     def zhat_weight(self, vovn):
         """
@@ -165,39 +128,17 @@ class SabrMixture(SabrMixtureABC):
         Returns:
             points and weights in column vector
         """
-
-        #npt = self.n_quad_vovn(vovn)
-        npt = self.n_quad if np.isscalar(self.n_quad) else self.n_quad[0]
-        zhat, ww, mu = spsp.roots_hermitenorm(npt, mu=True)
+        zhat, ww, mu = spsp.roots_hermitenorm(self.n_quad[0], mu=True)
         ww /= mu
         zhat = zhat[:, None] - 0.5*vovn
         ww = ww[:, None]
         return zhat, ww
 
     def cond_avgvar(self, vovn, zhat):
-
-        if np.isscalar(self.n_quad):
-            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-
-            w2 = np.ones_like(zhat)
-            if self.dist.lower() == 'm1':
-                r_var = m1
-                r_vol = np.sqrt(r_var)
-            elif self.dist.lower() == 'ln':
-                r_var = m1 / np.sqrt(np.sqrt(1 + coef_var))
-                r_vol = np.sqrt(r_var)
-            else:
-                ValueError(f'Unkown distribution: {self.dist}')
-
-            assert r_var.shape == w2.shape
-            return r_var, r_vol, w2
-
-        else:
-            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-            avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
-            r_vol = np.sqrt(avgvar)
-
-            return avgvar, r_vol, w2
+        m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+        avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
+        r_vol = np.sqrt(avgvar)
+        return avgvar, r_vol, w2
 
 
     def cond_spot_sigma(self, texp, fwd):
