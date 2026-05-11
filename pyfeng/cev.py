@@ -109,15 +109,16 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         betac_inv = 1.0/betac
 
         var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
+        xx = np.power(fwd, 2*betac) / var    # z_0
+        yy = np.power(strike, 2*betac) / var  # z_K
 
+        # Delta = Q_χ²(z_K; 2ν, z_0) for β<1,  Q_χ²(z_0; 2+2ν, z_K) for β>1
+        # Derived by differentiating the Theorem 6 equivalent price form;
+        # boundary terms cancel via the exchange lemma F_0 f(z_K;2+2ν,z_0) = K f(z_0;2+2ν,z_K).
         if self.beta < 1.0:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(yy, 2 + betac_inv, xx)\
-                    + 2*xx*betac*(spst.ncx2.pdf(yy, 4 + betac_inv, xx) - (strike/fwd)*spst.ncx2.pdf(xx, betac_inv, yy))
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(yy, betac_inv, xx)
         else:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(xx, -betac_inv, yy)\
-                    - 2*xx*betac*(spst.ncx2.pdf(xx, -betac_inv, yy) - (strike/fwd)*spst.ncx2.pdf(yy, 4 - betac_inv, xx))
+            delta = 0.5*(cp - 1) + spst.ncx2.sf(xx, 2 - betac_inv, yy)
 
         delta *= df if self.is_fwd else divf
         return delta
@@ -143,19 +144,18 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         betac_inv = 1.0/betac
 
         var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
+        xx = np.power(fwd, 2*betac) / var    # z_0
+        yy = np.power(strike, 2*betac) / var  # z_K
 
+        # Γ = ∂Δ/∂F_0 = (2|β*| z_0/F_0) f_χ²(z_K; 2+2ν, z_0)  for β<1
+        #              = (2|β*| z_0/F_0) f_χ²(z_0; 2+2ν, z_K)  for β>1
+        # Factor (divf/df)²·df converts forward-gamma to spot-gamma.
         if self.beta < 1.0:
-            gamma = (2 + betac_inv - xx)*spst.ncx2.pdf(yy, 4 + betac_inv, xx) \
-                    + xx*spst.ncx2.pdf(yy, 6 + betac_inv, xx) \
-                    + strike/fwd*(xx*spst.ncx2.pdf(xx, betac_inv, yy) - yy*spst.ncx2.pdf(xx, 2 + betac_inv, yy))
+            gamma = 2*betac*xx/fwd * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
         else:
-            gamma = (xx*spst.ncx2.pdf(xx, -betac_inv, yy) - yy*spst.ncx2.pdf(xx, 2 - betac_inv, yy)) \
-                    + strike/fwd*((2 - betac_inv - xx)*spst.ncx2.pdf(yy, 4 - betac_inv, xx)
-                                  + xx*spst.ncx2.pdf(yy, 6 - betac_inv, xx))
+            gamma = -2*betac*xx/fwd * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
 
-        gamma *= 2*(divf*betac)**2/df*xx/fwd
+        gamma *= (divf**2/df)
 
         if self.is_fwd:
             gamma *= (df/divf)**2
@@ -169,17 +169,20 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         betac_inv = 1.0/betac
 
         var = (betac * self.sigma)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        xx = np.power(fwd, 2*betac) / var
-        yy = np.power(strike, 2*betac) / var
+        xx = np.power(fwd, 2*betac) / var    # z_0
+        yy = np.power(strike, 2*betac) / var  # z_K
 
+        # V = ∂C/∂σ = (2F_0/σβ*) f_χ²(z_K; 2+2ν, z_0)  for β<1
+        #           = (2F_0/σ|β*|) f_χ²(z_0; 2+2ν, z_K)  for β>1
+        # σ here is the CEV parameter (dF = σ F^β dW).
+        # Derivation: z_0-terms from Theorem 5 differentiation; z_K bracket cancels by
+        # exchange lemma; Theorem 2 collapses the remaining two-term sum.
         if self.beta < 1.0:
-            vega = -fwd*spst.ncx2.pdf(yy, 4 + betac_inv, xx) + strike*spst.ncx2.pdf(xx, betac_inv, yy)
+            vega = 2*fwd / (self.sigma * betac) * spst.ncx2.pdf(yy, 2 + betac_inv, xx)
         else:
-            vega = fwd*spst.ncx2.pdf(xx, -betac_inv, yy) - strike*spst.ncx2.pdf(yy, 4 - betac_inv, xx)
+            vega = -2*fwd / (self.sigma * betac) * spst.ncx2.pdf(xx, 2 - betac_inv, yy)
 
-        sigma = self.sigma*np.power(spot, -betac)
-        vega *= df*2*xx/sigma
-        return vega
+        return df * vega
 
     def theta(self, strike, spot, texp, cp=1):
         ### Need to implement this
