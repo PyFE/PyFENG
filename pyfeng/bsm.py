@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.stats as spst
-import scipy.optimize as spopt
 import warnings
 
 from .opt_abc import OptABC, OptAnalyticABC
@@ -264,21 +263,19 @@ class Bsm(BsmParams, OptAnalyticABC):
         return gamma
 
     def theta(self, strike, spot, texp, cp=1):
+        """
+        BSM option theta (∂C/∂t, calendar-time convention; negative for long calls).
 
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        C depends on σ and T only through σ√T, so ∂C/∂T = σ/(2T)·𝒱 (at fixed F₀), giving
 
-        sigma_std = np.maximum(self.sigma*np.sqrt(texp), 100*np.finfo(float).eps)
-        d1 = np.log(fwd/strike)/sigma_std
-        d2 = d1 - 0.5*sigma_std
-        d1 += 0.5*sigma_std
+            Θ = r·C − (r−q)·S·Δ − σ/(2T)·𝒱
 
-        # still not perfect; need to consider the derivative w.r.t. divr and is_fwd = True
-        theta = -0.5*spst.norm._pdf(d1)*fwd*self.sigma/np.sqrt(texp) \
-                - cp*self.intr*strike*spst.norm._cdf(cp*d2) \
-                + cp*np.where(self.is_fwd, self.intr, self.divr)*fwd*spst.norm._cdf(cp*d1)
-
-        theta *= df
-        return theta
+        where the drift term (r−q)·S·Δ is zero when is_fwd=True (F₀ is held fixed).
+        """
+        drift = 0.0 if self.is_fwd else (self.intr - self.divr) * spot * self.delta(strike, spot, texp, cp)
+        return self.intr * self.price(strike, spot, texp, cp) \
+               - drift \
+               - self.sigma / (2 * texp) * self.vega(strike, spot, texp, cp)
 
     def impvol_naive(self, price, strike, spot, texp, cp=1, setval=False, n_iter=32):
         """
