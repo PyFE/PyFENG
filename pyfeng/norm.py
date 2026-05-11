@@ -245,7 +245,9 @@ class Norm(NormParams, OptAnalyticABC):
     ####
     impvol = _impvol_Choi2009
 
-    def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
+    _smile_model: str = "norm"
+
+    def vol_smile(self, strike, spot, texp, cp=None, model=None):
         """
         Equivalent volatility smile for a given model
 
@@ -259,14 +261,10 @@ class Norm(NormParams, OptAnalyticABC):
         Returns:
             volatility smile under the specified model
         """
+        if model is None:
+            model = self._smile_model
         if model.lower() == "norm":
             return np.full(np.broadcast_shapes(np.shape(strike), np.shape(spot), np.shape(texp)), self.sigma)
-        if model.lower() == "bsm":
-            if cp is None:
-                fwd = self.forward(spot, texp)
-                cp = np.where(strike > fwd, 1, -1)  # make option out-of-the-money
-            price = self.price(strike, spot, texp, cp=cp)
-            return bsm.Bsm(None).impvol(price, strike, spot, texp, cp=cp)
         elif model.lower() == "bsm-approx":
             fwd = self.forward(spot, texp)
             sigma_std = self.sigma / fwd
@@ -276,7 +274,7 @@ class Norm(NormParams, OptAnalyticABC):
             vol *= (1 + vol ** 2 * texp / 24) / (1 + lnk ** 2 / 24)
             return vol
         else:
-            raise ValueError(f"Unknown model: {model}")
+            return super().vol_smile(strike, spot, texp, cp=cp, model=model)
 
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
         fwd, df, _ = self._fwd_factor(spot, texp)

@@ -25,6 +25,10 @@ class SabrABC(SabrParams, OptABC):
     #### vol_beta: the beta for the volatility to choose _m_vol. If None (by default) vol_beta = beta
     _base_beta = None
 
+    @property
+    def _smile_model(self):
+        return "norm" if np.isclose(self.beta, 0) else "bsm"
+
     def _variables(self, fwd, texp):
         betac = 1.0 - self.beta
         alpha = self.sigma / np.power(fwd, betac)  # if self.beta > 0.0 else self.sigma
@@ -51,12 +55,6 @@ class SabrABC(SabrParams, OptABC):
             return norm.Norm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
         else:
             return cev.Cev(vol, beta=base_beta, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)
-
-    def vol_smile(self, strike, spot, texp, cp=None, model=None):
-        if model is None:
-            model = "norm" if np.isclose(self.beta, 0) else "bsm"
-
-        return super().vol_smile(strike, spot, texp, cp=cp, model=model)
 
     @staticmethod
     def _vv(zz, rho):
@@ -314,7 +312,7 @@ class SabrVolApproxABC(SabrABC):
 
     def vol_smile(self, strike, spot, texp, cp=None, model=None):
         if model is None:
-            model = "norm" if np.isclose(self.beta, 0) else "bsm"
+            model = self._smile_model
 
         vol_beta = self.beta if self._base_beta is None else self._base_beta
 

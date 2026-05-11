@@ -9,8 +9,7 @@ from .params import NsvhParams
 
 class NsvhABC(NsvhParams, OptABC):
 
-    def vol_smile(self, strike, spot, texp, cp=None, model=None):
-        return super().vol_smile(strike, spot, texp, cp=cp, model="norm")
+    _smile_model: str = "norm"
 
     def price_vsk(self, texp=1):
         """
