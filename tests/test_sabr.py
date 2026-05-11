@@ -104,7 +104,7 @@ class TestSabr(unittest.TestCase):
             zhat -= 0.5*vovn
 
             m1, cv, s, k = m.avgvar_mvsk(vovn)
-            mnc = sms_m.mvsk2mnc([m1, cv * m1**2, s, k])  # mvsk2mnc expects raw variance
+            mnc = sms_m.mvsk2mnc([m1, (cv * m1)**2, s, k])  # mvsk2mnc expects raw variance
             cond_m1, cond_m2, cond_m3, cond_m4 = m.cond_avgvar_mvsk(vovn, zhat, True)
 
             np.testing.assert_allclose(np.sum(cond_m1 * ww), m1)
@@ -127,12 +127,12 @@ class TestSabr(unittest.TestCase):
         for vovn in (0.1, 0.2, 0.5, 1.2):
             m0 = pf.SabrNormVolApprox(sigma=vovn, rho=0, vov=vovn)
             p_var, skew, kurt = m0.price_vsk(texp=1)
-            i_m, i_var, *_ = m0.avgvar_mvsk(vovn)
+            i_m, i_cv, *_ = m0.avgvar_mvsk(vovn)
 
             ### E(X^2_IntVar) = vovn^2 * E(I)
             np.testing.assert_allclose(p_var, i_m*vovn**2)
-            ### E(X^4_IntVar) = 3 * vovn^4 * E(I^2)
-            np.testing.assert_allclose((kurt + 3)*p_var**2, 3*(i_var + i_m**2)*vovn**4)
+            ### E(X^4_IntVar) = 3 * vovn^4 * E(I^2),  E(I^2) = Var(I) + E(I)^2 = (cv*m)^2 + m^2
+            np.testing.assert_allclose((kurt + 3)*p_var**2, 3*((i_cv*i_m)**2 + i_m**2)*vovn**4)
 
 
 if __name__ == "__main__":

@@ -230,6 +230,15 @@ class DistGamma:
         self.shape = 1.0 / coef_var**2
         self.rate = 1.0 / (coef_var**2 * mean)
 
+    def scipy_stats(self):
+        """
+        Frozen scipy.stats.gamma distribution equivalent to this instance.
+
+        Returns:
+            scipy.stats.gamma(a=shape, scale=1/rate)
+        """
+        return spst.gamma(a=self.shape, scale=1.0 / self.rate)
+
     def quad(self, n_quad):
         """
         Gauss–Laguerre quadrature nodes and weights.
@@ -360,6 +369,19 @@ class DistInvGauss:
         """
         self.mu = mean
         self.lam = mean / coef_var**2
+
+    def scipy_stats(self):
+        """
+        Frozen scipy.stats.invgauss distribution equivalent to this instance.
+
+        scipy.stats.invgauss(mu_sp, scale=s) has mean = s * mu_sp and
+        variance = s² * mu_sp³.  Setting mu_sp = mu/lam and s = lam recovers
+        the standard IG(mu, lam) moments: E = mu, Var = mu³/lam.
+
+        Returns:
+            scipy.stats.invgauss(mu=mu/lam, scale=lam)
+        """
+        return spst.invgauss(mu=self.mu / self.lam, scale=self.lam)
 
     def quad(self, n_quad):
         """
@@ -514,6 +536,19 @@ class DistGig:
         self.gamma = np.sqrt(eta / rho)
         self.delta = np.sqrt(eta * rho)
 
+    def scipy_stats(self):
+        """
+        Frozen scipy.stats.geninvgauss distribution equivalent to this instance.
+
+        scipy.stats.geninvgauss(p, b, scale=s) has PDF ∝ x^(p−1) exp(−b(x+1/x)/2)
+        scaled by s.  Setting b = gamma*delta and scale = delta/gamma matches the
+        GIG(gamma, delta, p) PDF ∝ x^(p−1) exp(−(gamma²x + delta²/x)/2).
+
+        Returns:
+            scipy.stats.geninvgauss(p=p, b=gamma*delta, scale=delta/gamma)
+        """
+        return spst.geninvgauss(p=self.p, b=self.gamma * self.delta, scale=self.delta / self.gamma)
+
     def quad(self, n_quad, correct=False):
         """
         GIG quadrature nodes and weights (Choi et al. 2021).
@@ -625,27 +660,83 @@ class DistGh:
         """GIG mixing distribution DistGig(gamma, delta, p)."""
         return DistGig(gamma=self.gamma, delta=self.delta, p=self.p)
 
+    def scipy_stats(self):
+        """
+        Frozen scipy.stats.genhyperbolic distribution equivalent to this instance.
+
+        The scipy parametrization (p, a, b, loc, scale) maps to Barndorff-Nielsen
+        (λ, α, β, δ, μ) via: λ=p, α=a/scale, β=b/scale, δ=scale, μ=loc.
+        With scale=delta, loc=mu, a=alpha*delta, b=beta*delta.
+
+        Returns:
+            scipy.stats.genhyperbolic(p=p, a=alpha*delta, b=beta*delta, loc=mu, scale=delta)
+        """
+        return spst.genhyperbolic(
+            p=self.p,
+            a=self.alpha * self.delta,
+            b=self.beta * self.delta,
+            loc=self.mu,
+            scale=self.delta,
+        )
+
     def mvsk(self):
         """
-        Mean, variance, skewness, excess kurtosis via GIG quadrature.
+        Analytic mean, variance, skewness, excess kurtosis via NVM formulas.
 
-        Uses conditional normal moment formulas:
-            E[X^k | W=w] expressed in terms of a = mu + beta*w and w.
+        For X = mu + beta*W + sqrt(W)*Z with W ~ GIG(gamma, delta, p) and Z ~ N(0,1):
+
+            E[X]    = mu + beta * m1
+            Var[X]  = m1 + beta² (m2 - m1²)
+            mc3(X)  = 3 beta (m2 - m1²) + beta³ (m3 - 3 m2 m1 + 2 m1³)
+            mc4(X)  = 3 m2 + 6 beta² (m3 - 2 m1 m2 + m1³)
+                           + beta⁴ (m4 - 4 m3 m1 + 6 m2 m1² - 3 m1⁴)
+
+        where m_r = E[W^r] are the raw moments of the GIG mixer.
+
+        References:
+            https://en.wikipedia.org/wiki/Generalised_hyperbolic_distribution
+
+        Returns:
+            (mean, variance, skewness, excess_kurtosis)
+        """
+        m1, m2, m3, m4 = self.mixer().mnc([1, 2, 3, 4])
+        beta = self.beta
+
+        mc2_W = m2 - m1**2
+        mc3_W = m3 - 3*m2*m1 + 2*m1**3
+        mc4_W = m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4
+
+        mean = self.mu + beta * m1
+        mc2  = m1 + beta**2 * mc2_W
+        mc3  = 3*beta*mc2_W + beta**3*mc3_W
+        mc4  = 3*m2 + 6*beta**2*(m3 - 2*m1*m2 + m1**3) + beta**4*mc4_W
+
+        return mean, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
+
+    def mvsk_quad(self):
+        """
+        Mean, variance, skewness, excess kurtosis via GIG quadrature (numerical).
+
+        Computes central moments directly using the conditional normal formulas.
+        For X = mu + beta*W + sqrt(W)*Z with c = E[X|W] - E[X]:
+
+            mc2 = E[c² + W]
+            mc3 = E[c³ + 3cW]
+            mc4 = E[c⁴ + 6c²W + 3W²]
 
         Returns:
             (mean, variance, skewness, excess_kurtosis)
         """
         xw, ww = self.quad_x, self.quad_w
-        mu, beta = self.mu, self.beta
-        a = mu + beta * xw          # conditional mean E[X | W=xw]
-        m1 = ww @ a
-        m2 = ww @ (a**2 + xw)
-        m3 = ww @ (a**3 + 3*a*xw)
-        m4 = ww @ (a**4 + 6*a**2*xw + 3*xw**2)
-        mc2 = m2 - m1**2
-        mc3 = m3 - 3*m2*m1 + 2*m1**3
-        mc4 = m4 - 4*m3*m1 + 6*m2*m1**2 - 3*m1**4
-        return m1, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
+        a    = self.mu + self.beta * xw   # conditional mean E[X | W=xw]
+        mean = ww @ a
+        c    = a - mean                   # deviation from overall mean
+
+        mc2 = ww @ (c**2 + xw)
+        mc3 = ww @ (c**3 + 3*c*xw)
+        mc4 = ww @ (c**4 + 6*c**2*xw + 3*xw**2)
+
+        return mean, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
 
     def mc4(self):
         """
@@ -728,3 +819,28 @@ class DistNig(DistGh):
     def mixer(self):
         """IG mixing distribution (exact NIG mixer; p = -1/2 special case of GIG)."""
         return DistInvGauss.from_gig(self.gamma, self.delta)
+
+    def mvsk(self):
+        """
+        Analytic mean, variance, skewness, excess kurtosis for NIG.
+
+        Uses closed-form expressions in terms of alpha = sqrt(gamma^2 + beta^2)
+        and gamma = sqrt(alpha^2 - beta^2).
+
+        References:
+            https://en.wikipedia.org/wiki/Normal-inverse_Gaussian_distribution
+
+        Returns:
+            (mean, variance, skewness, excess_kurtosis)
+        """
+        alpha = self.alpha          # sqrt(gamma^2 + beta^2)
+        gamma = self.gamma          # sqrt(alpha^2 - beta^2)
+        beta  = self.beta
+        delta = self.delta
+
+        mean    = self.mu + delta * beta / gamma
+        var     = delta * alpha**2 / gamma**3
+        skew    = 3 * beta / (alpha * np.sqrt(delta * gamma))
+        exkurt  = 3 * (1 + 4*beta**2 / alpha**2) / (delta * gamma)
+
+        return mean, var, skew, exkurt

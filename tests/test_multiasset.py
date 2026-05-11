@@ -9,19 +9,19 @@ import pyfeng as pf
 
 class TestMultiAsset(unittest.TestCase):
     def test_BsmSpreadKirk(self):
-        m = pf.BsmSpreadKirk((0.2, 0.3), cor=-0.5)
+        m = pf.BsmSpreadKirk((0.2, 0.3), rho=-0.5)
         result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         result2 = np.array([22.1563225, 17.1844182, 12.9897421, 9.6414167, 6.9994207])
         np.testing.assert_almost_equal(result, result2)
 
     def test_BsmSpreadBjerksund2014(self):
-        m = pf.BsmSpreadBjerksund2014((0.2, 0.3), cor=-0.5)
+        m = pf.BsmSpreadBjerksund2014((0.2, 0.3), rho=-0.5)
         result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         result2 = np.array([22.1317202, 17.1830425, 12.9897421, 9.5443194, 6.8061260])
         np.testing.assert_almost_equal(result, result2)
 
     def test_NormSpread(self):
-        m = pf.NormBasket.init_spread((20, 30), cor=-0.5, intr=0.05)
+        m = pf.NormBasket.init_spread((20, 30), rho=-0.5, intr=0.05)
         result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
         result2 = np.array([17.9567619, 13.7464682, 10.2666994, 7.4709872, 5.2905716])
         np.testing.assert_almost_equal(result, result2)
@@ -103,7 +103,7 @@ class TestMultiAsset(unittest.TestCase):
 
     def test_BsmRainbow2(self):
         o2 = np.ones(2)
-        m = pf.BsmMax2(0.2 * o2, cor=0, divr=0.1, intr=0.05)
+        m = pf.BsmMax2(0.2 * o2, rho=0, divr=0.1, intr=0.05)
         result2 = np.array([6.655098004, 11.195681033, 16.92856557])
         result = np.zeros_like(result2)
         fwds = [90, 100, 110]
@@ -119,7 +119,7 @@ class TestMultiAsset(unittest.TestCase):
         strikes = np.arange(80, 121, 10)
 
         # Test BsmNd
-        m = pf.BsmNdMc(sigma, cor=0.5, rn_seed=1234)
+        m = pf.BsmNdMc(sigma, rho=0.5, rn_seed=1234)
         m.simulate(tobs=[texp], n_path=20000)
         p = []
         for strike in strikes:
@@ -129,7 +129,7 @@ class TestMultiAsset(unittest.TestCase):
         np.testing.assert_almost_equal(p, p2)
 
         # Test NormNd
-        m = pf.NormNdMc(sigma * spot, cor=0.5, rn_seed=1234)
+        m = pf.NormNdMc(sigma * spot, rho=0.5, rn_seed=1234)
         m.simulate(tobs=[texp], n_path=20000)
         p = []
         for strike in strikes:
