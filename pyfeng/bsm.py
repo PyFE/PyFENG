@@ -6,6 +6,7 @@ import warnings
 from .opt_abc import OptABC, OptAnalyticABC
 from .params import BsmParams
 from .util import MathFuncs, MathConsts
+from .disthelper import DistLognormal
 
 class Bsm(BsmParams, OptAnalyticABC):
     """
@@ -571,13 +572,8 @@ class Bsm(BsmParams, OptAnalyticABC):
 
         Returns:
             (variance, skewness, and ex-kurtosis)
-
-        References:
-            https://en.wikipedia.org/wiki/Log-normal_distribution
         """
-        var = np.expm1(texp*self.sigma**2)
-        skew = (var + 3)*np.sqrt(var)
-        exkurt = var*(var*(var*(var + 6) + 12) + 13)  # (1+var)**4 + 2*(1+var)**3 + 3*(1+var) - 6
+        _, var, skew, exkurt = DistLognormal(sig=self.sigma * np.sqrt(texp)).mvsk()
         return var, skew, exkurt
 
 
@@ -746,7 +742,5 @@ class BsmDisp(Bsm):
         )
 
     def price_vsk(self, texp=1):
-        rv = super().price_vsk(self, texp)
-        rv[0] /= self.beta
-        rv[1] /= self.beta**3
-        rv[2] /= self.beta**4
+        var, skew, exkurt = super().price_vsk(texp)
+        return var / self.beta, skew / self.beta**3, exkurt / self.beta**4

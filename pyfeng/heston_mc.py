@@ -435,8 +435,8 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def cond_avgvar_mv_numeric(self, dt, var_0, var_t):
         """
-        Mean and variance of the average variance conditional on initial var, final var.
-        It is computed from the numerical derivatives of the conditional Laplace transform.
+        Mean and var_scaled of the average variance conditional on initial var, final var.
+        Computed from the first two cumulants of the conditional MGF.
 
         Args:
             dt: time step
@@ -449,15 +449,8 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         See Also:
             cond_avgvar_mv
         """
-
-        dx = 1e-5
-        # conditional Cumulant Generating Fuction
-        f1 = np.log(self.cond_avgvar_mgf(-dx, dt, var_0, var_t))
-        f2 = np.log(self.cond_avgvar_mgf(0.0, dt, var_0, var_t))
-        f3 = np.log(self.cond_avgvar_mgf(dx, dt, var_0, var_t))
-        m1 = (f3 - f1)/(2*dx)
-        # var_scaled = var/m1**2 = (f3+f1-2*f2)/(dx**2 * m1**2) = 4*(f3+f1-2*f2)/(f3-f1)**2
-        return m1, 4*(f3 + f1 - 2*f2) / (f3 - f1)**2
+        cum = Mgf2Mom(lambda aa: self.cond_avgvar_mgf(np.asarray(aa, dtype=complex), dt, var_0, var_t)).cumulants(2)
+        return cum[0], cum[1] / cum[0]**2
 
     def x1star_avgvar_mv_asymp(self, dt, kk=0):
         """
@@ -538,20 +531,16 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
     def x2star_avgvar_mv_numeric(self, dt):
         """
-        Mean and variance of X2/dt (with shape=1 or delta=2) numerically computed from
+        Mean and var_scaled of X2/dt (with shape=1 or delta=2) numerically computed from
         the MGF (Laplace transform) of X2/dt.
 
         Args:
             dt: time step
 
         Returns:
-            mean, variance
+            mean, var_scaled (= variance / mean^2)
         """
-        # conditional Cumulant Generating Fuction
-        def cumgenfunc_cond(aa):
-            return np.log(self.x2_avgvar_mgf(np.asarray(aa, dtype=complex), dt, 1))
-
-        cum = Mgf2Mom(cumgenfunc_cond).moments(2)
+        cum = Mgf2Mom(lambda aa: self.x2_avgvar_mgf(np.asarray(aa, dtype=complex), dt, 1)).cumulants(2)
         return cum[0], cum[1] / cum[0]**2
 
     def draw_x1(self, dt, var_0, var_t):
