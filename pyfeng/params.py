@@ -238,6 +238,9 @@ class SabrParams(CevParams):
     vov: float = 0.1
     rho: float = 0.0
 
+    def __post_init__(self):
+        pass  # SABR allows beta=0 (Normal) and beta=1 (lognormal)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Stochastic-volatility base
