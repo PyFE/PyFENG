@@ -215,30 +215,33 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         """
         CEV option theta (∂C/∂t, calendar-time convention; negative for long calls).
 
-        Derived from the Black-Scholes PDE for the CEV process dS = (r-q)S dt + σ S^β dW.
-        For is_fwd=False (spot mode):
-            ∂C/∂t = −(r-q)·S·Δ − (σ²/2)·S^{2β}·Γ + r·C.
-        For is_fwd=True (forward mode), the drift is absent and the diffusion term carries
-        an extra factor (e^{−q·T}/e^{−r·T})^{2β*} because the forward volatility is
-        σ·F^β·e^{β*·(r-q)·T} (time-varying):
-            ∂C/∂t = −(σ²/2)·(divf/df)^{2β*}·F^{2β}·Γ + r·C.
+        Direct derivation.  The discounted call price C(F, T) depends on σ and T
+        only through the effective variance V(T) = β*²σ²T·avg_exp(ρT), ρ = 2β*(r-q).
+        Its time derivative is
+
+            dV/dT = β*²σ² e^{ρT},   so   dV/dT · σ/(2V) = σ e^{ρT} / (2T·avg_exp(ρT)).
+
+        The chain rule ∂C/∂σ = (2V/σ) ∂C/∂V therefore gives
+
+            ∂C/∂T = (r-q)·S·Δ − r·C + V′(T)·σ/(2V)·v,
+
+        where Δ = ∂C/∂S is the spot delta (zero for is_fwd=True) and v = ∂C/∂σ is the
+        CEV vega.  Calendar theta Θ = ∂C/∂t = −∂C/∂T:
+
+            Θ = r·C − (r-q)·S·Δ − σ e^{ρT} / (2T·avg_exp(ρT)) · v.
+
+        References:
+            - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
+        betac = 1.0 - self.beta
+        rho_T = 2 * betac * (self.intr - self.divr) * texp
+        sigma_coeff = self.sigma * np.exp(rho_T) / (2 * texp * MathFuncs.avg_exp(rho_T))
+
         price = self.price(strike, spot, texp, cp)
-        delta = self.delta(strike, spot, texp, cp)
-        gamma = self.gamma(strike, spot, texp, cp)
+        vega  = self.vega(strike, spot, texp, cp)
+        drift = 0.0 if self.is_fwd else (self.intr - self.divr) * spot * self.delta(strike, spot, texp, cp)
 
-        if self.is_fwd:
-            betac = 1.0 - self.beta
-            # forward vol is σ·F^β·exp(β*·(r-q)·T); integrating gives avg_exp but the
-            # instantaneous PDE coefficient at the current time (t=0) is exp(2β*·(r-q)·T)
-            diff_factor = np.exp(2 * betac * (self.intr - self.divr) * texp)
-            drift = 0.0
-        else:
-            diff_factor = 1.0
-            drift = (self.intr - self.divr) * spot * delta
-
-        theta = drift + 0.5 * self.sigma**2 * np.power(spot, 2*self.beta) * gamma * diff_factor \
-                - self.intr * price
+        theta = drift + sigma_coeff * vega - self.intr * price
         return -theta
 
 

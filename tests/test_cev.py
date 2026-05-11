@@ -145,6 +145,38 @@ class TestCevGreeks(unittest.TestCase):
         for strike in [80, 100, 120]:
             self._check_theta(m, strike=strike, spot=100, texp=5.0, cp=1)
 
+    # ------------------------------------------------------------------ MC price
+
+    def test_mc_price(self):
+        """Analytic price vs CevMc exact Monte-Carlo (Kang 2014).
+
+        CevMc uses the exact transition distribution (no discretisation error).
+        With n_path = 200_000 and seed fixed, the MC standard error is ≈ price/√n,
+        so an absolute tolerance of 0.10 covers > 5σ for the cases tested.
+        """
+        strikes = np.arange(80, 121, 10, dtype=float)
+        spot, texp = 100.0, 1.2
+
+        cases = [
+            dict(sigma=2.0, beta=0.5, intr=0.05, divr=0.1),   # original docstring example
+            dict(sigma=0.3, beta=0.3),
+            dict(sigma=0.2, beta=0.7, intr=0.02, divr=0.01),
+        ]
+        for params in cases:
+            m_a = pf.Cev(**params)
+            m_mc = pf.CevMc(**params)
+            m_mc.set_num_params(n_path=200_000, dt=None, rn_seed=42)
+
+            for cp in (1, -1):
+                p_a  = m_a.price(strikes, spot, texp, cp)
+                p_mc = m_mc.price(strikes, spot, texp, cp)
+                for i, K in enumerate(strikes):
+                    with self.subTest(**params, cp=cp, K=K):
+                        self.assertAlmostEqual(
+                            float(p_a[i]), float(p_mc[i]), delta=0.10,
+                            msg=f"analytic={p_a[i]:.4f}, mc={p_mc[i]:.4f}"
+                        )
+
     # ------------------------------------------------------------------ random sweep
 
     def test_random_params_beta_lt1(self):
