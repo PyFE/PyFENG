@@ -102,52 +102,62 @@ class DistLognormal:
                         f"Moment validation failed at index {i}: expected {v}, got {mvsk2[i]}."
                     )
 
-    def quad(self, n_quad):
+    def quad(self, n_quad, return_zhat=False):
         """
         Gauss-Hermite quadrature nodes and weights with a Girsanov shift.
 
-        Standard Gauss-Hermite quadrature approximates E_{N(0,1)}[f(Z)] using nodes z_i and
-        weights w_i with sum(w_i) = 1. A naive application to the lognormal would use
-        x_i = mu * exp(sig*z_i - sig^2/2) and unmodified weights, which is correct but
+        The lognormal is parameterised by Z ~ N(0,1):
+            Y = mu * (1 - lam + lam * exp(sig*Z - sig^2/2))
+
+        Standard Gauss-Hermite quadrature approximates E_{N(0,1)}[f(Z)] using nodes and
+        weights w_i with sum(w_i) = 1. A naive application would place the nodes at Z = z_i
+        with x_i = mu * exp(sig*z_i - sig^2/2) and unmodified weights, which is correct but
         numerically inefficient for large sig (the integrand mass is far from the N(0,1) nodes).
 
-        Instead we apply a Girsanov shift nu = sig/2, reinterpreting the N(0,1) nodes as samples
-        under N(sig/2, 1) and compensating the weights by the Radon-Nikodym derivative. This
-        lets the nodes be placed where the lognormal integrand has most of its mass.
+        Instead we apply a Girsanov shift nu = sig/2, defining the shifted variable
+            Zhat = Z - sig/2,
+        so that under the new measure Zhat ~ N(0,1) and Hermite nodes zhat_i place the
+        evaluation points where the lognormal integrand has most of its mass.
 
-        Substituting Z = z + sig/2 (z are the standard Hermite nodes) into the lognormal:
+        Substituting Z = Zhat + sig/2 into the lognormal:
             Y = mu * (1 - lam + lam * exp(sig*Z - sig^2/2))
-              = mu * (1 - lam + lam * exp(sig*z))            [sig^2/2 cancels]
+              = mu * (1 - lam + lam * exp(sig*Zhat))         [sig^2/2 cancels]
 
         The weight correction (RN derivative dN(0,1)/dN(sig/2,1)) is:
-            w_tilde_i = w_i * exp(-sig*z_i/2 - sig^2/8)
+            w_tilde_i = w_i * exp(-sig*zhat_i/2 - sig^2/8)
 
         Before normalisation, using the MGF of N(0,1) and holding to quadrature accuracy:
-            sum(w_tilde_i)       = exp(-sig^2/8) * E[exp(-sig*Z/2)] = exp(-sig^2/8)*exp(+sig^2/8) = 1
-            sum(w_tilde_i * x_i) = mu * exp(-sig^2/8) * E[exp(+sig*Z/2)] = mu*exp(-sig^2/8)*exp(+sig^2/8) = mu
+            sum(w_tilde_i)       = exp(-sig^2/8) * E[exp(-sig*Zhat/2)] = exp(-sig^2/8)*exp(+sig^2/8) = 1
+            sum(w_tilde_i * x_i) = mu * exp(-sig^2/8) * E[exp(+sig*Zhat/2)] = mu*exp(-sig^2/8)*exp(+sig^2/8) = mu
 
         The normalisation w /= sum(w) makes both properties hold EXACTLY for any n_quad.
-        The key is that Hermite nodes are symmetric (z_i and -z_i paired with equal weights), so:
-            C := sum(w_i * exp(-sig*z_i/2)) = sum(w_i * exp(+sig*z_i/2))
+        The key is that Hermite nodes are symmetric (zhat_i and -zhat_i paired with equal weights), so:
+            C := sum(w_i * exp(-sig*zhat_i/2)) = sum(w_i * exp(+sig*zhat_i/2))
         giving sum(w_tilde_i) = C and sum(w_tilde_i * x_i) = mu * C. After dividing by C:
             sum(w_i)       = 1
             sum(w_i * x_i) = mu
 
         Args:
             n_quad: number of quadrature points.
+            return_zhat: if True, also return the shifted standard-normal nodes
+                zhat_i = Z_i - sig/2 (Hermite nodes). Default False.
 
         Returns:
-            (x, w): nodes x_i and weights w_i; sum(w_i) = 1 and sum(w_i * x_i) = mu.
+            (x, w) if return_zhat is False, else (x, w, zhat). Always
+            sum(w_i) = 1 and sum(w_i * x_i) = mu.
         """
-        z, w = spsp.roots_hermitenorm(n_quad)
+        zhat, w = spsp.roots_hermitenorm(n_quad)
 
-        # Girsanov shift nu = sig/2: tmp = exp(sig*z/2), so tmp^2 = exp(sig*z)
-        tmp = np.exp(0.5*self.sig*z)
-        w *= np.exp(-self.sig**2/8) / tmp   # RN derivative: exp(-sig*z/2 - sig^2/8)
-        # Normalisation is the key: Hermite symmetry gives sum(w*exp(-sig*z/2)) = sum(w*exp(+sig*z/2)) = C,
+        # Girsanov shift nu = sig/2: tmp = exp(sig*zhat/2), so tmp^2 = exp(sig*zhat)
+        # sig may be an array (e.g. shape (n0, 1)), so use out-of-place ops for broadcasting.
+        tmp = np.exp(0.5 * self.sig * zhat)               # (..., n_quad) via broadcasting
+        w = w * (np.exp(-self.sig**2/8) / tmp)            # RN derivative: exp(-sig*zhat/2 - sig^2/8)
+        # Normalisation is the key: Hermite symmetry gives sum(w*exp(-sig*zhat/2)) = sum(w*exp(+sig*zhat/2)) = C,
         # so sum(w_tilde) = C and sum(w_tilde * x) = mu*C. Dividing by C enforces BOTH exactly.
-        w /= np.sum(w)
-        x = self.mu * (1 - self.lam + self.lam * tmp**2)  # mu * (1 - lam + lam*exp(sig*z))
+        w /= np.sum(w, axis=-1, keepdims=True)            # keepdims supports both scalar and array sig
+        x = self.mu * (1 - self.lam + self.lam * tmp**2)  # mu * (1 - lam + lam*exp(sig*zhat))
+        if return_zhat:
+            return x, w, zhat
         return x, w
 
 

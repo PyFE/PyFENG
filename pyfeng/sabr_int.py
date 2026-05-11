@@ -14,37 +14,6 @@ class SabrMixtureABC(sabr.SabrABC, MassZeroABC):
 
     correct_fwd = False
 
-    @staticmethod
-    def avgvar_lndist(vovn):
-        """
-        Lognormal distribution parameters (mean, sigma) of the normalized average variance:
-        (1/T) \int_0^T e^{2*vov Z_t - vov^2 t} dt = \int_0^1 e^{2 vovn Z_s - vovn^2 s} ds
-        where vovn = vov*sqrt(T). See p.2 in Choi & Wu (2021).
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            (m1, sig)
-            True distribution should be multiplied by sigma^2 * texp
-
-        References
-            - Choi J, Wu L (2021) A note on the option price and ‘Mass at zero in the uncorrelated SABR model and implied volatility asymptotics.’ Quantitative Finance 21:1083–1086. https://doi.org/10.1080/14697688.2021.1876908
-        """
-        vovn2 = vovn**2
-        #ww = np.exp(vovn2)
-        #m1 = np.where(vovn2 > 1e-6, (ww - 1) / vovn2, 1 + vovn2 / 2 * (1 + vovn2 / 3))
-
-        m1 = MathFuncs.avg_exp(vovn2)
-        ww = vovn2 * m1 + 1.
-        var_m1sq_ratio = (10 + ww*(6 + ww*(3 + ww))) / 15 * m1 * vovn2
-        sig = np.sqrt(np.log1p(var_m1sq_ratio))
-        ### Equivalently ....
-        #m2_m1sq_ratio = (5 + ww * (4 + ww * (3 + ww * (2 + ww)))) / 15
-        #sig = np.sqrt(np.where(vovn2 > 1e-8, np.log(m2_m1sq_ratio), 4/3 * vovn2))
-
-        return m1, sig
-
     @abc.abstractmethod
     def cond_spot_sigma(self, texp, fwd):
         # return (fwd, vol, weight) each 1d array
@@ -137,85 +106,61 @@ class SabrUncorrChoiWu2021(SabrMixtureABC):
 
         assert np.isclose(self.rho, 0.0)
 
-        m1, fac = self.avgvar_lndist(self.vov * np.sqrt(texp))
+        vovn = self.vov * np.sqrt(texp)
+        m1, cv, *_ = self.avgvar_mvsk(vovn)
+        avgvar, ww = DistLognormal.from_mv(m1, cv).quad(self.n_quad)
 
-        zz, ww = spsp.roots_hermitenorm(self.n_quad)
-        ww /= np.sqrt(2 * np.pi)
-
-        vol_ratio = np.sqrt(m1) * np.exp(0.5 * (zz - 0.5 * fac) * fac)
-
-        return np.full(self.n_quad, 1.0), vol_ratio, ww
+        return np.full(self.n_quad, 1.0), np.sqrt(avgvar), ww
 
 
-class SabrMixture(SabrMixtureABC):
-    n_quad = None
-    dist = 'ln'
+class SabrMixtureChoi(SabrMixtureABC):
+    """
+    SABR model pricing via 2-D Gaussian quadrature over the joint distribution of
+    the terminal volatility ratio (σ_T/σ_0) and the normalised integrated variance
+    (I_0^T = (1/T)∫₀ᵀ (σₜ/σ₀)² dt).
+
+    The method is the quadrature analogue of the Monte-Carlo algorithm in
+    Choi, Hu & Kwok (2026); the quadrature adaptation itself is unpublished.
+    Conditional on σ_T/σ_0 (outer quadrature, n_quad[0] nodes), the terminal
+    forward F̄_T is approximated by the frozen-coefficient CEV formula
+    (single time-step h = T applied to the full expiry).  Conditional on I_0^T
+    (inner quadrature, n_quad[1] nodes, approximated by a shifted log-normal with
+    λ = 5/6), the residual orthogonal component is priced by the base CEV model.
+
+    **Accuracy note**: because a single step h = T is used, the frozen-coefficient
+    approximation degrades for large ``vov * sqrt(texp)``.  Accuracy is reasonable
+    for ``vov * sqrt(texp)`` ≲ 0.5–0.6 but deteriorates noticeably beyond that.
+
+    References:
+        - Choi J, Hu L, Kwok YK (2026) Efficient and accurate simulation of the
+          stochastic-alpha-beta-rho model. European Journal of Operational Research
+          329:166–179. https://doi.org/10.1016/j.ejor.2025.09.027
+    """
+
+    n_quad = (7, 5)
     sln_lam = 5 / 6
-
-    def n_quad_vovn(self, vovn):
-        return self.n_quad or np.floor(3 + 4*vovn)
-
-    def zhat_weight(self, vovn):
-        """
-        The points and weights for the terminal volatility
-
-        Args:
-            vovn: vov * sqrt(texp)
-
-        Returns:
-            points and weights in column vector
-        """
-
-        #npt = self.n_quad_vovn(vovn)
-        npt = self.n_quad if np.isscalar(self.n_quad) else self.n_quad[0]
-        zhat, ww, mu = spsp.roots_hermitenorm(npt, mu=True)
-        ww /= mu
-        zhat = zhat[:, None] - 0.5*vovn
-        ww = ww[:, None]
-        return zhat, ww
-
-    def cond_avgvar(self, vovn, zhat):
-
-        if np.isscalar(self.n_quad):
-            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-
-            w2 = np.ones_like(zhat)
-            if self.dist.lower() == 'm1':
-                r_var = m1
-                r_vol = np.sqrt(r_var)
-            elif self.dist.lower() == 'ln':
-                r_var = m1 / np.sqrt(np.sqrt(1 + coef_var))
-                r_vol = np.sqrt(r_var)
-            else:
-                ValueError(f'Unkown distribution: {self.dist}')
-
-            assert r_var.shape == w2.shape
-            return r_var, r_vol, w2
-
-        else:
-            m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
-            avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
-            r_vol = np.sqrt(avgvar)
-
-            return avgvar, r_vol, w2
-
 
     def cond_spot_sigma(self, texp, fwd):
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
         rho_alpha = self.rho * alpha
 
-        zhat, w0 = self.zhat_weight(vovn)  # column vectors
-        r_var, r_vol, w123 = self.cond_avgvar(vovn, zhat)
-        w0123 = w0 * w123
+        sig_t, w0, zhat = DistLognormal(sig=vovn).quad(self.n_quad[0], return_zhat=True)  # sig_t / sig_0
+        sig_t = sig_t[:, None]
+        w0 = w0[:, None]
+        zhat = zhat[:, None]
 
-        r_vol *= rhoc  # matrix
-        exp_plus2 = np.exp(vovn*zhat)
+        m1, coef_var, *_ = self.cond_avgvar_mvsk(vovn, zhat)
+        avgvar, w2 = DistLognormal.from_mv(m1, coef_var, lam=self.sln_lam).quad(self.n_quad[1])
+
+        r_vol = rhoc * np.sqrt(avgvar)
+        w0123 = w0 * w2
 
         if np.isclose(self.beta, 0):
-            fwd_ratio = 1 + (rho_alpha/self.vov) * (exp_plus2 - 1)
+            fwd_ratio = 1 + (rho_alpha/self.vov) * (sig_t - 1)
         elif self.beta > 0:
-            fwd_ratio = rho_alpha * ((exp_plus2 - 1)/self.vov - 0.5*rho_alpha*texp*r_var)
+            fwd_ratio = rho_alpha * ((sig_t - 1)/self.vov - 0.5*rho_alpha*texp*avgvar)
             np.exp(fwd_ratio, out=fwd_ratio)
+            np.fmax(fwd_ratio, 1e-20, out=fwd_ratio)  # prevent CEV blow-up at fwd=0 (tiny^betac would underflow)
         else:
             ValueError(f'Unsupported beta={self.beta}')
 
