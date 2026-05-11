@@ -348,7 +348,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
         """
         # conditional Cumulant Generating Fuction
         def cumgenfunc_cond(bb):
-            return np.log(self.cond_avgvar_laplace(-bb, dt, var_0, var_t))
+            return np.log(self.cond_avgvar_laplace(-np.asarray(bb, dtype=complex), dt, var_0, var_t))
 
         cum = Mgf2Mom(cumgenfunc_cond).moments(2)
         return cum[0], cum[1]

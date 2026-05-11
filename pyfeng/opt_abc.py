@@ -428,7 +428,7 @@ class OptABC(abc.ABC):
             (c1, c2, c3, c4)
         """
         from .mgf2mom import Mgf2Mom
-        cum = Mgf2Mom(lambda u: self.logp_mgf(np.atleast_1d(u), texp)).cumulants(4)
+        cum = Mgf2Mom(lambda u: self.logp_mgf(np.asarray(u, dtype=complex), texp)).cumulants(4)
         return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
 
 
