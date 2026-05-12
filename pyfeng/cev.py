@@ -22,6 +22,14 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         array([16.0290539 ,  9.89374055,  5.53356595,  2.79581565,  1.27662838])
     """
 
+    def _variables(self, fwd, strike, texp):
+        betac = 1.0 - self.beta
+        alpha = self.sigma / np.power(fwd, betac)
+        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        z0 = 1.0 / var
+        zK = np.power(strike/fwd, 2*betac) * z0
+        return alpha, betac, z0, zK
+
     def mass_zero(self, spot, texp, log=False):
         fwd = self.forward(spot, texp)
 
@@ -180,12 +188,8 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
         fwd, df, divf = self._fwd_factor(spot, texp)
-        betac = 1.0 - self.beta
-        betac_inv = 1.0/betac
-        alpha = self.sigma / np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        z0 = 1.0 / var                              # z_0  (F_0-normalised)
-        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
+        alpha, betac, z0, zK = self._variables(fwd, strike, texp)
+        betac_inv = 1.0 / betac
 
         if self.beta < 1.0:
             delta = 0.5*(cp - 1) + spst.ncx2._sf(zK, betac_inv, z0)
@@ -197,14 +201,8 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
 
     def cdf(self, strike, spot, texp, cp=1):
         fwd = self.forward(spot, texp)
-
-        betac = 1.0 - self.beta
-        betac_inv = 1.0/betac
-
-        alpha = self.sigma/np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        z0 = 1.0/var
-        zK = np.power(strike/fwd, 2*betac) * z0
+        alpha, betac, z0, zK = self._variables(fwd, strike, texp)
+        betac_inv = 1.0 / betac
 
         cdf = np.where(cp > 0, spst.ncx2._cdf(z0, betac_inv, zK), spst.ncx2._sf(z0, betac_inv, zK))
         return cdf
@@ -220,13 +218,8 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
         fwd, df, divf = self._fwd_factor(spot, texp)
-
-        betac = 1.0 - self.beta
-        betac_inv = 1.0/betac
-        alpha = self.sigma / np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        z0 = 1.0 / var                              # z_0  (F_0-normalised)
-        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
+        alpha, betac, z0, zK = self._variables(fwd, strike, texp)
+        betac_inv = 1.0 / betac
 
         # In the F_0=1 frame: 2|β*| z0 · f_χ²; rescale back by 1/fwd.
         # (divf²/df) converts forward-gamma to spot-gamma.
@@ -255,13 +248,8 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
         fwd, df, divf = self._fwd_factor(spot, texp)
-
-        betac = 1.0 - self.beta
-        betac_inv = 1.0/betac
-        alpha = self.sigma / np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
-        z0 = 1.0 / var                              # z_0  (F_0-normalised)
-        zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
+        alpha, betac, z0, zK = self._variables(fwd, strike, texp)
+        betac_inv = 1.0 / betac
 
         if self.beta < 1.0:
             vega = 2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2._pdf(zK, 2 + betac_inv, z0)
