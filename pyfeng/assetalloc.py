@@ -33,11 +33,11 @@ class RiskParity(MaParams):
         >>> m._result
         {'err': 2.2697290741335863e-07, 'n_iter': 6}
 
-        >>> m = pf.RiskParity(cov_m=cov, budget=[0.1, 0.1, 0.2, 0.3, 0.3])
+        >>> m = pf.RiskParity(cov_m=cov, budget=np.array([0.1, 0.1, 0.2, 0.3, 0.3]))
         >>> m.fit_ccd()
         array([0.077, 0.025, 0.074, 0.648, 0.176])
 
-        >>> m = pf.RiskParity(cov_m=cov, longshort=[-1, -1, 1, 1, 1])
+        >>> m = pf.RiskParity(cov_m=cov, longshort=np.array([-1, -1, 1, 1, 1]))
         >>> m.fit_ccd()
         array([-0.216, -0.162,  0.182,  0.726,  0.47 ])
     """

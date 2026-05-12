@@ -32,7 +32,7 @@ class FftABC(OptABC):
         raise NotImplementedError
 
     def price_simpson(self, strike, spot, texp, cp=1):
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         kk = strike/fwd
         log_kk = np.log(kk)
@@ -81,7 +81,7 @@ class FftABC(OptABC):
         return obj
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         kk = strike/fwd
         log_kk = np.log(kk)
 

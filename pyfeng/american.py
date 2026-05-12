@@ -76,7 +76,7 @@ class AmerLi2010QdPlus(OptABC):
             function value
         """
 
-        fwd, df, divf = self._fwd_factor(spot_bdd, texp)
+        fwd, df, divf = self._fwd_df_divf(spot_bdd, texp)
 
         sigma_std = np.maximum(self.sigma*np.sqrt(texp), np.finfo(float).eps)
         d1 = np.log(fwd/strike)/sigma_std
@@ -105,7 +105,7 @@ class AmerLi2010QdPlus(OptABC):
         p_euro = self.bsm_model.price(strike, spot, texp, cp=cp)
         spot_bdd = self.exer_bdd(strike, u, cp=cp)
 
-        fwd, df, divf = self._fwd_factor(spot, texp - u)
+        fwd, df, divf = self._fwd_df_divf(spot, texp - u)
         sigma_std = np.maximum(self.sigma*np.sqrt(texp - u), np.finfo(float).eps)
         d1 = np.log(fwd/spot_bdd)/sigma_std
         d2 = d1 - 0.5*sigma_std
@@ -128,7 +128,7 @@ class AmerLi2010QdPlus(OptABC):
         """
 
         assert cp < 0
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
         spot_bdd = self.exer_bdd(strike, texp, cp=cp)
 
         if np.all(spot <= spot_bdd):

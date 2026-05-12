@@ -81,12 +81,11 @@ class Norm(NormParams, OptAnalyticABC):
             Vanilla option price
         """
         df = np.exp(-texp * intr)
-        fwd = np.array(spot) * (1.0 if is_fwd else np.exp(-texp * divr) / df)
+        fwd = spot * (1.0 if is_fwd else np.exp(-texp * divr) / df)
 
-        sigma_std = np.array(sigma) * np.sqrt(texp)
+        sigma_std = sigma * np.sqrt(texp)
         d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).eps)
 
-        cp = np.array(cp)
         price = df * sigma_std * (cp * d * spst.norm._cdf(cp * d) + spst.norm._pdf(d))
         return price
 
@@ -137,9 +136,9 @@ class Norm(NormParams, OptAnalyticABC):
         Returns:
             implied volatility
         """
-        fwd, df, _ = self._fwd_factor(spot, texp)
-        price_fwd = np.array(price) / df
-        strike_std = np.array(cp) * (fwd - strike)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
+        price_fwd = price / df
+        strike_std = cp * (fwd - strike)
 
         time_val = price_fwd - np.maximum(0, strike_std)  # option time value
         strd = 2 * price_fwd - strike_std  # straddle value (=call + put)
@@ -176,7 +175,7 @@ class Norm(NormParams, OptAnalyticABC):
 
     def vega(self, strike, spot, texp, cp=1):
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
@@ -187,7 +186,7 @@ class Norm(NormParams, OptAnalyticABC):
 
     def delta(self, strike, spot, texp, cp=1):
 
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
@@ -207,7 +206,7 @@ class Norm(NormParams, OptAnalyticABC):
     def gamma(self, strike, spot, texp, cp=1):
 
         # cp is not used
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
@@ -219,7 +218,7 @@ class Norm(NormParams, OptAnalyticABC):
 
     def theta(self, strike, spot, texp, cp=1):
 
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)
         d = (fwd - strike) / sigma_std
@@ -230,7 +229,7 @@ class Norm(NormParams, OptAnalyticABC):
         return df * theta
 
     def price_binary(self, strike, spot, texp, cp=1, opt_type="cash"):
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         sigma_std = self.sigma * np.sqrt(texp)
         d = (fwd - strike) / np.maximum(sigma_std, np.finfo(float).eps)
@@ -277,7 +276,7 @@ class Norm(NormParams, OptAnalyticABC):
             return super().vol_smile(strike, spot, texp, cp=cp, model=model)
 
     def _price_suboptimal(self, strike, spot, texp, cp=1, strike2=None):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         strike2 = strike if strike2 is None else strike2
 
         sigma_std = np.maximum(self.sigma * np.sqrt(texp), np.finfo(float).eps)

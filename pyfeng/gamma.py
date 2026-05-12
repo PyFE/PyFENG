@@ -91,7 +91,7 @@ class InvGauss(InvGaussParams, OptABC):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         sig2_inv = np.expm1(self.sigma ** 2 * texp)
         ig = spst.invgauss(mu=sig2_inv, scale=1 / sig2_inv)
         kk = strike / fwd
@@ -103,7 +103,7 @@ class InvGauss(InvGaussParams, OptABC):
         return df * fwd * price
 
     def cdf(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         sig2_inv = np.expm1(self.sigma ** 2 * texp)
         ig = spst.invgauss(mu=sig2_inv, scale=1 / sig2_inv)
         x = strike / fwd

@@ -187,7 +187,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         References:
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
         alpha, betac, z0, zK = self._variables(fwd, strike, texp)
         betac_inv = 1.0 / betac
 
@@ -217,7 +217,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         References:
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
         alpha, betac, z0, zK = self._variables(fwd, strike, texp)
         betac_inv = 1.0 / betac
 
@@ -247,7 +247,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         References:
             - Choi J, Shim S (2026) New option analytics on the CEV model. Unpublished note.
         """
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
         alpha, betac, z0, zK = self._variables(fwd, strike, texp)
         betac_inv = 1.0 / betac
 

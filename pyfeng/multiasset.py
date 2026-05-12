@@ -23,12 +23,12 @@ class BsmSpreadKirk(SpreadParams, OptABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.BsmSpreadKirk((0.2, 0.3), rho=-0.5)
-        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        >>> m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
         array([22.15632247, 17.18441817, 12.98974214,  9.64141666,  6.99942072])
     """
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         fwd1 = fwd[..., 0] - np.minimum(strike, 0)
         fwd2 = fwd[..., 1] + np.maximum(strike, 0)
@@ -51,12 +51,12 @@ class BsmSpreadBjerksund2014(SpreadParams, OptABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.BsmSpreadBjerksund2014((0.2, 0.3), rho=-0.5)
-        >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        >>> m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
         array([22.13172022, 17.18304247, 12.98974214,  9.54431944,  6.80612597])
     """
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         fwd1 = fwd[..., 0]
         fwd2 = fwd[..., 1]
@@ -98,14 +98,14 @@ class NormBasket(MaParams, OptABC):
             >>> import numpy as np
             >>> import pyfeng as pf
             >>> m = pf.NormBasket.init_spread((20, 30), rho=-0.5, intr=0.05)
-            >>> m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+            >>> m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
             array([17.95676186, 13.74646821, 10.26669936,  7.47098719,  5.29057157])
         """
         return cls(sigma, rho=rho, cor_m=cor_m, cov_m=cov_m,
                    weight=np.array([1.0, -1.0]), intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
@@ -223,7 +223,7 @@ class BsmBasketJu2002(BsmBasketABC):
     correction_ju2002 = True
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         # Weighted forwards and covariance matrix scaled by texp
         fw = fwd * self.weight               # w_i * F_i,  shape (n_asset,)
@@ -335,7 +335,7 @@ class BsmBasketMilevsky1998(BsmBasketABC):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
@@ -362,7 +362,7 @@ class BsmMax2(SpreadParams, OptABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.BsmMax2(0.2*np.ones(2), rho=0, divr=0.1, intr=0.05)
-        >>> m.price(strike=[90, 100, 110], spot=100*np.ones(2), texp=3)
+        >>> m.price(strike=np.array([90, 100, 110]), spot=100*np.ones(2), texp=3)
         array([15.86717049, 11.19568103,  7.71592217])
     """
 
@@ -374,7 +374,7 @@ class BsmMax2(SpreadParams, OptABC):
 
     def price(self, strike, spot, texp, cp=1):
         sig = self.sigma
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         sig_std = sig * np.sqrt(texp)
         spd_rho = np.sqrt(np.dot(sig, sig) - 2 * self.rho * sig[0] * sig[1])
@@ -506,7 +506,7 @@ class BsmBasket1Bm(BsmBasketABC):
         return x[0] if scalar_output else x
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
@@ -545,7 +545,7 @@ class BsmBasketJsu(BsmBasketABC):
     """
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         if fwd.shape[-1] != self.n_asset:
             raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
 
@@ -675,7 +675,7 @@ class BsmBasketChoi2018(BsmBasketABC):
         return v1, f_k, ww
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         v1, f_k, ww = self.v1_fwd_weight(fwd, texp)
 

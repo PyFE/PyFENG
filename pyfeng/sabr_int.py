@@ -200,7 +200,7 @@ class SabrNormAnalytic(sabr.SabrABC):
 
     def price(self, strike, spot, texp, cp=1):
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         rhoc2 = 1.0 - self.rho**2
         xi = self.vov * np.sqrt(texp)/2
@@ -321,7 +321,7 @@ class SabrNormEllipeInt(sabr.SabrABC):
 
     def price(self, strike, spot, texp, cp=1):
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         rhoc2 = 1.0 - self.rho**2
         xi = 0.5 * self.vov * np.sqrt(texp)

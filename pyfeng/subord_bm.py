@@ -86,7 +86,7 @@ class VarGammaABC(VarGammaParams, OptABC):
         c3 = texp * nu * th * (3.0 * sig2 + 2.0 * nth2)
         c4 = 3.0 * texp * nu * (sig2**2 + 4.0 * nth2 * sig2 + 2.0 * nth2**2)
         c1 = texp * (omega + th)
-        return float(c1), float(c2), float(c3), float(c4)
+        return c1, c2, c3, c4
 
 
 class NigABC(NigParams, OptABC):
@@ -167,7 +167,7 @@ class NigABC(NigParams, OptABC):
         c3 = 3.0 * nu * th * c2
         c4 = 3.0 * nu * c2 * (sig2 + 5.0 * nth2)
         c1 = texp * (omega + th)
-        return float(c1), float(c2), float(c3), float(c4)
+        return c1, c2, c3, c4
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ class VarGammaQuad(VarGammaABC):
         #   (the σ²/2 is the Itô correction since E[exp(σW_{x_k})] = exp(σ²x_k/2))
         # → conditional BSM vol:  σ_k = σ√(x_k/T)  (matching variance σ²x_k = σ_k²T)  ✓
         # Normalization fwd_ratio /= ∑w·fwd_ratio enforces exact martingale numerically.
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         var, w = self.quad(texp, self.nu)
 

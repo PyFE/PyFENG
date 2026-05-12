@@ -404,7 +404,7 @@ class VarGammaParams(BaseParams):
         vov = np.sqrt(self.nu)
         c = 1.0 - np.sqrt(1.0 - cond)
         denom = np.sqrt(c**2 + self.sigma**2 * self.nu)
-        return {'sigma_bs': float(denom / vov), 'rho': float(c / denom), 'vov': float(vov)}
+        return {'sigma_bs': denom / vov, 'rho': c / denom, 'vov': vov}
 
     @staticmethod
     def to_sv_param(sigma, theta, nu):
@@ -422,14 +422,14 @@ class VarGammaParams(BaseParams):
         vov = np.sqrt(nu)
         c = 1.0 - np.sqrt(1.0 - cond)
         denom = np.sqrt(c**2 + sigma**2 * nu)
-        return float(denom / vov), float(c / denom), float(vov)
+        return denom / vov, c / denom, vov
 
     @staticmethod
     def to_orig_param(sigma_bs, rho, vov):
         """Convert ``(sigma_bs, rho, vov)`` to ``(sigma, theta, nu)``."""
-        nu = float(vov**2)
-        sigma = float(np.sqrt(1.0 - rho**2) * sigma_bs)
-        theta = float(rho * sigma_bs / vov - 0.5 * sigma_bs**2)
+        nu = vov**2
+        sigma = np.sqrt(1.0 - rho**2) * sigma_bs
+        theta = rho * sigma_bs / vov - 0.5 * sigma_bs**2
         return sigma, theta, nu
 
     @classmethod
@@ -498,7 +498,7 @@ class NigParams(BaseParams):
         cond = self.nu * (2.0 * self.theta + self.sigma**2)
         c = 1.0 - np.sqrt(1.0 - cond)
         denom = np.sqrt(c**2 + self.sigma**2 * self.nu)
-        return {'sigma_bs': float(denom / vov), 'rho': float(c / denom), 'vov': float(vov)}
+        return {'sigma_bs': denom / vov, 'rho': c / denom, 'vov': vov}
 
     @staticmethod
     def to_sv_param(sigma, theta, nu):
@@ -511,14 +511,14 @@ class NigParams(BaseParams):
         cond = nu * (2.0 * theta + sigma**2)
         c = 1.0 - np.sqrt(1.0 - cond)
         denom = np.sqrt(c**2 + sigma**2 * nu)
-        return float(denom / vov), float(c / denom), float(vov)
+        return denom / vov, c / denom, vov
 
     @staticmethod
     def to_orig_param(sigma_bs, rho, vov):
         """Convert ``(sigma_bs, rho, vov)`` to ``(sigma, theta, nu)``."""
-        nu = float(vov**2)
-        sigma = float(np.sqrt(1.0 - rho**2) * sigma_bs)
-        theta = float(rho * sigma_bs / vov - 0.5 * sigma_bs**2)
+        nu = vov**2
+        sigma = np.sqrt(1.0 - rho**2) * sigma_bs
+        theta = rho * sigma_bs / vov - 0.5 * sigma_bs**2
         return sigma, theta, nu
 
     @classmethod
@@ -735,7 +735,7 @@ class MaParams(BaseParams):
             # derive sigma and cor_m from cov_m
             self.sigma = np.sqrt(np.diag(self.cov_m))
             self.cor_m = self.cov_m / (self.sigma[:, None] * self.sigma)
-            self.rho = float(self.cor_m[0, 1]) if self.n_asset == 2 else None
+            self.rho = self.cor_m[0, 1] if self.n_asset == 2 else None
         elif self.cor_m is not None:
             self.cor_m = np.asarray(self.cor_m, dtype=float)
             if self.cor_m.shape != (self.n_asset, self.n_asset):
@@ -744,7 +744,7 @@ class MaParams(BaseParams):
                     f"got {self.cor_m.shape}."
                 )
             self.cov_m = self.sigma * self.cor_m * self.sigma[:, None]
-            self.rho = float(self.cor_m[0, 1]) if self.n_asset == 2 else None
+            self.rho = self.cor_m[0, 1] if self.n_asset == 2 else None
         else:
             # rho path (or single-asset identity)
             rho = self.rho if self.rho is not None else 0.0
@@ -760,7 +760,7 @@ class MaParams(BaseParams):
         if self.weight is None:
             self.weight = np.ones(self.n_asset) / self.n_asset
         elif np.isscalar(self.weight):
-            self.weight = np.full(self.n_asset, float(self.weight))
+            self.weight = np.full(self.n_asset, self.weight)
         else:
             self.weight = np.asarray(self.weight, dtype=float)
             if self.weight.shape != (self.n_asset,):

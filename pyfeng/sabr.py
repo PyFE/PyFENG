@@ -350,7 +350,7 @@ class SabrHagan2002(SabrVolApproxABC):
 
         if texp <= 0.0:
             return 0.0
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd, _, _ = self._fwd_df_divf(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(spot, texp)
         betac2 = betac**2
 
@@ -511,7 +511,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, MassZeroABC):
         vol_beta = self.beta if self._base_beta is None else self._base_beta
         vol_betac = 1.0 - vol_beta
 
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd, _, _ = self._fwd_df_divf(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike
@@ -603,7 +603,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, MassZeroABC):
         vol_beta = self.beta if self._base_beta is None else self._base_beta
         vol_betac = 1.0 - vol_beta
 
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd, _, _ = self._fwd_df_divf(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike
@@ -743,7 +743,7 @@ class SabrLorig2017(SabrVolApproxABC):
         # fwd, spot, sigma may be either scalar or np.array.
         # texp, vov, rho, beta should be scholar values
 
-        fwd, _, _ = self._fwd_factor(spot, texp)
+        fwd, _, _ = self._fwd_df_divf(spot, texp)
         alpha, betac, rhoc, rho2, vovn = self._variables(fwd, texp)
 
         kk = strike / fwd  # standardized strike

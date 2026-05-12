@@ -38,11 +38,11 @@ class OptABC(abc.ABC):
             forward price
         """
         if self.is_fwd:
-            return np.array(spot)
+            return spot
         else:
-            return np.array(spot) * np.exp((self.intr - self.divr) * np.array(texp))
+            return spot * np.exp((self.intr - self.divr) * texp)
 
-    def _fwd_factor(self, spot, texp):
+    def _fwd_df_divf(self, spot, texp):
         """
         Forward, discount factor, dividend factor
 
@@ -53,13 +53,13 @@ class OptABC(abc.ABC):
         Returns:
             (forward, discounting factor, dividend factor)
         """
-        df = np.exp(-self.intr * np.array(texp))
+        df = np.exp(-self.intr * texp)
         if self.is_fwd:
             divf = 1
-            fwd = np.array(spot)
+            fwd = spot
         else:
-            divf = np.exp(-self.divr * np.array(texp))
-            fwd = np.array(spot) * divf / df
+            divf = np.exp(-self.divr * texp)
+            fwd = spot * divf / df
         return fwd, df, divf
 
     @abc.abstractmethod
@@ -94,7 +94,7 @@ class OptABC(abc.ABC):
             implied volatility
         """
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         kk = strike / fwd  # strike / fwd
         price_std = price / df / fwd  # forward price / fwd
@@ -436,7 +436,7 @@ class OptABC(abc.ABC):
         """
         from .mgf2mom import Mgf2Mom
         cum = Mgf2Mom(lambda u: self.logp_mgf(np.asarray(u, dtype=complex), texp)).cumulants(4)
-        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
+        return cum[0], cum[1], cum[2], cum[3]
 
 
 class OptAnalyticABC(OptABC):
@@ -613,7 +613,8 @@ class MassZeroABC(OptABC):
         return vol
 
     def price_from_mass_zero(self, strike, spot, texp, cp=1, mass=None):
+        from .bsm import Bsm
         vol = self.vol_from_mass_zero(strike, spot, texp, mass=mass)
-        base_model = bsm.Bsm(vol)
+        base_model = Bsm(vol)
         price = base_model.price(strike, spot, texp, cp=cp)
         return price
