@@ -52,7 +52,7 @@ from .multiasset import (
 from .multiasset_mc import BsmNdMc, NormNdMc
 
 # Asset Allocation
-from .assetalloc import RiskParity, SCASolver
+from .assetalloc import RiskParity, RiskParitySCA
 
 # Other utilities
 from .mgf2mom import Mgf2Mom

@@ -1,5 +1,5 @@
 Asset Allocation Models
 ===============================
 .. automodule:: pyfeng.assetalloc
-   :members: RiskParity, SCASolver
+   :members: RiskParity, RiskParitySCA
    :noindex:

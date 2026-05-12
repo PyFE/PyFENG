@@ -221,67 +221,58 @@ class RiskParity(MaParams):
         return ww
 
 
-class SCASolver(RiskParity):
+class RiskParitySCA(RiskParity):
     """
-    Constrained risk parity asset allocation with per-asset upper bounds.
+    Successive convex approximation for capped risk parity portfolios.
 
-    The solver minimizes the dispersion of risk contributions under
+    This class extends :class:`RiskParity` with a single additional model
+    parameter, ``w_max``. All covariance, correlation, budget, and long/short
+    inputs are inherited from :class:`RiskParity` and :class:`MaParams`.
+
+    The fitted portfolio solves a long-only, equal-budget approximation of
+    the volatility risk parity problem with the capped simplex constraints
 
     ``sum_i w_i = 1`` and ``0 <= w_i <= w_max``.
 
-    It uses :class:`RiskParity`'s improved CCD method for initialization,
-    then performs projected gradient steps with backtracking line search on
-    the capped simplex.
+    For a covariance matrix ``Sigma``, the volatility risk contribution is
+    proportional to ``w_i (Sigma w)_i``. Equal risk parity corresponds to
+    Feng and Palomar (2015), equations (9) and (13). The squared risk
+    contribution dispersion used here follows the formulation in their
+    equation (16), while the iterative procedure is a projected-gradient
+    implementation inspired by their successive convex approximation
+    framework in equations (34)--(39) and Algorithm 1.
+
+    The implementation initializes from :meth:`RiskParity.fit_ccd`, projects
+    onto the capped simplex, and then repeats first-order projected steps
+    with backtracking line search. It stores diagnostics in ``_result`` using
+    the same style as :class:`RiskParity`.
 
     Args:
-        sigma: asset volatilities. Ignored if ``cov_m`` or ``cov`` is given.
-        rho: scalar correlation for all off-diagonal entries.
-        cor_m: correlation matrix.
-        cov_m: covariance matrix.
-        cov: covariance matrix alias for compatibility with older PyFENG APIs.
-        weight: inherited multi-asset weight field. Not used by the optimizer.
-        budget: risk budget. Currently only equal budgets are supported.
-        longshort: long/short constraint. Currently only long-only is supported.
-        w_max: upper bound on individual asset weights. Must satisfy
+        w_max: upper bound on each asset weight. Must satisfy
             ``w_max >= 1 / n_asset``.
-        tol: convergence tolerance for maximum weight change.
-        max_iter: maximum number of SCA iterations.
+
+    References:
+        - Feng Y, Palomar DP (2015). SCRIP: Successive Convex Optimization
+          Methods for Risk Parity Portfolio Design. IEEE Transactions on
+          Signal Processing 63(19), 5285-5300.
+          https://doi.org/10.1109/TSP.2015.2452219
+        - Choi J, Chen R (2022). Improved iterative methods for solving risk
+          parity portfolio. Journal of Derivatives and Quantitative Studies
+          30(2), 114-124. https://doi.org/10.1108/JDQS-12-2021-0031
     """
 
-    def __init__(
-        self,
-        sigma=None,
-        rho=None,
-        cor_m=None,
-        cov_m=None,
-        *,
-        cov=None,
-        weight=None,
-        budget=None,
-        longshort=1,
-        w_max=1.0,
-        tol=1e-6,
-        max_iter=200,
-    ):
-        if cov is not None:
-            if cov_m is not None:
-                raise ValueError("Specify only one of cov and cov_m.")
-            cov_m = cov
+    tol = 1e-6
+    max_iter = 200
 
-        super().__init__(
-            sigma=sigma,
-            rho=rho,
-            cor_m=cor_m,
-            cov_m=cov_m,
-            weight=weight,
-            budget=budget,
-            longshort=longshort,
-        )
+    def __init__(self, *args, w_max=1.0, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        if budget is not None and not np.allclose(self.budget, 1.0 / self.n_asset):
-            raise ValueError("SCASolver currently supports equal budgets only.")
+        if not np.allclose(self.budget, 1.0 / self.n_asset):
+            raise ValueError("RiskParitySCA currently supports equal budgets only.")
         if np.any(self.longshort != 1):
-            raise ValueError("SCASolver currently supports long-only portfolios only.")
+            raise ValueError(
+                "RiskParitySCA currently supports long-only portfolios only."
+            )
 
         self.w_max = float(w_max)
         if not np.isfinite(self.w_max) or self.w_max <= 0.0 or self.w_max > 1.0:
@@ -291,14 +282,6 @@ class SCASolver(RiskParity):
                 f"w_max={self.w_max} is infeasible for n_asset={self.n_asset}: "
                 "need w_max >= 1/n_asset."
             )
-
-        self.tol = float(tol)
-        if not np.isfinite(self.tol) or self.tol <= 0.0:
-            raise ValueError("tol must be a positive finite float.")
-
-        self.max_iter = int(max_iter)
-        if self.max_iter < 1:
-            raise ValueError("max_iter must be at least 1.")
 
     def fit_sca(self, tol=None):
         """
@@ -316,6 +299,9 @@ class SCASolver(RiskParity):
         tol_eff = self.tol if tol is None else float(tol)
         if not np.isfinite(tol_eff) or tol_eff <= 0.0:
             raise ValueError("tol must be a positive finite float.")
+        max_iter = int(self.max_iter)
+        if max_iter < 1:
+            raise ValueError("max_iter must be at least 1.")
 
         w = self.fit_ccd(tol=min(tol_eff, 1e-8))
         if w is None:
@@ -326,7 +312,7 @@ class SCASolver(RiskParity):
         step = 1.0
         err = np.inf
 
-        for k in range(1, self.max_iter + 1):
+        for k in range(1, max_iter + 1):
             w_old = w.copy()
             sw = self.cov_m @ w
             rc = w * sw
@@ -353,7 +339,7 @@ class SCASolver(RiskParity):
 
         converged = err < tol_eff
         if not converged:
-            raise FloatingPointError("SCASolver failed to converge.")
+            raise FloatingPointError("RiskParitySCA failed to converge.")
 
         self.weight = w
         self._result = {
