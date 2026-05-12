@@ -224,7 +224,7 @@ class SabrNormAnalytic(sabr.SabrABC):
             v_weight = np.expand_dims(v_weight, list(range(1, axis+1)))
 
             uu = np.sqrt(u0**2 + 2*v_value)
-            v_weight = v_weight / np.power(v_value, 1.5) / uu
+            v_weight = v_weight / (v_value*np.sqrt(v_value)) / uu
 
             ch = np.cosh(2*xi*uu)
             diff = np.sqrt(np.fmax(rhoc2*(ch**2. - 1.0 - (k - self.rho*ch)**2), 0.0))

@@ -752,7 +752,7 @@ class HestonMcAndersen2008(HestonMcABC):
         var_t[idx_below] = a * (np.sqrt(b2) + zz[idx_below])**2
 
         # psi > psi_c branch: exponential approximation, Eq (25)
-        one_m_u = spst.norm.cdf(zz[~idx_below])  # 1 - U
+        one_m_u = spst.norm._cdf(zz[~idx_below])  # 1 - U
         var_t_above = np.zeros_like(one_m_u)
 
         one_m_p = 2 / (psi[~idx_below] + 1)  # 1 - p, Eq (29)

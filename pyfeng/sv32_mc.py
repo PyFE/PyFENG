@@ -264,7 +264,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
 
         # Sample the conditional integrated variance by inverse transform sampling
         zz = self.rv_normal(spawn=0)
-        uu = spst.norm.cdf(zz)
+        uu = spst.norm._cdf(zz)
 
         def root(xx):
             h_xx = h * xx
@@ -386,7 +386,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
 
         # Sample the conditional integrated variance by inverse transform sampling
         zz = self.rv_normal()
-        uu = spst.norm.cdf(zz)
+        uu = spst.norm._cdf(zz)
 
         def root(xx):
             h_xx = h * xx

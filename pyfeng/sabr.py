@@ -95,7 +95,7 @@ class SabrABC(SabrParams, OptABC):
     def cond_avgvar_mfn(z, vovn_k):
         assert vovn_k >= 0.0
         if np.abs(vovn_k) > 0.01:
-            ncdf_diff = spst.norm.cdf(-np.abs(z) + vovn_k) - spst.norm.cdf(-np.abs(z) - vovn_k)
+            ncdf_diff = spst.norm._cdf(-np.abs(z) + vovn_k) - spst.norm._cdf(-np.abs(z) - vovn_k)
             m = np.sqrt(np.pi / 2) / vovn_k * ncdf_diff * np.exp((z**2 + vovn_k**2) / 2)
         else:
             ## Alternative evaluation usign Hermite polynomial when vv is very small
@@ -162,7 +162,7 @@ class SabrABC(SabrParams, OptABC):
             exkur = vovn2 * (276/35 - (8/175)*(9*zhat**2 - 158)*vovn2)
         else:
             var_scaled = np.divide(mc2, m1**2)
-            skew = np.divide(mc3, mc2**1.5)
+            skew = np.divide(mc3, mc2*np.sqrt(mc2))
             exkur = np.divide(mc4, mc2**2) - 3.0
 
         return m1*exp, var_scaled, skew, exkur
@@ -249,7 +249,7 @@ class SabrABC(SabrParams, OptABC):
         var_scaled = vovn2 * m2 * m    # var/mean² = Var/mean²; If vov2 -> 0, var_scaled ≈ (4/3) vovn²
 
         coef = np.array([1, 5, 15, 35, 70, 126, 210, 330, 432, 456, 336])/315  # O(x^10)
-        s = vovn * np.sqrt(m) * np.polyval(coef, ww) / np.power(m2, 1.5)  # skewness
+        s = vovn * np.sqrt(m) * np.polyval(coef, ww) / (m2*np.sqrt(m2))  # skewness
         # If vov2 -> 0, s = (4/5)*3*sqrt(3)*vov = 2.4*sqrt(3) ~ 4.15692*vov
 
         # Ex-kurtosis calculation

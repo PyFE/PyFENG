@@ -374,7 +374,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         ## Vectorized newton method, but doesn't work well
         
         zz = self.rv_normal(spawn=2)
-        uu = spst.norm.cdf(zz)
+        uu = spst.norm._cdf(zz)
         ln_m, m2 = self.cond_avgvar_mv(vovn, np.log(sigma_t) / vovn)
         ln_sig = np.sqrt(np.log(m2 / ln_m ** 2))
         # Debug: print(sigma_t, '\n', ln_sig, '\n', uu)
@@ -442,7 +442,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         '''
 
         A0 = 1 / VT * (spot**(1 - beta) / (1 - beta))**2
-        return spst.chi2.cdf(A0, 1 / (1 - beta))
+        return spst.chi2._cdf(A0, 1 / (1 - beta))
 
     @staticmethod
     def C0_func(VT, beta, u):
@@ -537,10 +537,10 @@ class SabrMcCai2017Exact(SabrMcABC):
             s = (np.sqrt(1 + 4 * x * mu**2 / sigma) - 1) / (2 * mu2)
             yita = yita_func(mu2, s)
             theta_s = partial(theta_func, mu2, yita)
-            z = np.sign(s - 1) * (sigma * (s - 1)**2 * (1 / 2 / s + mu2 - K_func(1 - s) / s) - np.log(
+            z = np.sign(s - 1) * np.sqrt(sigma * (s - 1)**2 * (1 / 2 / s + mu2 - K_func(1 - s) / s) - np.log(
                 1 / s - 2 * K_func(1 - s) / (s * (1 + 2 * mu2 * s)))
-                                  + 2 * theta_s(s) / sigma)**0.5
-            cdf = spst.norm.cdf(z)
+                                  + 2 * theta_s(s) / sigma)
+            cdf = spst.norm._cdf(z)
         return cdf
 
     def return_var_realized(self, texp, cond):

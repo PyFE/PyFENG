@@ -607,7 +607,7 @@ class MassZeroABC(OptABC):
         tmp = np.sqrt(2 * np.abs(np.log(kk)))
         leading = tmp / np.sqrt(texp)
 
-        qq = spst.norm.ppf(mass)
+        qq = spst.norm._ppf(mass)
         vol = 1 + (qq + 0.5 * ((2 + qq ** 2) + qq / tmp) / tmp) / tmp
         vol *= leading
         return vol

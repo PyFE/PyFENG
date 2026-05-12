@@ -226,7 +226,7 @@ class BsmAsianJsu(BsmParams, OptABC):
 
         # var_scaled = var/mean²;  skew = mu3/mu2^(3/2);  raw kurt = mu4/mu2^2.
         var_scaled = mu2 / m1**2
-        skew = mu3 / mu2**1.5
+        skew = mu3 / (mu2*np.sqrt(mu2))
         kurt = mu4 / mu2**2
 
         return m1, var_scaled, skew, kurt
@@ -435,16 +435,16 @@ class BsmContinuousAsianJu2002(OptABC):
             y1 = (m1 - y) / np.sqrt(v1) + sqrtv1
             y2 = y1 - sqrtv1
             bc = (
-                u1 * np.exp(-self.intr * texp) * spst.norm.cdf(y1, loc=0, scale=1)
-                - strike * np.exp(-self.intr * texp) * spst.norm.cdf(y2, loc=0, scale=1)
+                u1 * np.exp(-self.intr * texp) * spst.norm._cdf(y1)
+                - strike * np.exp(-self.intr * texp) * spst.norm._cdf(y2)
                 + np.exp(-self.intr * texp)
                 * strike
                 * (
-                    z1 * spst.norm.pdf(y, loc=m1, scale=sqrtv1)
-                    + z2 * spst.norm.pdf(y, loc=m1, scale=sqrtv1) * (m1 - y) / v1
+                    z1 * spst.norm._pdf((y - m1) / sqrtv1) / sqrtv1
+                    + z2 * spst.norm._pdf((y - m1) / sqrtv1) / sqrtv1 * (m1 - y) / v1
                     + z3
                     * ((y - m1) * (y - m1) / v1 / v1 - 1 / v1)
-                    * spst.norm.pdf(y, loc=m1, scale=sqrtv1)
+                    * spst.norm._pdf((y - m1) / sqrtv1) / sqrtv1
                 )
             )
         if cp == 1:

@@ -60,7 +60,7 @@ class DistLognormal:
         """
         m1, vs, s, k = self.mvsk()
         mc2 = vs * m1**2
-        mc3 = s * mc2**1.5
+        mc3 = s * mc2*np.sqrt(mc2)
         mc4 = (k + 3.0) * mc2**2
         return m1, mc2, mc3, mc4
 
@@ -244,7 +244,7 @@ class DistGamma:
         """
         m1, var_scaled, skew, exkurt = self.mvsk()
         var = var_scaled * m1**2
-        mc3 = skew * var**1.5
+        mc3 = skew * var*np.sqrt(var)
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
@@ -402,7 +402,7 @@ class DistInvGauss:
         """
         m1, var_scaled, skew, exkurt = self.mvsk()
         var = var_scaled * m1**2
-        mc3 = skew * var**1.5
+        mc3 = skew * var*np.sqrt(var)
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
@@ -555,7 +555,7 @@ class DistGig:
         var = m2 - m1**2
         mc3 = m3 - 3 * m2 * m1 + 2 * m1**3
         mc4 = m4 - 4 * m3 * m1 + 6 * m2 * m1**2 - 3 * m1**4
-        skew = mc3 / var**1.5
+        skew = mc3 / (var*np.sqrt(var))
         exkurt = mc4 / var**2 - 3.0
         var_scaled = var / m1**2
         return m1, var_scaled, skew, exkurt
@@ -569,7 +569,7 @@ class DistGig:
         """
         m1, var_scaled, skew, exkurt = self.mvsk()
         var = var_scaled * m1**2
-        mc3 = skew * var**1.5
+        mc3 = skew * var*np.sqrt(var)
         mc4 = (exkurt + 3.0) * var**2
         return m1, var, mc3, mc4
 
@@ -776,7 +776,7 @@ class DistGh:
         mc3  = 3*beta*mc2_W + beta**3*mc3_W
         mc4  = 3*m2 + 6*beta**2*(m3 - 2*m1*m2 + m1**3) + beta**4*mc4_W
 
-        return mean, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
+        return mean, mc2, mc3 / (mc2*np.sqrt(mc2)), mc4 / mc2**2 - 3
 
     def mvsk_quad(self):
         """
@@ -801,7 +801,7 @@ class DistGh:
         mc3 = ww @ (c**3 + 3*c*xw)
         mc4 = ww @ (c**4 + 6*c**2*xw + 3*xw**2)
 
-        return mean, mc2, mc3 / mc2**1.5, mc4 / mc2**2 - 3
+        return mean, mc2, mc3 / (mc2*np.sqrt(mc2)), mc4 / mc2**2 - 3
 
     def mc4(self):
         """
@@ -811,7 +811,7 @@ class DistGh:
             (m1, mc2, mc3, mc4)
         """
         m1, mc2, skew, exkurt = self.mvsk()
-        return m1, mc2, skew * mc2**1.5, (exkurt + 3.0) * mc2**2
+        return m1, mc2, skew * mc2*np.sqrt(mc2), (exkurt + 3.0) * mc2**2
 
     def cdf(self, y):
         """
@@ -828,7 +828,7 @@ class DistGh:
         scalar = np.ndim(y) == 0
         y = np.atleast_1d(y)
         z = (y[:, None] - self.mu - self.beta * x[None, :]) / np.sqrt(x[None, :])
-        out = spst.norm.cdf(z) @ w
+        out = spst.norm._cdf(z) @ w
         return float(out[0]) if scalar else out
 
     def ppf(self, q):
@@ -846,7 +846,7 @@ class DistGh:
         x_r, w_r = self.quad_x, self.quad_w
         mu, beta = self.mu, self.beta
         def cdf_f(y):
-            return w_r @ spst.norm.cdf((y - mu - beta * x_r) / np.sqrt(x_r))
+            return w_r @ spst.norm._cdf((y - mu - beta * x_r) / np.sqrt(x_r))
         m1  = mu + beta * (w_r @ x_r)
         mc2 = (w_r @ x_r) + beta**2 * ((w_r @ x_r**2) - (w_r @ x_r)**2)
         std = np.sqrt(max(mc2, 1e-30))

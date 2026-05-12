@@ -35,10 +35,10 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
             log_mass = (a - 1)*np.log(x) - x - spsp.loggamma(a)
             log_mass += np.log1p((a - 1)/x*(1 + (a - 2)/x*(1 + (a - 3)/x*(1 + (a - 4)/x))))
             with np.errstate(divide="ignore"):
-                log_mass = np.where(x > 100, log_mass, np.log(spst.gamma.sf(x=x, a=a)))
+                log_mass = np.where(x > 100, log_mass, np.log(spst.gamma._sf(x=x, a=a)))
             return log_mass
         else:
-            return spst.gamma.sf(x=x, a=a)
+            return spst.gamma._sf(x=x, a=a)
 
     def mass_zero_t0(self, spot, texp):
         """
@@ -89,8 +89,8 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         z0 = 1.0 / var                              # z_0
         zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
-        sf = spst.ncx2.sf
-        cdf = spst.ncx2.cdf
+        sf = spst.ncx2._sf
+        cdf = spst.ncx2._cdf
 
         # Theorem 5 (Schroder 1989).  ν = 1/(2|β*|), so 2ν = |betac_inv|.
         # β < 1: 2ν = betac_inv,  2+2ν = 2+betac_inv;  (z_0, z_K) = (z0, zK)
@@ -146,22 +146,22 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         zK = np.power(k, 2 * betac) * z0
 
         if beta < 1.0:
-            f1 = spst.ncx2.pdf(zK, 2 + betac_inv, z0)
+            f1 = spst.ncx2._pdf(zK, 2 + betac_inv, z0)
             if type == -1:
                 return 2.0 / (sigma * betac) * f1
             if sign > 0:
-                rv_num = spst.ncx2.sf(zK, 2 + betac_inv, z0) - k * spst.ncx2.cdf(z0, betac_inv, zK)
+                rv_num = spst.ncx2._sf(zK, 2 + betac_inv, z0) - k * spst.ncx2._cdf(z0, betac_inv, zK)
             else:
-                rv_num = spst.ncx2.cdf(zK, 2 + betac_inv, z0) + k * spst.ncx2.cdf(z0, betac_inv, zK)
+                rv_num = spst.ncx2._cdf(zK, 2 + betac_inv, z0) + k * spst.ncx2._cdf(z0, betac_inv, zK)
             coeff = sigma * betac / 2
         else:
-            f1 = spst.ncx2.pdf(z0, 2 - betac_inv, zK)
+            f1 = spst.ncx2._pdf(z0, 2 - betac_inv, zK)
             if type == -1:
                 return -2.0 / (sigma * betac) * f1
             if sign > 0:
-                rv_num = spst.ncx2.sf(z0, -betac_inv, zK) - k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+                rv_num = spst.ncx2._sf(z0, -betac_inv, zK) - k * spst.ncx2._cdf(zK, 2 - betac_inv, z0)
             else:
-                rv_num = spst.ncx2.cdf(z0, -betac_inv, zK) + k * spst.ncx2.cdf(zK, 2 - betac_inv, z0)
+                rv_num = spst.ncx2._cdf(z0, -betac_inv, zK) + k * spst.ncx2._cdf(zK, 2 - betac_inv, z0)
             coeff = -sigma * betac / 2  # > 0 since betac < 0
 
         if type == 0:
@@ -188,9 +188,9 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
         if self.beta < 1.0:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(zK, betac_inv, z0)
+            delta = 0.5*(cp - 1) + spst.ncx2._sf(zK, betac_inv, z0)
         else:
-            delta = 0.5*(cp - 1) + spst.ncx2.sf(z0, 2 - betac_inv, zK)
+            delta = 0.5*(cp - 1) + spst.ncx2._sf(z0, 2 - betac_inv, zK)
 
         delta *= df if self.is_fwd else divf
         return delta
@@ -206,7 +206,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         z0 = 1.0/var
         zK = np.power(strike/fwd, 2*betac) * z0
 
-        cdf = np.where(cp > 0, spst.ncx2.cdf(z0, betac_inv, zK), spst.ncx2.sf(z0, betac_inv, zK))
+        cdf = np.where(cp > 0, spst.ncx2._cdf(z0, betac_inv, zK), spst.ncx2._sf(z0, betac_inv, zK))
         return cdf
 
     def gamma(self, strike, spot, texp, cp=1):
@@ -231,9 +231,9 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         # In the F_0=1 frame: 2|β*| z0 · f_χ²; rescale back by 1/fwd.
         # (divf²/df) converts forward-gamma to spot-gamma.
         if self.beta < 1.0:
-            gamma = 2*betac * z0 * spst.ncx2.pdf(zK, 2 + betac_inv, z0)
+            gamma = 2*betac * z0 * spst.ncx2._pdf(zK, 2 + betac_inv, z0)
         else:
-            gamma = -2*betac * z0 * spst.ncx2.pdf(z0, 2 - betac_inv, zK)
+            gamma = -2*betac * z0 * spst.ncx2._pdf(z0, 2 - betac_inv, zK)
 
         gamma *= divf**2 / (df * fwd)   # rescale 1/fwd, then fwd→spot conversion
 
@@ -264,9 +264,9 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
 
         if self.beta < 1.0:
-            vega = 2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(zK, 2 + betac_inv, z0)
+            vega = 2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2._pdf(zK, 2 + betac_inv, z0)
         else:
-            vega = -2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2.pdf(z0, 2 - betac_inv, zK)
+            vega = -2 * np.power(fwd, self.beta) / (alpha * betac) * spst.ncx2._pdf(z0, 2 - betac_inv, zK)
 
         return df * vega
 

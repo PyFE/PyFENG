@@ -31,10 +31,10 @@ class InvGam(InvGamParams, OptABC):
 
         price = np.where(
             cp > 0,
-            fwd_scale * spst.gamma.cdf(x=1 / kk, a=alpha - 1)
-            - kk * spst.gamma.cdf(x=1 / kk, a=alpha),
-            kk * spst.gamma.sf(x=1 / kk, a=alpha)
-            - fwd_scale * spst.gamma.sf(x=1 / kk, a=alpha - 1),
+            fwd_scale * spst.gamma._cdf(x=1 / kk, a=alpha - 1)
+            - kk * spst.gamma._cdf(x=1 / kk, a=alpha),
+            kk * spst.gamma._sf(x=1 / kk, a=alpha)
+            - fwd_scale * spst.gamma._sf(x=1 / kk, a=alpha - 1),
         )
         return disc_fac * beta * price
 
@@ -68,7 +68,7 @@ class InvGam(InvGamParams, OptABC):
         alpha, beta = self.alpha_beta(spot, texp)
         x = strike / beta
         cdf = np.where(
-            cp > 0, spst.gamma.cdf(1 / x, a=alpha), spst.gamma.sf(1 / x, a=alpha)
+            cp > 0, spst.gamma._cdf(1 / x, a=alpha), spst.gamma._sf(1 / x, a=alpha)
         )
         return cdf
 

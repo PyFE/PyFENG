@@ -75,9 +75,9 @@ class Nsvh1(NsvhABC):
         rhoc = np.sqrt(1 - self.rho**2)
 
         d = (np.arctanh(self.rho) - np.arcsinh(self.rho * vov_var / rhoc)) / vovn
-        ncdf_p = spst.norm.cdf(d + vovn)
-        ncdf_m = spst.norm.cdf(d - vovn)
-        ncdf = spst.norm.cdf(d)
+        ncdf_p = spst.norm._cdf(d + vovn)
+        ncdf_m = spst.norm._cdf(d - vovn)
+        ncdf = spst.norm._cdf(d)
 
         price = 0.5/self.vov*vov_var * ((1 + self.rho) * ncdf_p - (1 - self.rho) * ncdf_m - 2 * self.rho * ncdf)
         sig0 = self.sigma * np.sqrt(texp/2/np.pi) / price
@@ -109,9 +109,9 @@ class Nsvh1(NsvhABC):
         rhoc = np.sqrt(1 - self.rho**2)
 
         d = (np.arctanh(self.rho) + np.arcsinh(((fwd - strike)*vovn/sig_sqrt - self.rho*vov_var) / rhoc)) / vovn
-        ncdf_p = spst.norm.cdf(cp * (d + vovn))
-        ncdf_m = spst.norm.cdf(cp * (d - vovn))
-        ncdf = spst.norm.cdf(cp * d)
+        ncdf_p = spst.norm._cdf(cp * (d + vovn))
+        ncdf_m = spst.norm._cdf(cp * (d - vovn))
+        ncdf = spst.norm._cdf(cp * d)
 
         price = 0.5*sig_sqrt/vovn*vov_var \
                 * ((1 + self.rho)*ncdf_p - (1 - self.rho)*ncdf_m - 2*self.rho*ncdf) + (fwd - strike)*ncdf
@@ -128,7 +128,7 @@ class Nsvh1(NsvhABC):
         rhoc = np.sqrt(1 - self.rho**2)
 
         d = (np.arctanh(self.rho) + np.arcsinh(((fwd - strike)*vovn/sig_sqrt - self.rho*vov_var) / rhoc)) / vovn
-        return spst.norm.cdf(cp * d)
+        return spst.norm._cdf(cp * d)
 
     def price_vsk(self, texp=1):
         """

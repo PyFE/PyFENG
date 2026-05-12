@@ -75,9 +75,9 @@ class BsmSpreadBjerksund2014(SpreadParams, OptABC):
         d3 = (d3 - 0.5 * std11 + 0.5 * bb ** 2 * std22) / std
 
         price = cp * (
-            fwd1 * spst.norm.cdf(cp * d1)
-            - fwd2 * spst.norm.cdf(cp * d2)
-            - strike * spst.norm.cdf(cp * d3)
+            fwd1 * spst.norm._cdf(cp * d1)
+            - fwd2 * spst.norm._cdf(cp * d2)
+            - strike * spst.norm._cdf(cp * d3)
         )
 
         return df * price
@@ -283,7 +283,7 @@ class BsmBasketJu2002(BsmBasketABC):
         z3 = jd4
 
         d2 = np.log(m1/strike)/std - 0.5 * std             # BSM d₂ = (m(1) - log K) / √v(1)
-        p_y = spst.norm.pdf(d2) / std
+        p_y = spst.norm._pdf(d2) / std
         dp_y = p_y * d2 / std
         d2p_y = p_y * (d2**2 - 1) / std**2
 
@@ -408,11 +408,11 @@ class BsmMax2(SpreadParams, OptABC):
         for k in range(n_strike):
             xx_ = xx + np.log(strike[k]) / sig_std
             term1 = fwd[0] * (
-                spst.norm.cdf(yy[0])
+                spst.norm._cdf(yy[0])
                 - spst.multivariate_normal.cdf(np.array([xx_[0], yy[0]]), mu0, cor_m1)
             )
             term2 = fwd[1] * (
-                spst.norm.cdf(yy[1])
+                spst.norm._cdf(yy[1])
                 - spst.multivariate_normal.cdf(np.array([xx_[1], yy[1]]), mu0, cor_m2)
             )
             term3 = strike[k] * np.array(
@@ -522,8 +522,8 @@ class BsmBasket1Bm(BsmBasketABC):
         else:
             d1 = d2[:, None] + np.atleast_1d(cp)[:, None] * sigma_std
 
-        price = np.sum(fwd_basket * spst.norm.cdf(d1), axis=-1)
-        price -= strike * spst.norm.cdf(d2)
+        price = np.sum(fwd_basket * spst.norm._cdf(d1), axis=-1)
+        price -= strike * spst.norm._cdf(d2)
         price *= cp * df
         return price
 
@@ -693,9 +693,9 @@ class BsmBasketChoi2018(BsmBasketABC):
             fac = f_k_row * fw * np.exp(-v1_half_sq)          # Eq. (8) LHS coefficients
             d_m = -BsmBasket1Bm.root(fac, v1, strike)          # d(ž_m) = −z₁*
 
-            nd1 = spst.norm.cdf(d_m[:, None] + v1)             # N(d+V_k1), (n_strike, n_asset)
+            nd1 = spst.norm._cdf(d_m[:, None] + v1)             # N(d+V_k1), (n_strike, n_asset)
             nd1_cp = nd1 if cp == 1 else 1.0 - nd1             # N(cp·(d+V_k1))
-            nd2_cp = spst.norm.cdf(cp * d_m)                    # N(cp·d), (n_strike,)
+            nd2_cp = spst.norm._cdf(cp * d_m)                    # N(cp·d), (n_strike,)
 
             # Price contribution: cp·(Σ_k fw_k f_k N(cp·(d+V_k1)) − K·N(cp·d))
             price += wm * cp * (np.sum(f_k_row * fw * nd1_cp, axis=-1) - strike * nd2_cp)
