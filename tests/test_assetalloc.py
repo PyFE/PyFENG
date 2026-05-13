@@ -64,6 +64,19 @@ class TestRiskParitySCA(unittest.TestCase):
         w_sca = m.fit_sca(tol=1e-10)
         np.testing.assert_allclose(w_sca, w_ccd, atol=1e-5)
 
+    def test_tight_cap_objective(self):
+        # paper's 5-asset example, w_max=0.4 forces redistribution from unconstrained w[3]=0.613
+        cov = np.array([
+            [ 94.868, 33.750, 12.325, -1.178, 8.778 ],
+            [ 33.750, 445.642, 98.955, -7.901, 84.954 ],
+            [ 12.325, 98.955, 117.265, 0.503, 45.184 ],
+            [ -1.178, -7.901, 0.503, 5.460, 1.057 ],
+            [ 8.778, 84.954, 45.184, 1.057, 34.126 ]
+        ]) / 10000
+        m = pf.RiskParitySCA(cov_m=cov, w_max=0.4)
+        w = m.fit_sca()
+        self.assertLess(m._result['objective'], 1.55e-7)
+
 
 if __name__ == "__main__":
     unittest.main()
