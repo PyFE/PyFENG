@@ -219,3 +219,171 @@ class RiskParity(MaParams):
         self._result = {'err': err, 'n_iter': sol.nfev}
         self.weight = ww
         return ww
+
+
+class RiskParitySCA(RiskParity):
+    """
+    Successive convex approximation for capped risk parity portfolios.
+
+    This class extends :class:`RiskParity` with a single additional model
+    parameter, ``w_max``. All covariance, correlation, budget, and long/short
+    inputs are inherited from :class:`RiskParity` and :class:`MaParams`.
+
+    The fitted portfolio solves a long-only, equal-budget approximation of
+    the volatility risk parity problem with the capped simplex constraints
+
+    ``sum_i w_i = 1`` and ``0 <= w_i <= w_max``.
+
+    For a covariance matrix ``Sigma``, the volatility risk contribution is
+    proportional to ``w_i (Sigma w)_i``. Equal risk parity corresponds to
+    Feng and Palomar (2015), equations (9) and (13). The squared risk
+    contribution dispersion used here follows the formulation in their
+    equation (16), while the iterative procedure is a projected-gradient
+    implementation inspired by their successive convex approximation
+    framework in equations (34)--(39) and Algorithm 1.
+
+    The implementation initializes from :meth:`RiskParity.fit_ccd`, projects
+    onto the capped simplex, and then repeats first-order projected steps
+    with backtracking line search. It stores diagnostics in ``_result`` using
+    the same style as :class:`RiskParity`.
+
+    Args:
+        w_max: upper bound on each asset weight. Must satisfy
+            ``w_max >= 1 / n_asset``.
+
+    References:
+        - Feng Y, Palomar DP (2015). SCRIP: Successive Convex Optimization
+          Methods for Risk Parity Portfolio Design. IEEE Transactions on
+          Signal Processing 63(19), 5285-5300.
+          https://doi.org/10.1109/TSP.2015.2452219
+        - Choi J, Chen R (2022). Improved iterative methods for solving risk
+          parity portfolio. Journal of Derivatives and Quantitative Studies
+          30(2), 114-124. https://doi.org/10.1108/JDQS-12-2021-0031
+    """
+
+    tol = 1e-6
+    max_iter = 200
+
+    def __init__(self, *args, w_max=1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if not np.allclose(self.budget, 1.0 / self.n_asset):
+            raise ValueError("RiskParitySCA currently supports equal budgets only.")
+        if np.any(self.longshort != 1):
+            raise ValueError(
+                "RiskParitySCA currently supports long-only portfolios only."
+            )
+
+        self.w_max = float(w_max)
+        if not np.isfinite(self.w_max) or self.w_max <= 0.0 or self.w_max > 1.0:
+            raise ValueError("w_max must lie in (0, 1].")
+        if self.w_max * self.n_asset < 1.0 - 1e-12:
+            raise ValueError(
+                f"w_max={self.w_max} is infeasible for n_asset={self.n_asset}: "
+                "need w_max >= 1/n_asset."
+            )
+
+    def fit_sca(self, tol=None):
+        """
+        Compute constrained risk parity weights by SCA.
+
+        Args:
+            tol: optional convergence tolerance override.
+
+        Returns:
+            Constrained risk parity weights.
+
+        Raises:
+            FloatingPointError: if CCD initialization or SCA fails.
+        """
+        tol_eff = self.tol if tol is None else float(tol)
+        if not np.isfinite(tol_eff) or tol_eff <= 0.0:
+            raise ValueError("tol must be a positive finite float.")
+        max_iter = int(self.max_iter)
+        if max_iter < 1:
+            raise ValueError("max_iter must be at least 1.")
+
+        w = self.fit_ccd(tol=min(tol_eff, 1e-8))
+        if w is None:
+            raise FloatingPointError("RiskParity CCD initialization failed to converge.")
+
+        w = self._project_simplex_box(np.clip(w, 0.0, self.w_max), self.w_max)
+        current_obj = self._objective(w)
+        step = 1.0
+        err = np.inf
+
+        for k in range(1, max_iter + 1):
+            w_old = w.copy()
+            sw = self.cov_m @ w
+            rc = w * sw
+            resid = rc - rc.mean()
+            grad = 2.0 * (sw * resid + w * (self.cov_m @ resid))
+
+            local_step = step
+            while True:
+                candidate = self._project_simplex_box(
+                    w - local_step * grad,
+                    self.w_max,
+                )
+                candidate_obj = self._objective(candidate)
+                if current_obj - candidate_obj >= 1e-12 or local_step <= 1e-12:
+                    break
+                local_step *= 0.5
+
+            w = candidate
+            current_obj = candidate_obj
+            step = min(local_step * 1.5, 1.0)
+            err = float(np.linalg.norm(w - w_old, ord=np.inf))
+            if err < tol_eff:
+                break
+
+        converged = err < tol_eff
+        if not converged:
+            raise FloatingPointError("RiskParitySCA failed to converge.")
+
+        self.weight = w
+        self._result = {
+            "err": err,
+            "n_iter": k,
+            "objective": current_obj,
+            "gap": self._risk_contribution_gap(w),
+        }
+        return w
+
+    def _objective(self, w):
+        rc = self._risk_contributions(w)
+        return float(np.sum((rc - rc.mean()) ** 2))
+
+    def _risk_contributions(self, w):
+        return w * (self.cov_m @ w)
+
+    def _risk_contribution_gap(self, w):
+        rc = self._risk_contributions(w)
+        return float(np.max(np.abs(rc - rc.mean())))
+
+    @staticmethod
+    def _project_simplex_box(v, u):
+        """Project ``v`` onto ``{w : sum(w)=1, 0 <= w <= u}``."""
+        v = np.asarray(v, dtype=float)
+        if v.ndim != 1:
+            raise ValueError("v must be a 1-D array.")
+        if not np.all(np.isfinite(v)):
+            raise ValueError("v must contain only finite values.")
+        if not np.isfinite(u) or u <= 0.0:
+            raise ValueError("u must be a positive finite float.")
+        n = v.size
+        if u * n < 1.0 - 1e-12:
+            raise ValueError("Infeasible box for simplex projection.")
+
+        lo, hi = v.min() - u, v.max()
+        for _ in range(100):
+            tau = 0.5 * (lo + hi)
+            w = np.clip(v - tau, 0.0, u)
+            total = w.sum()
+            if abs(total - 1.0) < 1e-12:
+                return w
+            if total > 1.0:
+                lo = tau
+            else:
+                hi = tau
+        return np.clip(v - 0.5 * (lo + hi), 0.0, u)
