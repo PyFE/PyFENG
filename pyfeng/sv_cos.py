@@ -275,7 +275,7 @@ class CosABC(OptABC):
         )
         return np.where(cp_a[:, None] > 0, w_call, w_put)
 
-    def _price_lefloch(self, strike, spot, texp, cp=1):
+    def _price_lefloch(self, strike, spot, texp, cp=1, trunc_range=None):
         """
         Le Floc'h (2020) improved put-first COS pricing (Eqs. 7-10).
 
@@ -303,7 +303,7 @@ class CosABC(OptABC):
         ``_integration_range`` (which may be per-strike for HestonCos F&O mode).
         """
         fwd, df, _ = self._fwd_df_divf(spot, texp)
-        a, b = self._truncation_range(texp)
+        a, b = trunc_range if trunc_range is not None else self._truncation_range(texp)
         k_arr, u_arr = self._cos_grid(a, b)
         cf_re = self._density_coefficients(u_arr, a, texp)
 
@@ -372,7 +372,8 @@ class CosABC(OptABC):
             return result.reshape(np.broadcast_shapes(np.shape(strike), np.shape(cp)))
         elif self.pricing_formula != 'fang-oosterlee':
             raise ValueError(
-                f"pricing_formula must be 'fang-oosterlee' or 'lefloch', "
+                f"pricing_formula must be 'fang-oosterlee' or 'lefloch' "
+                f"('auto' is only valid on HestonCos), "
                 f"got {self.pricing_formula!r}"
             )
 
@@ -562,6 +563,22 @@ class HestonCos(HestonABC, CosABC):
 
     The L multiplier adapts with maturity as max(10, 3·T + 2) when L is None.
 
+    Pricing formula (``pricing_formula`` attribute):
+
+        'fang-oosterlee' (default):
+            Per-strike [x + c1 ± L·σ_h]; CF computed once per maturity.
+
+        'lefloch':
+            Global [c1 ± L·√(|c2|+√|c4|)]; put-first + PCP.
+
+        'auto' (HestonCos only):
+            Computes kurtosis_ratio = √(|c2|+√|c4|) / √|c2| from numerical
+            cumulants.  When kurtosis_ratio > HIGH_KURTOSIS_RATIO (= 2.0),
+            switches to Le Floc'h with c2-only half-width L·√|c2| to avoid
+            c4 inflation.  Otherwise falls through to the standard F&O
+            per-strike path.  Triggers for high vov (≳ 1.5) or long
+            maturities (texp ≳ 10).
+
     Examples:
         >>> import numpy as np
         >>> import pyfeng as pf
@@ -571,6 +588,7 @@ class HestonCos(HestonABC, CosABC):
     """
 
     n_cos: int = 160
+    HIGH_KURTOSIS_RATIO: float = 2.0
     L = None
 
     logp_cum4 = OptABC.logp_cum4_numeric
@@ -660,6 +678,28 @@ class HestonCos(HestonABC, CosABC):
             raise ValueError(f"texp must be > 0, got {texp}")
         if int(self.n_cos) < 1:
             raise ValueError(f"n_cos must be >= 1, got {self.n_cos}")
+
+        if self.pricing_formula == 'auto' and self.truncation_method != 'junike':
+            c1, c2, _, c4 = self.logp_cum4(texp)
+            if abs(c2) > 0.0:
+                kurtosis_ratio = float(
+                    np.sqrt(abs(c2) + np.sqrt(abs(c4))) / np.sqrt(abs(c2))
+                )
+            else:
+                kurtosis_ratio = 1.0  # degenerate: stay on F&O path
+            if kurtosis_ratio > self.HIGH_KURTOSIS_RATIO:
+                half = self._resolve_L(texp) * float(np.sqrt(abs(c2)))
+                trunc = (float(c1) - half, float(c1) + half)
+                scalar_out = np.isscalar(strike) and np.isscalar(cp)
+                result = np.atleast_1d(
+                    self._price_lefloch(strike, spot, texp, cp, trunc_range=trunc)
+                )
+                if scalar_out:
+                    return float(result[0])
+                return result.reshape(
+                    np.broadcast_shapes(np.shape(strike), np.shape(cp))
+                )
+            # kurtosis_ratio <= threshold: fall through to F&O per-strike path
 
         if self.truncation_method == 'junike' or self.pricing_formula == 'lefloch':
             return CosABC.price(self, strike, spot, texp, cp=cp)
