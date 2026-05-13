@@ -99,7 +99,7 @@ class Nsvh1(NsvhABC):
         super().__init__(sigma, vov, rho, lam=1.0, intr=intr, divr=divr, is_fwd=is_fwd)
 
     def price(self, strike, spot, texp, cp=1):
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         vovn = self.vov * np.sqrt(texp)
         sig0 = self._sig0_from_atmvol(texp) if self.is_atmvol else self.sigma
@@ -311,7 +311,7 @@ class NsvhMc(NsvhABC):
             vanilla option price
         """
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         mc_path = self.mc_vol_price(texp)
         strike_std = strike - fwd
         scalar_output = np.isscalar(strike_std)
@@ -362,7 +362,7 @@ class NsvhGaussQuad(NsvhABC):
 
     def price(self, strike, spot, texp, cp=1):
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         rho2 = self.rho**2
         rhoc = np.sqrt(1.0 - rho2)
         vovn = self.vov * np.sqrt(np.maximum(texp, np.finfo(float).eps))

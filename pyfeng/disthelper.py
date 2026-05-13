@@ -829,7 +829,7 @@ class DistGh:
         y = np.atleast_1d(y)
         z = (y[:, None] - self.mu - self.beta * x[None, :]) / np.sqrt(x[None, :])
         out = spst.norm._cdf(z) @ w
-        return float(out[0]) if scalar else out
+        return out[0] if scalar else out
 
     def ppf(self, q):
         """

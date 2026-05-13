@@ -117,19 +117,19 @@ class Mgf2Mom:
 
         # Seed values for alpha selection
         if self.mean is not None:
-            m1 = float(self.mean)
-            m2 = float(self.var) + m1**2 if self.var is not None else self.moment_raw(2, alpha=1.0 / m1, l=1)
+            m1 = self.mean
+            m2 = self.var + m1**2 if self.var is not None else self.moment_raw(2, alpha=1.0 / m1, l=1)
         else:
             m1 = self.moment_raw(1, alpha=1, l=2)
-            m2 = float(self.var) + m1**2 if self.var is not None else self.moment_raw(2, alpha=1.0 / m1, l=1)
+            m2 = self.var + m1**2 if self.var is not None else self.moment_raw(2, alpha=1.0 / m1, l=1)
 
         out = self._run(n, m1, m2)
 
         # Sanity check and replace with analytic values
         if self.mean is not None:
-            self._check_replace(out, 0, float(self.mean), "mean (μ₁)")
+            self._check_replace(out, 0, self.mean, "mean (μ₁)")
         if self.var is not None:
-            m2_analytic = float(self.var) + out[0]**2
+            m2_analytic = self.var + out[0]**2
             self._check_replace(out, 1, m2_analytic, "second moment (μ₂)")
 
         return out
@@ -168,8 +168,8 @@ class Mgf2Mom:
 
         # Sanity check and replace with analytic values
         if self.mean is not None:
-            self._check_replace(out, 0, float(self.mean), "mean (κ₁)")
+            self._check_replace(out, 0, self.mean, "mean (κ₁)")
         if self.var is not None:
-            self._check_replace(out, 1, float(self.var), "variance (κ₂)")
+            self._check_replace(out, 1, self.var, "variance (κ₂)")
 
         return out

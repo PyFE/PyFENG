@@ -114,7 +114,7 @@ class CirModel:
             return np.exp(-(d/2) * np.log1p(-2*alpha*u) + lam * alpha * u / (1 - 2*alpha*u))
 
         cum = Mgf2Mom(mgf_vt).cumulants(4)
-        return float(cum[0]), float(cum[1]), float(cum[2]), float(cum[3])
+        return cum[0], cum[1], cum[2], cum[3]
 
     def mv(self, dt, v0):
         """
@@ -180,9 +180,8 @@ class CirModel:
         int_b3 = fac*texp * ((3 - 11*phi + e_mr*(9 - 3.5*phi + e_mr*(3 - 0.5*phi))) + 3*mr_t*e_mr)
         a3 = self.mr * self.theta * int_b3
 
-        v0f = float(v0)
-        c3_small = (self.sigma**2 * texp)**2 * (v0f/5 + mr_t*(self.theta/30 - 17*v0f/60) + mr_t**2*(3*v0f/14 - 17*self.theta/420))
-        c3_full = (a3 + b3 * v0f) / texp**3
+        c3_small = (self.sigma**2 * texp)**2 * (v0/5 + mr_t*(self.theta/30 - 17*v0/60) + mr_t**2*(3*v0/14 - 17*self.theta/420))
+        c3_full = (a3 + b3 * v0) / texp**3
         c3 = np.where(mr_t < 0.1, c3_small, c3_full)
 
         return mean, var, c3
@@ -391,18 +390,17 @@ class HestonABC(HestonParams, OptABC):
         References:
             Le Floc'h F (2020) arXiv:2005.13248, Appendix B, Eq. (B5)
         """
-        T = float(texp)
-        mu_i, var_i, _ = self.avgvar_mv(T)
+        mu_i, var_i, _ = self.avgvar_mv(texp)
 
-        mean = -0.5 * T * mu_i
+        mean = -0.5 * texp * mu_i
 
-        mr_t = self.mr * T
+        mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
         phi = MathFuncs.avg_exp(-mr_t)
-        x0 = float(self.sigma) - self.theta
+        x0 = self.sigma - self.theta
         cov_yi = self.vov**2 / self.mr * (self.theta * (1 - phi) + x0 * (phi - e_mr))
 
-        var = T * mu_i + (T**2 / 4) * var_i - self.rho * T / self.vov * cov_yi
+        var = texp * mu_i + (texp**2 / 4) * var_i - self.rho * texp / self.vov * cov_yi
 
         return mean, var
 

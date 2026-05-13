@@ -10,19 +10,19 @@ import pyfeng as pf
 class TestMultiAsset(unittest.TestCase):
     def test_BsmSpreadKirk(self):
         m = pf.BsmSpreadKirk((0.2, 0.3), rho=-0.5)
-        result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        result = m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
         result2 = np.array([22.1563225, 17.1844182, 12.9897421, 9.6414167, 6.9994207])
         np.testing.assert_almost_equal(result, result2)
 
     def test_BsmSpreadBjerksund2014(self):
         m = pf.BsmSpreadBjerksund2014((0.2, 0.3), rho=-0.5)
-        result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        result = m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
         result2 = np.array([22.1317202, 17.1830425, 12.9897421, 9.5443194, 6.8061260])
         np.testing.assert_almost_equal(result, result2)
 
     def test_NormSpread(self):
         m = pf.NormBasket.init_spread((20, 30), rho=-0.5, intr=0.05)
-        result = m.price(np.arange(-2, 3) * 10, [100, 120], 1.3)
+        result = m.price(np.arange(-2, 3) * 10, np.array([100, 120]), 1.3)
         result2 = np.array([17.9567619, 13.7464682, 10.2666994, 7.4709872, 5.2905716])
         np.testing.assert_almost_equal(result, result2)
 

@@ -318,7 +318,7 @@ class OusvSchobelZhu1998(OusvABC):
 
     def price(self, strike, spot, texp, cp=1):
         # implement the formula (14) and (15)
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
 
         kk = strike / fwd
         log_k = np.log(kk)

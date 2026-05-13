@@ -69,7 +69,7 @@ class CosABC(OptABC):
 
     Subclasses implement ``logp_mgf(uu, texp)``, the moment generating
     function of log(S_T/F), where F is the forward price supplied by
-    ``OptABC._fwd_factor``.
+    ``OptABC._fwd_df_divf``.
 
     Pricing identity (F&O Eq. 19), evaluated in z = log(S_T/F):
 
@@ -138,7 +138,7 @@ class CosABC(OptABC):
             mgf_pos = self.logp_mgf(s_grid, texp).real
             ok = np.isfinite(mgf_pos) & (mgf_pos > 0)
             if ok.any():
-                upper = float(np.exp(np.min(np.log(mgf_pos[ok]) - s_grid[ok] * (c1 + w))))
+                upper = np.exp(np.min(np.log(mgf_pos[ok]) - s_grid[ok] * (c1 + w)))
             else:
                 upper = 1.0
 
@@ -146,7 +146,7 @@ class CosABC(OptABC):
             mgf_neg = self.logp_mgf(-s_grid, texp).real
             ok = np.isfinite(mgf_neg) & (mgf_neg > 0)
             if ok.any():
-                lower = float(np.exp(np.min(np.log(mgf_neg[ok]) + s_grid[ok] * (c1 - w))))
+                lower = np.exp(np.min(np.log(mgf_neg[ok]) + s_grid[ok] * (c1 - w)))
             else:
                 lower = 1.0
 
@@ -302,14 +302,14 @@ class CosABC(OptABC):
         Uses ``_truncation_range(texp)`` (global interval) rather than
         ``_integration_range`` (which may be per-strike for HestonCos F&O mode).
         """
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         a, b = trunc_range if trunc_range is not None else self._truncation_range(texp)
         k_arr, u_arr = self._cos_grid(a, b)
         cf_re = self._density_coefficients(u_arr, a, texp)
 
         kk_arr = np.atleast_1d(np.asarray(strike, dtype=float))
-        fwd_f = float(np.asarray(fwd))
-        df_f = float(np.asarray(df))
+        fwd_f = np.asarray(fwd)
+        df_f = np.asarray(df)
         log_kk = np.log(kk_arr / fwd_f)   # z = log(K/F) for each strike
 
         below_a = log_kk < a   # put = 0
@@ -368,7 +368,7 @@ class CosABC(OptABC):
         if self.pricing_formula == 'lefloch':
             result = np.atleast_1d(self._price_lefloch(strike, spot, texp, cp))
             if scalar_out:
-                return float(result[0])
+                return result[0]
             return result.reshape(np.broadcast_shapes(np.shape(strike), np.shape(cp)))
         elif self.pricing_formula != 'fang-oosterlee':
             raise ValueError(
@@ -377,7 +377,7 @@ class CosABC(OptABC):
                 f"got {self.pricing_formula!r}"
             )
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         a, b = self._integration_range(strike, spot, texp)
         _, u_arr = self._cos_grid(a, b)
         cf_re = self._density_coefficients(u_arr, a, texp)
@@ -386,7 +386,7 @@ class CosABC(OptABC):
         price_arr = df * fwd * (w_payoff @ cf_re)
 
         if scalar_out:
-            return float(price_arr[0])
+            return price_arr[0]
         return price_arr.reshape(
             np.broadcast_shapes(np.shape(strike), np.shape(cp))
         )
@@ -418,7 +418,7 @@ class BsmCos(Bsm, CosABC):
 
     def logp_cum4(self, texp):
         """Analytic BSM cumulants of log(S_T/F): c1=-½σ²T, c2=σ²T, c3=c4=0."""
-        s2t = float(self.sigma**2 * texp)
+        s2t = self.sigma**2 * texp
         return -0.5 * s2t, s2t, 0.0, 0.0
 
 
@@ -466,7 +466,7 @@ class VarGammaCos(VarGammaABC, CosABC):
         c2 = texp * (sig2 + nu * th2)
         c3 = texp * nu * th * (3.0 * sig2 + 2.0 * nu * th2)
         c4 = 3.0 * texp * nu * (sig2**2 + 2.0 * th2**2 * nu**2 + 4.0 * sig2 * th2 * nu)
-        return float(c1), float(c2), float(c3), float(c4)
+        return c1, c2, c3, c4
 
 
 class NigCos(NigABC, CosABC):
@@ -596,11 +596,11 @@ class HestonCos(HestonABC, CosABC):
     @staticmethod
     def _default_L(texp):
         """Tau-adaptive L = max(10, 3·T + 2) (F&O §5.2 recommendation)."""
-        return max(10.0, 3.0 * float(texp) + 2.0)
+        return max(10.0, 3.0 * texp + 2.0)
 
     def _resolve_L(self, texp):
         """Return self.L if explicitly set, otherwise _default_L(texp)."""
-        return self._default_L(texp) if self.L is None else float(self.L)
+        return self._default_L(texp) if self.L is None else self.L
 
     def _sigma_h(self):
         """
@@ -611,7 +611,7 @@ class HestonCos(HestonABC, CosABC):
         where θ̄ = self.theta (long-run variance), V_0 = self.sigma
         (initial variance), ξ = self.vov (vol-of-vol).
         """
-        return float(np.sqrt(self.theta + self.sigma * self.vov))
+        return np.sqrt(self.theta + self.sigma * self.vov)
 
     def _truncation_range(self, texp):
         """
@@ -629,11 +629,11 @@ class HestonCos(HestonABC, CosABC):
         if self.truncation_method == 'fang-oosterlee':
             c1, c2, _, c4 = self.logp_cum4(texp)
             half = self._resolve_L(texp) * np.sqrt(abs(c2) + np.sqrt(abs(c4)))
-            return float(c1 - half), float(c1 + half)
+            return c1 - half, c1 + half
         elif self.truncation_method == 'junike':
             c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
-            return float(c1 - half), float(c1 + half)
+            return c1 - half, c1 + half
         else:
             raise ValueError(
                 f"truncation_method must be 'fang-oosterlee' or 'junike', "
@@ -653,8 +653,8 @@ class HestonCos(HestonABC, CosABC):
         if self.truncation_method == 'junike':
             c1 = self.logp_mv(texp)[0]
             half = self._junike_half_width(texp)
-            return float(c1 - half), float(c1 + half)
-        fwd, _, _ = self._fwd_factor(spot, texp)
+            return c1 - half, c1 + half
+        fwd, _, _ = self._fwd_df_divf(spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()
         c1 = self.logp_mv(texp)[0]
         x = np.log(np.asarray(fwd, dtype=float) / np.asarray(strike, dtype=float))
@@ -704,7 +704,7 @@ class HestonCos(HestonABC, CosABC):
         if self.truncation_method == 'junike' or self.pricing_formula == 'lefloch':
             return CosABC.price(self, strike, spot, texp, cp=cp)
 
-        fwd, df, _ = self._fwd_factor(spot, texp)
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
         scalar_out = np.isscalar(strike) and np.isscalar(cp)
 
         a_arr, b_arr = self._integration_range(strike, spot, texp)
@@ -720,7 +720,7 @@ class HestonCos(HestonABC, CosABC):
         cf_mat[:, 0] *= 0.5                                             # prime-sum
         cf_re = cf_mat.real                                             # (M, N)
 
-        kk     = np.atleast_1d(np.asarray(strike, dtype=float)) / float(np.asarray(fwd))
+        kk     = np.atleast_1d(np.asarray(strike, dtype=float)) / np.asarray(fwd)
         cp_arr = np.broadcast_to(np.atleast_1d(np.asarray(cp, dtype=float)), kk.shape)
         log_kk = np.clip(np.log(kk), a_arr, b_arr)[:, None]            # (M, 1)
         u      = u_arr[None, :]                                         # (1, N)
@@ -739,8 +739,8 @@ class HestonCos(HestonABC, CosABC):
         )
         W = np.where(cp_arr[:, None] > 0, W_call, W_put)
 
-        price_arr = float(df) * float(np.asarray(fwd)) * (W * cf_re).sum(axis=1)
+        price_arr = df * np.asarray(fwd) * (W * cf_re).sum(axis=1)
 
         if scalar_out:
-            return float(price_arr[0])
+            return price_arr[0]
         return price_arr.reshape(np.broadcast_shapes(np.shape(strike), np.shape(cp)))

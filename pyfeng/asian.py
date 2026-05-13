@@ -356,7 +356,7 @@ class BsmAsianLinetsky2004(BsmParams, OptABC):
 
         P = np.sum(imaginary_terms) + np.sum(real_terms)
 
-        fwd, df, divf = self._fwd_factor(spot, texp)
+        fwd, df, divf = self._fwd_df_divf(spot, texp)
 
         # undiscounted put price
         price = (spot / tau) * P.real
