@@ -1,5 +1,6 @@
 import warnings
 import numpy as np
+import scipy.special as spsp
 from .sv_abc import CondMcBsmABC
 from .opt_abc import OptABC
 from . import bsm
@@ -44,7 +45,7 @@ class GarchUncorrBaroneAdesi2004(GarchParams, OptABC):
         e_mr = np.exp(-mr_t)
 
         # Eq (12) of Barone-Adesi et al. (2005)
-        M1 = theta + (var0 - theta)*MathFuncs.avg_exp(-mr_t)
+        M1 = theta + (var0 - theta)*spsp.exprel(-mr_t)
 
         term1 = vov2 - mr
         term2 = vov2 - 2*mr

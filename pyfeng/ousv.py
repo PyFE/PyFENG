@@ -1,6 +1,7 @@
 import abc
 import warnings
 import numpy as np
+import scipy.special as spsp
 import scipy.integrate as scint
 from .sv_abc import CondMcBsmABC
 from .opt_abc import OptABC
@@ -40,7 +41,7 @@ class OusvABC(OusvParams, OptABC):
             vol0 = vol0 - self.theta
 
         mr_t = self.mr * texp
-        phi = MathFuncs.avg_exp(-mr_t)
+        phi = spsp.exprel(-mr_t)
         m = vol0 * phi
 
         if nz_theta:
@@ -70,7 +71,7 @@ class OusvABC(OusvParams, OptABC):
 
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = MathFuncs.avg_exp(-mr_t)
+        phi = spsp.exprel(-mr_t)
         phi2 = (1 + e_mr)/2 * phi
         vv = vol0**2 * phi2 + 0.5*(self.vov**2/self.mr)*(1 - phi2)
 
@@ -93,7 +94,7 @@ class OusvABC(OusvParams, OptABC):
         """
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = MathFuncs.avg_exp(-mr_t)
+        phi = spsp.exprel(-mr_t)
         phi2 = (1 + e_mr)/2 * phi
         sinh = np.sinh(mr_t)
         cosh = np.cosh(mr_t)

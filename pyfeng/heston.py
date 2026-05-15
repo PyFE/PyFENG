@@ -1,5 +1,6 @@
 import warnings
 import numpy as np
+import scipy.special as spsp
 from .opt_abc import OptABC
 from . import bsm
 from .util import MathFuncs
@@ -142,7 +143,7 @@ class CirModel:
         mr_t = self.mr * dt
         e_mr = np.exp(-mr_t)
         mean = self.theta + (v0 - self.theta) * e_mr
-        avg = MathFuncs.avg_exp(-mr_t)
+        avg = spsp.exprel(-mr_t)
         var = self.sigma**2 * dt * avg * (v0 * e_mr + self.theta * mr_t * avg / 2)
         return mean, var
 
@@ -168,7 +169,7 @@ class CirModel:
         """
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = MathFuncs.avg_exp(-mr_t)
+        phi = spsp.exprel(-mr_t)
         x0 = v0 - self.theta
         mean = self.theta + x0 * phi
         var = (self.theta - 2*x0*e_mr) + (v0 - 2.5*self.theta + (v0 - self.theta/2)*e_mr) * phi
@@ -314,7 +315,7 @@ class HestonABC(HestonParams, OptABC):
         ### continuously monitored fair strike (same as mean of avgvar)
         mr_t = self.mr*texp
         x0 = var0 - self.theta
-        strike = self.theta + x0*MathFuncs.avg_exp(-mr_t)
+        strike = self.theta + x0*spsp.exprel(-mr_t)
 
         if not np.all(np.isclose(dt, 0.0)):
             ### adjustment for discrete monitoring
@@ -322,12 +323,12 @@ class HestonABC(HestonParams, OptABC):
             e_mr_h = np.exp(-mr_h)
 
             tmp = self.theta - 2*(self.intr - self.divr)
-            strike += tmp*dt/4 * (tmp + 2*x0*MathFuncs.avg_exp(-mr_t))
+            strike += tmp*dt/4 * (tmp + 2*x0*spsp.exprel(-mr_t))
 
             tmp = self.vov / self.mr
-            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - MathFuncs.avg_exp(-mr_h))
-            strike += x0 * tmp * (tmp/2 - self.rho) * MathFuncs.avg_exp(-mr_t) * (1 + mr_h/(1 - 1/e_mr_h))
-            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * MathFuncs.avg_exp(-2*mr_t)/4 * (1-e_mr_h)/(1+e_mr_h)
+            strike += self.theta * tmp * (tmp/4 - self.rho) * (1 - spsp.exprel(-mr_h))
+            strike += x0 * tmp * (tmp/2 - self.rho) * spsp.exprel(-mr_t) * (1 + mr_h/(1 - 1/e_mr_h))
+            strike += (tmp**2*(self.theta - 2*var0) + 2*x0**2/self.mr) * spsp.exprel(-2*mr_t)/4 * (1-e_mr_h)/(1+e_mr_h)
 
         return strike
 
@@ -396,7 +397,7 @@ class HestonABC(HestonParams, OptABC):
 
         mr_t = self.mr * texp
         e_mr = np.exp(-mr_t)
-        phi = MathFuncs.avg_exp(-mr_t)
+        phi = spsp.exprel(-mr_t)
         x0 = self.sigma - self.theta
         cov_yi = self.vov**2 / self.mr * (self.theta * (1 - phi) + x0 * (phi - e_mr))
 

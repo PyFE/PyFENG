@@ -25,7 +25,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
     def _variables(self, fwd, strike, texp):
         betac = 1.0 - self.beta
         alpha = self.sigma / np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * alpha)**2 * texp * spsp.exprel(2*(self.intr-self.divr)*betac*texp)
         z0 = 1.0 / var
         zK = np.power(strike/fwd, 2*betac) * z0
         return alpha, betac, z0, zK
@@ -36,7 +36,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         betac = 1.0 - self.beta
         a = 0.5 / betac  # shape parameter of gamma distribution
         alpha = self.sigma / np.power(fwd, betac)
-        var = (betac * alpha)**2 * texp * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var = (betac * alpha)**2 * texp * spsp.exprel(2*(self.intr-self.divr)*betac*texp)
         x = 0.5 / var  # = z_0 / 2
 
         if log:
@@ -61,7 +61,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         fwd = self.forward(spot, texp)
         betac = 1.0 - self.beta
         alpha = self.sigma/np.power(fwd, betac)
-        var_t0 = (betac*alpha)**2 * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*texp)
+        var_t0 = (betac*alpha)**2 * spsp.exprel(2*(self.intr-self.divr)*betac*texp)
         t0 = 0.5/var_t0
 
         return t0
@@ -92,7 +92,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         betac = 1.0 - beta
         betac_inv = 1.0/betac
         alpha = sigma/np.power(fwd, betac)
-        var = np.maximum(alpha**2 * texp, np.finfo(float).eps) * betac**2 * MathFuncs.avg_exp(2*(intr-divr)*betac*texp)
+        var = np.maximum(alpha**2 * texp, np.finfo(float).eps) * betac**2 * spsp.exprel(2*(intr-divr)*betac*texp)
 
         z0 = 1.0 / var                              # z_0
         zK = np.power(strike/fwd, 2*betac) * z0    # z_K = (K/F_0)^{2β*} z_0
@@ -282,7 +282,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         """
         betac = 1.0 - self.beta
         rho_T = 2 * betac * (self.intr - self.divr) * texp
-        sigma_coeff = self.sigma * np.exp(rho_T) / (2 * texp * MathFuncs.avg_exp(rho_T))
+        sigma_coeff = self.sigma * np.exp(rho_T) / (2 * texp * spsp.exprel(rho_T))
 
         price = self.price(strike, spot, texp, cp)
         vega  = self.vega(strike, spot, texp, cp)
@@ -352,7 +352,7 @@ class CevMc(CevParams, OptABC):
         s_t = np.exp((self.intr - self.divr)*dt) * spot
         betac = 1.0 - self.beta
 
-        var = (betac * self.sigma)**2 * dt * MathFuncs.avg_exp(2*(self.intr-self.divr)*betac*dt)
+        var = (betac * self.sigma)**2 * dt * spsp.exprel(2*(self.intr-self.divr)*betac*dt)
         z0 = np.power(s_t[nz_idx], 2*betac) / var
         rv_gam = 2 * self.rng.standard_gamma(1/(2*betac), size=len(z0))
         pois_lam = (z0 - rv_gam) / 2

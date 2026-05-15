@@ -7,6 +7,7 @@ Created on Tue May  4 18:29:04 2021
 
 import math
 import numpy as np
+import scipy.special as spsp
 import scipy.stats as spst
 import mpmath as m
 import sympy
@@ -132,7 +133,7 @@ class BsmAsianJsu(BsmParams, OptABC):
         A3B3 = A2B * A * B * B
         A4B6 = A3B3 * A * B * B * B
 
-        m1 = MathFuncs.avg_exp(u)      # stable at u -> 0  (r = q)
+        m1 = spsp.exprel(u)      # stable at u -> 0  (r = q)
 
         m2 = (4.0 / v**2) * (
             (p + 2) - 2*(p + 1)*A + p*A2B
@@ -196,7 +197,7 @@ class BsmAsianJsu(BsmParams, OptABC):
         A3B3 = A2B  * A * B * B
         A4B6 = A3B3 * A * B * B * B
 
-        m1 = MathFuncs.avg_exp(u)
+        m1 = spsp.exprel(u)
 
         m2 = (4.0 / v**2) * (
             (p+2) - 2*(p+1)*A + p*A2B
@@ -217,7 +218,7 @@ class BsmAsianJsu(BsmParams, OptABC):
 
         # mu2: aa=m1=avg_exp(u), bb=avg_exp(v) → p²v² denominator cancels algebraically.
         # (bb-m1)/v → (2-p)/4 as v→0 (finite); Taylor branch for precision only.
-        bb = MathFuncs.avg_exp(v)
+        bb = spsp.exprel(v)
         diff_over_v = np.where(v < 0.01, (2-p)/4 + v*(4-p**2)/24, (bb-m1)/v)
         mu2 = (4*diff_over_v + 4*p*m1*bb + m1**2*(p**2*bb*v - 3*p - 2)) / ((p+1)*(p+2))
 
@@ -383,11 +384,11 @@ class BsmContinuousAsianJu2002(OptABC):
         else:
             g = self.intr - self.divr
             gt = g * texp
-            u1 = spot * MathFuncs.avg_exp(gt)
+            u1 = spot * spsp.exprel(gt)
             g2 = 2 * g + self.sigma ** 2
             u2 = (
                 2 * spot ** 2
-                * (MathFuncs.avg_exp(g2 * texp) - MathFuncs.avg_exp(gt))
+                * (spsp.exprel(g2 * texp) - spsp.exprel(gt))
                 / texp
                 / (g + self.sigma ** 2)
             )

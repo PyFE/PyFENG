@@ -10,6 +10,7 @@ import copy
 import warnings
 import numpy as np
 import scipy.optimize as spop
+import scipy.special as spsp
 from scipy import stats as spst
 from numpy.polynomial.hermite_e import hermeval
 
@@ -242,7 +243,7 @@ class SabrABC(SabrParams, OptABC):
         # cond_avgvar_mvsk. Tests in test_sabr.py updated accordingly (2026-05-08).
 
         vovn2 = vovn**2
-        m = MathFuncs.avg_exp(vovn2)  # [exp(vov2)-1]/vov2
+        m = spsp.exprel(vovn2)  # [exp(vov2)-1]/vov2
         ww = m * vovn2 + 1.  # = exp(vov2)
 
         m2 = (10 + ww*(6 + ww*(3 + ww))) / 15
@@ -517,8 +518,8 @@ class SabrChoiWu2021H(SabrVolApproxABC, MassZeroABC):
         kk = strike / fwd  # standardized strike
 
         vov_over_alpha_safe = self.vov / np.maximum(alpha, np.finfo(float).eps)
-        tmp = MathFuncs.avg_pow(kk - 1.0, -self.beta)
-        qq_ratio = 1.0 if self._base_beta is None else MathFuncs.avg_pow(kk - 1.0, -vol_beta) / tmp
+        tmp = MathFuncs.powrel(kk - 1.0, betac)
+        qq_ratio = 1.0 if self._base_beta is None else MathFuncs.powrel(kk - 1.0, 1 - vol_beta) / tmp
 
         qq = tmp * (kk - 1.0)
         zz = vov_over_alpha_safe * qq  # zeta = (vov/sigma0) q
@@ -528,7 +529,7 @@ class SabrChoiWu2021H(SabrVolApproxABC, MassZeroABC):
 
         # term11: O(alpha*vov)
         # C(k)-C(1)/(k-1). Notice that 1/beta comes from int_inv_locvol
-        term11 = self.rho * self.beta / 4 * self.vov * alpha * MathFuncs.avg_pow(kk - 1.0, -betac)
+        term11 = self.rho * self.beta / 4 * self.vov * alpha * MathFuncs.powrel(kk - 1.0, self.beta)
 
         # term20: O(alpha^2)
         if np.isclose(self.beta, vol_beta):
@@ -616,8 +617,8 @@ class SabrChoiWu2021P(SabrChoiWu2021H, MassZeroABC):
         vov_over_alpha_safe = self.vov / np.maximum(alpha, np.finfo(float).eps)
 
         # qq_ratio = qq_vol_beta / qq_beta
-        tmp = MathFuncs.avg_pow(kk - 1.0, -self.beta)
-        qq_ratio = 1.0 if self._base_beta is None else MathFuncs.avg_pow(kk - 1.0, -vol_beta) / tmp
+        tmp = MathFuncs.powrel(kk - 1.0, betac)
+        qq_ratio = 1.0 if self._base_beta is None else MathFuncs.powrel(kk - 1.0, 1 - vol_beta) / tmp
 
         zz = vov_over_alpha_safe * tmp * (kk - 1.0)  # zeta = (vov/sigma0) q
         hh = self._hh(zz, self.rho)

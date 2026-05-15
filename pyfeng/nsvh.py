@@ -31,11 +31,11 @@ class NsvhABC(NsvhParams, OptABC):
         rho2 = self.rho**2
         rhoc2 = 1 - rho2
 
-        # wf_k = avg_pow(wwm1, k-1+lam) = (w^(k+lam) - 1) / ((k+lam) * wwm1)
-        # so old wf_k (paper) = wwm1 * wf_k here; handles lambda=-1 via L'Hopital in avg_pow
-        wf_1 = MathFuncs.avg_pow(wwm1, self.lam)
-        wf_3 = MathFuncs.avg_pow(wwm1, 2 + self.lam)
-        wf_5 = MathFuncs.avg_pow(wwm1, 4 + self.lam)
+        # wf_k = powrel(wwm1, k+lam) = (w^(k+lam) - 1) / ((k+lam) * wwm1)
+        # so old wf_k (paper) = wwm1 * wf_k here; handles lambda=0 via logrel in powrel
+        wf_1 = MathFuncs.powrel(wwm1, 1 + self.lam)
+        wf_3 = MathFuncs.powrel(wwm1, 3 + self.lam)
+        wf_5 = MathFuncs.powrel(wwm1, 5 + self.lam)
 
         m2base = rho2*wlam + rhoc2*wf_1
         m2 = wwm1 * m2base
