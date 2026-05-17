@@ -8,9 +8,9 @@ The 2D PDE for V(X, v, τ), τ = T − t has the form::
 
     dV/dτ = (F₀ + F₁ + F₂) V
 
-    F₀: γ(X,v,τ)  · ∂²V/∂X∂v              (explicit; mixed derivative)
-    F₁: aS(X,v,τ) · ∂²V/∂X² + bS(X,v,τ) · ∂V/∂X   (S-direction implicit)
-    F₂: aV(X,v,τ) · ∂²V/∂v² + bV(X,v,τ) · ∂V/∂v   (v-direction implicit)
+    F₀: γ(X,v)  · ∂²V/∂X∂v              (explicit; mixed derivative)
+    F₁: aS(X,v) · ∂²V/∂X² + bS(X,v) · ∂V/∂X   (S-direction implicit)
+    F₂: aV(X,v) · ∂²V/∂v² + bV(X,v) · ∂V/∂v   (v-direction implicit)
 
 One Douglas step τₙ → τₙ₊₁ (θ = ½ gives Crank–Nicolson-like accuracy)::
 
@@ -120,9 +120,9 @@ class SvFinDiffMixin(abc.ABC):
     Subclass and implement four abstract methods to plug in any model::
 
         class MyModelFinDiff(SvFinDiffMixin, MyModelABC):
-            def _get_v0(self, fwd, texp):   return ...
+            def _get_v0(self, fwd, texp):         return ...
             def _grid_bounds(self, v0, kk, texp): return X_min, X_max, v_max
-            def _coefficients(self, X, v, tau):   return aS, bS, aV, bV, gamma
+            def _coefficients(self, X, v):        return aS, bS, aV, bV, gamma
             def _apply_bc(self, V, kk, X, cp):    return _standard_bc(V, kk, X, cp)
 
     The engine works in normalized forward space (X = F/F₀, so X₀ = 1, r=q=0).
@@ -176,14 +176,15 @@ class SvFinDiffMixin(abc.ABC):
         """
 
     @abc.abstractmethod
-    def _coefficients(self, X, v, tau):
+    def _coefficients(self, X, v):
         """
         PDE operator coefficients on the full (M+1) × (L+1) grid.
 
+        Parameters are assumed constant (time-independent).
+
         Args:
-            X:   asset grid, shape (M+1,)
-            v:   vol/variance grid, shape (L+1,)
-            tau: time-to-maturity; pass to callable parameters if time-dependent
+            X: asset grid, shape (M+1,)
+            v: vol/variance grid, shape (L+1,)
 
         Returns:
             aS, bS, aV, bV, gamma — each broadcastable to (M+1, L+1).
@@ -233,7 +234,7 @@ class SvFinDiffMixin(abc.ABC):
 
     # ── Core ADI solver ───────────────────────────────────────────────────────
 
-    def _pre_step(self, V, X, v, dX, dv, dt, tau, kk, cp):
+    def _pre_step(self, V, X, v, dX, dv, dt, kk, cp):
         """
         Hook called before each Douglas step.
 
@@ -260,20 +261,17 @@ class SvFinDiffMixin(abc.ABC):
         V[:, 0] = np.maximum(cp * (X - kk), 0.0)
         V = self._apply_bc(V, kk, X, cp)
 
-        for n in range(N):
-            tau_old = n * dt
-            tau_new = (n + 1) * dt
-            V = self._pre_step(V, X, v, dX, dv, dt, tau_old, kk, cp)
-            V = self._step(V, X, v, dX, dv, dt, tau_old, tau_new, kk, cp)
+        for _ in range(N):
+            V = self._pre_step(V, X, v, dX, dv, dt, kk, cp)
+            V = self._step(V, X, v, dX, dv, dt, kk, cp)
 
         return _bilinear(V, X, v, 1.0, v0)
 
-    def _step(self, V, X, v, dX, dv, dt, tau_old, tau_new, kk, cp):
-        """One Douglas step: advance V from τ_old to τ_new."""
-        adt     = self.adi_theta * dt
-        tau_mid = 0.5 * (tau_old + tau_new)
+    def _step(self, V, X, v, dX, dv, dt, kk, cp):
+        """One Douglas step: advance V by one time increment dt."""
+        adt = self.adi_theta * dt
 
-        aS, bS, aV, bV, gamma = self._coefficients(X, v, tau_mid)
+        aS, bS, aV, bV, gamma = self._coefficients(X, v)
 
         F0V = self._F0(V, gamma, dX, dv)
         F1V = self._F1(V, aS, bS, dX)
@@ -408,7 +406,7 @@ class SabrFinDiffMixin(SvFinDiffMixin):
         X_min = 0.0 if self.beta > 0.0 else min(0.0, 1.0 - 5.0 * v0 * sq)
         return float(X_min), float(X_max), float(v_max)
 
-    def _coefficients(self, X, v, tau):
+    def _coefficients(self, X, v):
         Xc = X[:, None]   # (M+1, 1)
         vr = v[None, :]   # (1,  L+1)
         aS    = 0.5 * vr**2 * Xc**(2.0 * self.beta)
@@ -460,7 +458,7 @@ class HestonFinDiffMixin(SvFinDiffMixin):
         v_max = max(5.0 * float(v0), self.theta + 5.0 * cir_std)
         return 0.0, float(X_max), float(v_max)
 
-    def _coefficients(self, X, v, tau):
+    def _coefficients(self, X, v):
         Xc = X[:, None]   # (M+1, 1)
         vr = v[None, :]   # (1,  L+1)
         aS    = 0.5 * vr * Xc**2
@@ -490,7 +488,7 @@ class HestonFinDiffMixin(SvFinDiffMixin):
         V[:, -1] = V[:, -2]   # Neumann at v_max
         return V
 
-    def _pre_step(self, V, X, v, dX, dv, dt, tau, kk, cp):
+    def _pre_step(self, V, X, v, dX, dv, dt, kk, cp):
         """
         Explicit degenerate PDE step at v = 0.
 
