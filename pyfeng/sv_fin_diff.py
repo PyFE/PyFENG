@@ -513,8 +513,10 @@ from .heston import HestonABC  # noqa: E402
 class SabrFinDiff(SabrFinDiffMixin, SabrABC):
     """European SABR option pricing via 2D Douglas ADI finite differences."""
     model_type = 'SabrFinDiff'
+    _benchmark_file = 'sabr_benchmark.xlsx'
 
 
 class HestonFinDiff(HestonFinDiffMixin, HestonABC):
     """European Heston option pricing via 2D Douglas ADI finite differences."""
     model_type = 'HestonFinDiff'
+    _benchmark_file = 'heston_benchmark.xlsx'
