@@ -27,7 +27,7 @@ from .nsvh import Nsvh1, NsvhMc, NsvhGaussQuad
 from .garch import GarchMcTimeDisc, GarchUncorrBaroneAdesi2004
 
 from .heston import CirModel, HestonUncorrBallRoma1994
-from .sv_fin_diff import SabrFinDiff, HestonFinDiff
+from .sv_fin_diff import SabrFinDiff, HestonFinDiff, HestonCevFinDiff
 from .heston_mc import (
     HestonMcAndersen2008, HestonMcGlassermanKim2011, HestonMcTseWan2013,
     HestonMcChoiKwok2023PoisGe, HestonMcChoiKwok2023PoisTd

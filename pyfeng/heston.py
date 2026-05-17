@@ -4,7 +4,7 @@ import scipy.special as spsp
 from .opt_abc import OptABC
 from . import bsm
 from .util import MathFuncs
-from .params import HestonParams
+from .params import HestonParams, HestonCevParams
 
 
 class CirModel:
@@ -404,6 +404,21 @@ class HestonABC(HestonParams, OptABC):
         var = texp * mu_i + (texp**2 / 4) * var_i - self.rho * texp / self.vov * cov_yi
 
         return mean, var
+
+
+class HestonCevABC(HestonCevParams, OptABC):
+    """
+    Abstract base class for CEV-Heston models.
+
+    Provides the ``cir`` property for the variance sub-process (identical to
+    ``HestonABC.cir``; the CEV exponent ``beta`` does not affect the variance
+    dynamics).
+    """
+
+    @property
+    def cir(self):
+        """CirModel instance for the variance process (ξ = vov, κ = mr, θ = theta)."""
+        return CirModel(sigma=self.vov, mr=self.mr, theta=self.theta)
 
 
 class HestonUncorrBallRoma1994(HestonABC):

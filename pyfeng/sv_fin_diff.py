@@ -504,8 +504,8 @@ class HestonFinDiffMixin(SvFinDiffMixin):
 # Concrete classes
 # ─────────────────────────────────────────────────────────────────────────────
 
-from .sabr import SabrABC      # noqa: E402
-from .heston import HestonABC  # noqa: E402
+from .sabr import SabrABC                   # noqa: E402
+from .heston import HestonABC, HestonCevABC  # noqa: E402
 
 
 class SabrFinDiff(SabrFinDiffMixin, SabrABC):
@@ -514,3 +514,41 @@ class SabrFinDiff(SabrFinDiffMixin, SabrABC):
 
 class HestonFinDiff(HestonFinDiffMixin, HestonABC):
     """European Heston option pricing via 2D Douglas ADI finite differences."""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CEV-Heston mixin and concrete class
+# ─────────────────────────────────────────────────────────────────────────────
+
+class HestonCevFinDiffMixin(HestonFinDiffMixin):
+    """
+    CEV-Heston PDE coefficients for the generic Douglas ADI engine.
+
+    Generalises the standard Heston asset SDE with a CEV elasticity ``beta``::
+
+        dS = sqrt(v) · S^beta · dW_S
+
+    With ``beta = 1`` this reduces to standard ``HestonFinDiffMixin``.
+
+    Only the asset-direction coefficients differ from Heston:
+
+    * ``aS    = ½ · v · X^(2β)``   (Heston: ½·v·X²)
+    * ``gamma = ρ · ξ · v · X^β``  (Heston: ρ·ξ·v·X)
+
+    The variance-direction coefficients (``aV``, ``bV``) and all boundary
+    conditions are inherited unchanged from ``HestonFinDiffMixin``.
+    """
+
+    def _coefficients(self, X, v):
+        Xc = X[:, None]   # (M+1, 1)
+        vr = v[None, :]   # (1,  L+1)
+        aS    = 0.5 * vr * Xc**(2.0 * self.beta)
+        bS    = np.zeros_like(aS)                  # r = q = 0 (normalized)
+        aV    = 0.5 * self.vov**2 * vr             # unchanged from Heston
+        bV    = self.mr * (self.theta - vr)        # unchanged from Heston
+        gamma = self.rho * self.vov * vr * Xc**self.beta
+        return aS, bS, aV, bV, gamma
+
+
+class HestonCevFinDiff(HestonCevFinDiffMixin, HestonCevABC):
+    """European CEV-Heston option pricing via 2D Douglas ADI finite differences."""
