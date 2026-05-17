@@ -18,9 +18,9 @@ One Douglas step τₙ → τₙ₊₁ (θ = ½ gives Crank–Nicolson-like accu
     (I − θ dt F₁) Y₁ = Y₀ − θ dt F₁ Vⁿ              (S-implicit corrector)
     (I − θ dt F₂) Vⁿ⁺¹ = Y₁ − θ dt F₂ Vⁿ            (v-implicit corrector)
 
-To use for a new SV model, subclass ``SvFinDiffMixin`` and implement
+To use for a new SV model, subclass ``SvFinDiffMixinABC`` and implement
 four abstract methods: ``_get_v0``, ``_grid_bounds``, ``_coefficients``,
-``_apply_bc``.
+``_apply_bdd_cond``.
 
 References:
     von Sydow et al. (2019) BENCHOP-SLV, Int. J. Comput. Math.
@@ -110,44 +110,41 @@ def _standard_bc(V, kk, X, cp):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Generic ADI mixin
+# Generic ADI mixin ABC
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SvFinDiffMixin(abc.ABC):
+class SvFinDiffMixinABC(abc.ABC):
     """
     Generic Douglas-scheme 2D ADI mixin for stochastic-volatility models.
 
     Subclass and implement four abstract methods to plug in any model::
 
-        class MyModelFinDiff(SvFinDiffMixin, MyModelABC):
+        class MyModelFinDiff(SvFinDiffMixinABC, MyModelABC):
             def _get_v0(self, fwd, texp):         return ...
             def _grid_bounds(self, v0, kk, texp): return X_min, X_max, v_max
             def _coefficients(self, X, v):        return aS, bS, aV, bV, gamma
-            def _apply_bc(self, V, kk, X, cp):    return _standard_bc(V, kk, X, cp)
+            def _apply_bdd_cond(self, V, kk, X, cp):    return _standard_bc(V, kk, X, cp)
 
     The engine works in normalized forward space (X = F/F₀, so X₀ = 1, r=q=0).
     ``price()`` handles forward/discount scaling externally.
     """
 
     # Default numerical parameters — override via set_num_params()
-    n_asset:   int   = 80
-    n_vol:     int   = 40
-    n_time:    int   = 80
+    # n_grid = (N_time, M_price, L_vol); matches BENCHOP-SLV convention M = 2L, N ≈ L
+    n_grid:    tuple = (80, 80, 40)
     adi_theta: float = 0.5
 
-    def set_num_params(self, n_asset=80, n_vol=40, n_time=80, adi_theta=0.5):
+    def set_num_params(self, n_grid=(80, 80, 40), adi_theta=0.5):
         """
         Configure the ADI grid (consistent with ``set_num_params`` in *_mc.py).
 
         Args:
-            n_asset:   asset price grid intervals (M)
-            n_vol:     vol/variance grid intervals (L)
-            n_time:    time steps (N)
+            n_grid:    (N_time, M_price, L_vol) — number of time steps and
+                       spatial grid intervals in the price and vol directions.
+                       BENCHOP-SLV convention: M = 2L, N ≈ L.
             adi_theta: Douglas weight; 0.5 → Crank–Nicolson accuracy
         """
-        self.n_asset   = int(n_asset)
-        self.n_vol     = int(n_vol)
-        self.n_time    = int(n_time)
+        self.n_grid    = tuple(int(x) for x in n_grid)
         self.adi_theta = float(adi_theta)
 
     # ── Abstract interface ────────────────────────────────────────────────────
@@ -197,7 +194,7 @@ class SvFinDiffMixin(abc.ABC):
         """
 
     @abc.abstractmethod
-    def _apply_bc(self, V, kk, X, cp):
+    def _apply_bdd_cond(self, V, kk, X, cp):
         """
         Boundary conditions in normalized space.
 
@@ -246,7 +243,7 @@ class SvFinDiffMixin(abc.ABC):
 
     def _solve_one(self, kk, v0, texp, cp):
         """Full Douglas ADI solve in normalized space. Returns price / F₀."""
-        M, L, N = self.n_asset, self.n_vol, self.n_time
+        N, M, L = self.n_grid
 
         X_min, X_max, v_max = self._grid_bounds(v0, kk, texp)
         X  = np.linspace(X_min, X_max, M + 1)
@@ -257,9 +254,8 @@ class SvFinDiffMixin(abc.ABC):
 
         # Terminal condition (τ = 0): intrinsic payoff broadcast over v-axis
         V = np.maximum(cp * (X[:, None] - kk), 0.0) * np.ones((M + 1, L + 1))
-        # v = 0 initial condition is always intrinsic (τ = 0 payoff)
         V[:, 0] = np.maximum(cp * (X - kk), 0.0)
-        V = self._apply_bc(V, kk, X, cp)
+        V = self._apply_bdd_cond(V, kk, X, cp)
 
         for _ in range(N):
             V = self._pre_step(V, X, v, dX, dv, dt, kk, cp)
@@ -278,7 +274,7 @@ class SvFinDiffMixin(abc.ABC):
         F2V = self._F2(V, aV, bV, dv)
 
         Y0 = V + dt * (F0V + F1V + F2V)
-        Y0 = self._apply_bc(Y0, kk, X, cp)
+        Y0 = self._apply_bdd_cond(Y0, kk, X, cp)
 
         Y1  = self._solve_S_implicit(Y0 - adt * F1V, adt, aS, bS, dX, X, kk, cp)
         Vn  = self._solve_v_implicit(Y1 - adt * F2V, adt, aV, bV, dv, X, kk, cp)
@@ -301,7 +297,7 @@ class SvFinDiffMixin(abc.ABC):
     def _F1(V, aS, bS, dX):
         """Asset-direction differential operator."""
         out = np.zeros_like(V)
-        a = aS[1:-1, :] / dX**2      # (M-1, L+1) or broadcasts
+        a = aS[1:-1, :] / dX**2
         b = bS[1:-1, :] / (2.0 * dX)
         out[1:-1, :] = (
             a * (V[2:, :] - 2.0 * V[1:-1, :] + V[:-2, :])
@@ -313,7 +309,6 @@ class SvFinDiffMixin(abc.ABC):
     def _F2(V, aV, bV, dv):
         """Vol-direction differential operator."""
         out = np.zeros_like(V)
-        # aV, bV are (1, L+1) or (M+1, L+1); slice interior v-axis
         c = aV[..., 1:-1] / dv**2
         d = bV[..., 1:-1] / (2.0 * dv)
         out[:, 1:-1] = (
@@ -326,61 +321,65 @@ class SvFinDiffMixin(abc.ABC):
 
     def _solve_S_implicit(self, rhs, adt, aS, bS, dX, X, kk, cp):
         """Solve (I − adt·F₁)Y = rhs for interior S-points, all interior v."""
-        M, L = self.n_asset, self.n_vol
-        Y = self._apply_bc(rhs.copy(), kk, X, cp)
+        _, M, L = self.n_grid
+        Y = self._apply_bdd_cond(rhs.copy(), kk, X, cp)
 
-        # Coefficient arrays for interior (i=1..M-1, j=1..L-1)
-        a = aS[1:M, 1:L] / dX**2      # (M-1, L-1)
-        b = bS[1:M, 1:L] / (2.0 * dX) # (M-1, L-1)
+        a = aS[1:M, 1:L] / dX**2
+        b = bS[1:M, 1:L] / (2.0 * dX)
 
         sub = -adt * (a - b)
         mid =  1.0 + adt * 2.0 * a
         sup = -adt * (a + b)
 
         rhs_int = rhs[1:M, 1:L].copy()
-        # Fold known boundary S-values into right-hand side
         rhs_int[0,  :] -= sub[0,  :] * Y[0,  1:L]
         rhs_int[-1, :] -= sup[-1, :] * Y[M,  1:L]
 
         Y[1:M, 1:L] = _thomas_batch(sub, mid, sup, rhs_int)
-        return self._apply_bc(Y, kk, X, cp)
+        return self._apply_bdd_cond(Y, kk, X, cp)
 
     def _solve_v_implicit(self, rhs, adt, aV, bV, dv, X, kk, cp):
         """Solve (I − adt·F₂)Y = rhs for interior v-points, all S."""
-        M, L = self.n_asset, self.n_vol
-        Y = self._apply_bc(rhs.copy(), kk, X, cp)
+        _, M, L = self.n_grid
+        Y = self._apply_bdd_cond(rhs.copy(), kk, X, cp)
 
-        # Extract 1-D interior v-coefficients  (aV, bV may be (1,L+1))
         av = np.asarray(aV).ravel() if aV.shape[0] == 1 else aV[0]
         bv = np.asarray(bV).ravel() if bV.shape[0] == 1 else bV[0]
-        c = av[1:L] / dv**2    # (L-1,)
+        c = av[1:L] / dv**2
         d = bv[1:L] / (2.0 * dv)
 
         sub = -adt * (c - d)
         mid =  1.0 + adt * 2.0 * c
         sup = -adt * (c + d)
 
-        # Neumann BC at v_max: V[:, L] = V[:, L-1]  →  fold last sup into diagonal
+        # Neumann BC at v_max: fold last sup into diagonal
         mid_eff = mid.copy()
         mid_eff[-1] += sup[-1]
 
-        # Transpose so v-axis is first (Thomas iterates along v)
         rhs_int = rhs[:, 1:L].T.copy()       # (L-1, M+1)
         rhs_int[0, :] -= sub[0] * Y[:, 0]    # Dirichlet at v = 0
 
         sol = _thomas_batch(sub, mid_eff, sup, rhs_int)  # (L-1, M+1)
         Y[:, 1:L] = sol.T
         Y[:, L]   = Y[:, L - 1]              # enforce Neumann mirror
-        return self._apply_bc(Y, kk, X, cp)
+        return self._apply_bdd_cond(Y, kk, X, cp)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SABR mixin
+# Imports — deferred to avoid circular references
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SabrFinDiffMixin(SvFinDiffMixin):
+from .sabr import SabrABC                    # noqa: E402
+from .heston import HestonABC, HestonCevABC  # noqa: E402
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SABR concrete pricer
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SabrFinDiff(SvFinDiffMixinABC, SabrABC):
     """
-    SABR PDE coefficients for the generic Douglas ADI engine.
+    European SABR option pricing via 2D Douglas ADI finite differences.
 
     PyFENG parameter mapping:
         ``sigma`` → σ₀ (initial vol level)
@@ -416,17 +415,17 @@ class SabrFinDiffMixin(SvFinDiffMixin):
         gamma = self.rho * self.vov * vr**2 * Xc**self.beta
         return aS, bS, aV, bV, gamma
 
-    def _apply_bc(self, V, kk, X, cp):
+    def _apply_bdd_cond(self, V, kk, X, cp):
         return _standard_bc(V, kk, X, cp)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Heston mixin
+# Heston concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
-class HestonFinDiffMixin(SvFinDiffMixin):
+class HestonFinDiff(SvFinDiffMixinABC, HestonABC):
     """
-    Heston PDE coefficients for the generic Douglas ADI engine.
+    European Heston option pricing via 2D Douglas ADI finite differences.
 
     PyFENG parameter mapping:
         ``sigma`` → v₀ (initial variance)
@@ -435,14 +434,11 @@ class HestonFinDiffMixin(SvFinDiffMixin):
         ``theta`` → θ  (long-run variance)
         ``rho``   → ρ  (correlation)
 
-    The variance process is scale-free so no forward normalization is needed.
-
     Boundary at v = 0:
         When the Feller condition 2κθ ≥ ξ² is violated the variance can reach
         zero and the PDE degenerates to  ∂V/∂τ = κθ ∂V/∂v.  This is integrated
         explicitly via ``_pre_step`` at every time step rather than freezing the
-        option value at the intrinsic payoff (which would under-price options
-        with positive expected variance recovery).
+        option value at the intrinsic payoff.
     """
 
     def _get_v0(self, fwd, texp):
@@ -468,7 +464,7 @@ class HestonFinDiffMixin(SvFinDiffMixin):
         gamma = self.rho * self.vov * vr * Xc
         return aS, bS, aV, bV, gamma
 
-    def _apply_bc(self, V, kk, X, cp):
+    def _apply_bdd_cond(self, V, kk, X, cp):
         """
         Heston boundary conditions.
 
@@ -497,58 +493,35 @@ class HestonFinDiffMixin(SvFinDiffMixin):
         S-direction and v_max boundary conditions.
         """
         V[:, 0] += dt * self.mr * self.theta * (V[:, 1] - V[:, 0]) / dv
-        return self._apply_bc(V, kk, X, cp)
+        return self._apply_bdd_cond(V, kk, X, cp)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Concrete classes
+# CEV-Heston concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
-from .sabr import SabrABC                   # noqa: E402
-from .heston import HestonABC, HestonCevABC  # noqa: E402
-
-
-class SabrFinDiff(SabrFinDiffMixin, SabrABC):
-    """European SABR option pricing via 2D Douglas ADI finite differences."""
-
-
-class HestonFinDiff(HestonFinDiffMixin, HestonABC):
-    """European Heston option pricing via 2D Douglas ADI finite differences."""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CEV-Heston mixin and concrete class
-# ─────────────────────────────────────────────────────────────────────────────
-
-class HestonCevFinDiffMixin(HestonFinDiffMixin):
+class HestonCevFinDiff(HestonCevABC, HestonFinDiff):
     """
-    CEV-Heston PDE coefficients for the generic Douglas ADI engine.
+    European CEV-Heston option pricing via 2D Douglas ADI finite differences.
 
-    Generalises the standard Heston asset SDE with a CEV elasticity ``beta``::
+    Generalises ``HestonFinDiff`` with a CEV elasticity ``beta``::
 
-        dS = sqrt(v) · S^beta · dW_S
+        dS = sqrt(v) · S^beta · dW_S,   beta = 1 → standard Heston
 
-    With ``beta = 1`` this reduces to standard ``HestonFinDiffMixin``.
+    Inherits grid bounds, boundary conditions, and the degenerate-PDE
+    ``_pre_step`` from ``HestonFinDiff``; overrides only ``_coefficients``.
 
-    Only the asset-direction coefficients differ from Heston:
-
-    * ``aS    = ½ · v · X^(2β)``   (Heston: ½·v·X²)
-    * ``gamma = ρ · ξ · v · X^β``  (Heston: ρ·ξ·v·X)
-
-    The variance-direction coefficients (``aV``, ``bV``) and all boundary
-    conditions are inherited unchanged from ``HestonFinDiffMixin``.
+    PDE coefficients that differ from standard Heston:
+        aS    = ½ · v · X^(2β)   (Heston: ½·v·X²)
+        gamma = ρ · ξ · v · X^β  (Heston: ρ·ξ·v·X)
     """
 
     def _coefficients(self, X, v):
         Xc = X[:, None]   # (M+1, 1)
         vr = v[None, :]   # (1,  L+1)
         aS    = 0.5 * vr * Xc**(2.0 * self.beta)
-        bS    = np.zeros_like(aS)                  # r = q = 0 (normalized)
+        bS    = np.zeros_like(aS)
         aV    = 0.5 * self.vov**2 * vr             # unchanged from Heston
         bV    = self.mr * (self.theta - vr)        # unchanged from Heston
         gamma = self.rho * self.vov * vr * Xc**self.beta
         return aS, bS, aV, bV, gamma
-
-
-class HestonCevFinDiff(HestonCevFinDiffMixin, HestonCevABC):
-    """European CEV-Heston option pricing via 2D Douglas ADI finite differences."""

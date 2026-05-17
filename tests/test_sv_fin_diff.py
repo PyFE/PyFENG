@@ -31,10 +31,10 @@ def test_sabr_adi_benchop(set_no):
     Tolerance: abs=3e-3 (consistent with the BENCHOP-SLV paper error budget).
     """
     m, df, info = pf.SabrFinDiff.init_benchmark(set_no)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
-    args = info["args_pricing"]
-    prices = m.price(args["strike"], args["spot"], args["texp"], cp=1)
+    args   = info["args_pricing"]
+    prices = m.price(**args)
     refs   = info["val"]
 
     for K, p, r in zip(args["strike"], prices, refs):
@@ -59,10 +59,10 @@ def test_heston_adi_benchop():
     tolerances require Richardson extrapolation or finer grids.
     """
     m, df, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
-    args  = info["args_pricing"]
-    prices = m.price(args["strike"], args["spot"], args["texp"], cp=1)
+    args   = info["args_pricing"]
+    prices = m.price(**args)
     refs   = info["val"]
 
     for K, p, r in zip(args["strike"], prices, refs):
@@ -78,7 +78,7 @@ def test_heston_adi_benchop():
 def test_sabr_put_call_parity():
     """SABR put-call parity: C − P = S₀ − K (r = 0)."""
     m, _, info = pf.SabrFinDiff.init_benchmark(20)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
     args = info["args_pricing"]
     S0 = args["spot"]; K = float(args["strike"][1])  # ATM strike
@@ -92,7 +92,7 @@ def test_sabr_put_call_parity():
 def test_heston_put_call_parity():
     """Heston put-call parity at ATM: C − P = S₀ − K (r = 0)."""
     m, _, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
     args = info["args_pricing"]
     S0 = float(args["spot"]); K = float(args["strike"][1])  # ATM strike (K=100)
@@ -110,10 +110,10 @@ def test_heston_put_call_parity():
 def test_sabr_array_strikes():
     """price() should accept an ndarray of strikes and return the same shape."""
     m, _, info = pf.SabrFinDiff.init_benchmark(20)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
-    args = info["args_pricing"]
-    prices = m.price(args["strike"], args["spot"], args["texp"], cp=1)
+    args   = info["args_pricing"]
+    prices = m.price(**args)
     assert prices.shape == args["strike"].shape
     assert np.all(prices > 0)
 
@@ -121,9 +121,9 @@ def test_sabr_array_strikes():
 def test_heston_positive_price():
     """Heston ATM call is positive and finite."""
     m, _, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_asset=80, n_vol=40, n_time=80)
+    m.set_num_params(n_grid=(80, 80, 40))
 
-    args = info["args_pricing"]
+    args  = info["args_pricing"]
     price = m.price(float(args["strike"][1]), float(args["spot"]), args["texp"], cp=1)
     assert np.isfinite(price)
     assert price > 0
