@@ -18,13 +18,19 @@ One Douglas step τₙ → τₙ₊₁ (θ = ½ gives Crank–Nicolson-like accu
     (I − θ dt F₁) Y₁ = Y₀ − θ dt F₁ Vⁿ              (S-implicit corrector)
     (I − θ dt F₂) Vⁿ⁺¹ = Y₁ − θ dt F₂ Vⁿ            (v-implicit corrector)
 
-To use for a new SV model, subclass ``SvFinDiffMixinABC`` and implement
+To use for a new SV model, subclass ``SvFinDiffABC`` and implement
 four abstract methods: ``_get_v0``, ``_grid_bounds``, ``_coefficients``,
 ``_apply_bdd_cond``.
 
 References:
     von Sydow et al. (2019) BENCHOP-SLV, Int. J. Comput. Math.
     K. in 't Hout & S. Foulon (2010), ADI FD schemes for Heston.
+
+Credits:
+    Adapted from the MATH5030 Group 16 project (``mafn-finite-difference``),
+    which provided the original Douglas ADI implementation for SABR and
+    extended Heston models.
+    Repository: https://github.com/py2025/finite-difference
 """
 
 import abc
@@ -113,13 +119,13 @@ def _standard_bc(V, kk, X, cp):
 # Generic ADI mixin ABC
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SvFinDiffMixinABC(abc.ABC):
+class SvFinDiffABC(abc.ABC):
     """
     Generic Douglas-scheme 2D ADI mixin for stochastic-volatility models.
 
     Subclass and implement four abstract methods to plug in any model::
 
-        class MyModelFinDiff(SvFinDiffMixinABC, MyModelABC):
+        class MyModelFinDiff(SvFinDiffABC, MyModelABC):
             def _get_v0(self, fwd, texp):         return ...
             def _grid_bounds(self, v0, kk, texp): return X_min, X_max, v_max
             def _coefficients(self, X, v):        return aS, bS, aV, bV, gamma
@@ -377,7 +383,7 @@ from .heston import HestonABC, HestonCevABC  # noqa: E402
 # SABR concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SabrFinDiff(SvFinDiffMixinABC, SabrABC):
+class SabrFinDiff(SvFinDiffABC, SabrABC):
     """
     European SABR option pricing via 2D Douglas ADI finite differences.
 
@@ -423,7 +429,7 @@ class SabrFinDiff(SvFinDiffMixinABC, SabrABC):
 # Heston concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
-class HestonFinDiff(SvFinDiffMixinABC, HestonABC):
+class HestonFinDiff(SvFinDiffABC, HestonABC):
     """
     European Heston option pricing via 2D Douglas ADI finite differences.
 
@@ -486,13 +492,20 @@ class HestonFinDiff(SvFinDiffMixinABC, HestonABC):
 
     def _pre_step(self, V, X, v, dX, dv, dt, kk, cp):
         """
-        Explicit degenerate PDE step at v = 0.
+        v = 0 boundary update before each Douglas step.
 
-        Integrates  ∂V/∂τ = κθ (V[:,1] − V[:,0]) / dv  for one time step
-        using forward Euler before the Douglas ADI sweep, then re-applies the
-        S-direction and v_max boundary conditions.
+        **Feller violated** (2κθ < ξ²): v = 0 is attainable.  The PDE
+        degenerates to  ∂V/∂τ = κθ ∂V/∂v, integrated by forward Euler.
+        CFL stability requires  κθ · dt/dv ≤ 1.
+
+        **Feller satisfied** (2κθ ≥ ξ²): v = 0 is unreachable.  The v = 0
+        column is pinned to the absorbing Dirichlet value (intrinsic payoff),
+        which is both physically correct and unconditionally stable.
         """
-        V[:, 0] += dt * self.mr * self.theta * (V[:, 1] - V[:, 0]) / dv
+        if 2.0 * self.mr * self.theta < self.vov**2:   # Feller violated
+            V[:, 0] += dt * self.mr * self.theta * (V[:, 1] - V[:, 0]) / dv
+        else:                                           # Feller satisfied
+            V[:, 0] = np.maximum(cp * (X - kk), 0.0)
         return self._apply_bdd_cond(V, kk, X, cp)
 
 

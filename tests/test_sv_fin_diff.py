@@ -118,6 +118,44 @@ def test_sabr_array_strikes():
     assert np.all(prices > 0)
 
 
+def test_degenerate_to_cev():
+    """With vov→0, both SabrFinDiff and HestonCevFinDiff reduce to pure CEV.
+
+    SABR (vov→0):      dF = sigma · F^beta · dW  →  CEV with sigma_cev = m.sigma
+    HestonCev (vov→0): dS = sqrt(v) · S^beta · dW, v frozen at sigma
+                                                  →  CEV with sigma_cev = sqrt(m.sigma)
+
+    Strong mr pins the Heston variance tightly to sigma=theta; Feller is satisfied
+    (2κθ >> ξ²) so the v=0 boundary uses the stable Dirichlet condition.
+    Tolerance abs=1e-3: residual error is O(vov²) plus finite-grid discretisation.
+    """
+    beta = 0.5
+    S0, texp = 1.0, 1.0
+    strikes = np.array([0.8, 1.0, 1.2])
+
+    # SABR with vov→0: effective CEV vol = m_sabr.sigma
+    m_sabr = pf.SabrFinDiff(sigma=0.3, vov=1e-4, rho=0.0, beta=beta)
+    m_sabr.set_num_params(n_grid=(80, 80, 40))
+    p_sabr = m_sabr.price(strikes, S0, texp, cp=1)
+
+    # HestonCev with vov→0, strong mr: variance frozen at sigma=theta,
+    # effective CEV vol = sqrt(m_hcev.sigma)
+    m_hcev = pf.HestonCevFinDiff(sigma=0.09, vov=1e-4, mr=100.0, theta=0.09, rho=0.0, beta=beta)
+    m_hcev.set_num_params(n_grid=(80, 80, 40))
+    p_hcev = m_hcev.price(strikes, S0, texp, cp=1)
+
+    # Both converge to the same CEV: sigma_cev = m_sabr.sigma = sqrt(m_hcev.sigma)
+    p_ref = pf.Cev(sigma=np.sqrt(m_hcev.sigma), beta=beta).price(strikes, S0, texp, cp=1)
+
+    for K, pr, ps, ph in zip(strikes, p_ref, p_sabr, p_hcev):
+        assert ps == pytest.approx(pr, abs=1e-3), (
+            f"SABR→CEV  K={K}: got {ps:.6f}, expected {pr:.6f}"
+        )
+        assert ph == pytest.approx(pr, abs=1e-3), (
+            f"HestonCev→CEV  K={K}: got {ph:.6f}, expected {pr:.6f}"
+        )
+
+
 def test_heston_positive_price():
     """Heston ATM call is positive and finite."""
     m, _, info = pf.HestonFinDiff.init_benchmark(10)
