@@ -298,6 +298,32 @@ class HestonParams(SvParams):
 
 
 @dataclass
+class HestonCevParams(HestonParams):
+    """
+    Parameters for the CEV-Heston stochastic-volatility model.
+
+    Extends the standard Heston model with a CEV elasticity parameter ``beta``::
+
+        dS_t = sqrt(v_t) · S_t^beta · dW_S + drift
+        dv_t = kappa·(theta − v_t) dt + vov·sqrt(v_t) dW_v,  corr(dW_S, dW_v) = rho
+
+    With ``beta = 1`` the model reduces to standard Heston.  ``beta < 1`` adds a
+    leverage effect (local volatility decreases with spot).
+
+    Field order in ``__init__``:
+    ``(sigma, beta=1.0, vov=0.01, rho=0.0, mr=0.01, theta=None,
+    *, intr=0.0, divr=0.0, is_fwd=False)``
+    """
+    model_type: ClassVar[str] = "HestonCev"
+    beta: float = 1.0
+
+    def __post_init__(self):
+        super().__post_init__()   # validates Heston constraints + sets theta
+        if not (self.beta > 0):
+            raise ValueError(f"beta must be > 0 for CEV-Heston, got {self.beta}")
+
+
+@dataclass
 class GarchParams(SvParams):
     """Parameters for the GARCH diffusion model."""
     model_type: ClassVar[str] = "GarchDiff"
