@@ -119,6 +119,50 @@ class NormBasket(MaParams, OptABC):
         return df * price
 
 
+class BsmBasketGeoApprox(MaParams, OptABC):
+    """
+    Basket option pricing via geometric-Brownian-motion approximation.
+
+    The arithmetic basket :math:`B = \\sum_i w_i F_i` is approximated by a
+    single lognormal asset whose forward and volatility match the first-order
+    geometric approximation:
+
+    .. math::
+
+        F_B = \\mathbf{w}^\\top \\mathbf{F}, \\qquad
+        \\sigma_B = \\sqrt{\\mathbf{w}^\\top C \\mathbf{w}}
+
+    where :math:`C_{ij} = \\sigma_i \\sigma_j \\rho_{ij}` is the BSM covariance
+    matrix.  The option price is then the standard BSM formula applied to
+    :math:`(F_B,\\, \\sigma_B)`.
+
+    This is the BSM analogue of :class:`NormBasket` and serves as a fast,
+    model-consistent lower bound / control variate for richer basket models.
+    All weights must be positive; the approximation is not valid for spread
+    options (negative weights).
+
+    Examples:
+        >>> import numpy as np
+        >>> import pyfeng as pf
+        >>> sigma = np.ones(4) * 0.4
+        >>> m = pf.BsmBasketGeoApprox(sigma, rho=0.5)
+        >>> m.price(np.arange(80, 121, 10, dtype=float), 100.0 * np.ones(4), texp=5.0)
+    """
+
+    def price(self, strike, spot, texp, cp=1):
+        fwd, df, _ = self._fwd_df_divf(spot, texp)
+        if fwd.shape[-1] != self.n_asset:
+            raise ValueError(f"fwd last dimension {fwd.shape[-1]} does not match n_asset={self.n_asset}.")
+
+        fwd_basket = fwd @ self.weight
+        vol_basket = np.sqrt(self.weight @ self.cov_m @ self.weight)
+
+        price = Bsm.price_formula(
+            strike, fwd_basket, vol_basket, texp, cp=cp, is_fwd=True
+        )
+        return df * price
+
+
 class BsmBasketABC(MaParams, OptABC):
     """
     Abstract base class for BSM basket option models.
