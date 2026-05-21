@@ -189,11 +189,11 @@ class Sv32McTimeStep(Sv32McABC):
             var_t = self.var_step_euler(var_0, dt, milstein=milstein)
         elif self.scheme == 2:
             # Euler (or Milstein) scheme
-            var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rng_spawn[0])
+            var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rngs[0])
             np.divide(1.0, var_t, out=var_t)
         elif self.scheme == 3:
             # Euler (or Milstein) scheme
-            var_t, _ = self.cir.draw_pois_gamma(dt, 1 / var_0, self.rng_spawn[0], self.rng_spawn[1])
+            var_t, _ = self.cir.draw_pois_gamma(dt, 1 / var_0, self.rngs[0], self.rngs[1])
             np.divide(1.0, var_t, out=var_t)
         else:
             raise ValueError(f'Invalid scheme: {self.scheme}')
@@ -286,7 +286,7 @@ class Sv32McBaldeaux2012Exact(Sv32McABC):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rng_spawn[0])
+        var_t = self.cir.draw_ncx2(dt, 1 / var_0, self.rngs[0])
         np.divide(1.0, var_t, out=var_t)
 
         avgvar = self.draw_cond_avgvar(dt, var_0, var_t)
@@ -315,9 +315,9 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
         var_scaled = var_scaled[idx]
 
         if dist.lower() == 'ig':
-            avgvar[idx] = self.rng_spawn[1].wald(mean=mean, scale=mean / var_scaled)
+            avgvar[idx] = self.rngs[1].wald(mean=mean, scale=mean / var_scaled)
         elif dist.lower() == 'ga':
-            avgvar[idx] = var_scaled * mean * self.rng_spawn[1].standard_gamma(shape=1 / var_scaled)
+            avgvar[idx] = var_scaled * mean * self.rngs[1].standard_gamma(shape=1 / var_scaled)
         elif dist.lower() == 'ln':
             scale = np.sqrt(np.log1p(var_scaled))
             avgvar[idx] = mean * np.exp(scale * (self.rv_normal(spawn=1) - scale / 2))
@@ -359,7 +359,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             tuple, variance at maturity and conditional integrated variance
         """
 
-        var_t, eta = self.cir.draw_pois_gamma(texp, 1 / var_0, self.rng_spawn[0], self.rng_spawn[1])
+        var_t, eta = self.cir.draw_pois_gamma(texp, 1 / var_0, self.rngs[0], self.rngs[1])
 
         np.divide(1.0, var_t, out=var_t)
         # print('eta', eta.min(), eta.mean(), eta.max())
@@ -409,7 +409,7 @@ class Sv32McChoiKwok2023Ig(Sv32McBaldeaux2012Exact):
             (var_t, avgvar)
         """
 
-        var_t = self.cir.draw_ncx2(dt, 1/var_0, self.rng_spawn[0])
+        var_t = self.cir.draw_ncx2(dt, 1/var_0, self.rngs[0])
         np.divide(1.0, var_t, out=var_t)
         m1, var_scaled = self.cond_avgvar_mv(dt, var_0, var_t, eta=None)
         avgvar = self.draw_from_mv(m1, var_scaled, self.dist)

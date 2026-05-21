@@ -35,6 +35,7 @@ Credits:
 
 import abc
 import numpy as np
+from dataclasses import dataclass, field
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +120,7 @@ def _standard_bc(V, kk, X, cp):
 # Generic ADI mixin ABC
 # ─────────────────────────────────────────────────────────────────────────────
 
+@dataclass
 class SvFinDiffABC(abc.ABC):
     """
     Generic Douglas-scheme 2D ADI mixin for stochastic-volatility models.
@@ -135,14 +137,18 @@ class SvFinDiffABC(abc.ABC):
     ``price()`` handles forward/discount scaling externally.
     """
 
-    # Default numerical parameters — override via set_num_params()
+    # Numerical parameters as kw_only dataclass fields
     # n_grid = (N_time, M_price, L_vol); matches BENCHOP-SLV convention M = 2L, N ≈ L
-    n_grid:    tuple = (80, 80, 40)
-    adi_theta: float = 0.5
+    n_grid:    tuple = field(default=(80, 80, 40), kw_only=True, metadata={'kind': 'numerical'})
+    adi_theta: float = field(default=0.5,          kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_grid=(80, 80, 40), adi_theta=0.5):
+    def __post_init__(self):
+        self.n_grid    = tuple(int(x) for x in self.n_grid)
+        self.adi_theta = float(self.adi_theta)
+
+    def configure(self, n_grid=None, adi_theta=None):
         """
-        Configure the ADI grid (consistent with ``set_num_params`` in *_mc.py).
+        Configure the ADI grid.
 
         Args:
             n_grid:    (N_time, M_price, L_vol) — number of time steps and
@@ -150,8 +156,14 @@ class SvFinDiffABC(abc.ABC):
                        BENCHOP-SLV convention: M = 2L, N ≈ L.
             adi_theta: Douglas weight; 0.5 → Crank–Nicolson accuracy
         """
-        self.n_grid    = tuple(int(x) for x in n_grid)
-        self.adi_theta = float(adi_theta)
+        if n_grid is not None:
+            self.n_grid = n_grid
+        if adi_theta is not None:
+            self.adi_theta = adi_theta
+        self.__post_init__()
+        return self
+
+    set_num_params = configure
 
     # ── Abstract interface ────────────────────────────────────────────────────
 
@@ -383,6 +395,7 @@ from .heston import HestonABC, HestonCevABC  # noqa: E402
 # SABR concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
+@dataclass
 class SabrFinDiff(SvFinDiffABC, SabrABC):
     """
     European SABR option pricing via 2D Douglas ADI finite differences.
@@ -429,6 +442,7 @@ class SabrFinDiff(SvFinDiffABC, SabrABC):
 # Heston concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
+@dataclass
 class HestonFinDiff(SvFinDiffABC, HestonABC):
     """
     European Heston option pricing via 2D Douglas ADI finite differences.
@@ -513,6 +527,7 @@ class HestonFinDiff(SvFinDiffABC, HestonABC):
 # CEV-Heston concrete pricer
 # ─────────────────────────────────────────────────────────────────────────────
 
+@dataclass
 class HestonCevFinDiff(HestonCevABC, HestonFinDiff):
     """
     European CEV-Heston option pricing via 2D Douglas ADI finite differences.

@@ -3,6 +3,7 @@ import warnings
 
 import scipy.stats as spst
 import numpy as np
+from dataclasses import dataclass, field
 from .bsm import Bsm
 from .norm import Norm
 from .gamma import InvGam
@@ -557,6 +558,7 @@ class BsmBasketJsu(BsmBasketABC):
         return df * price
 
 
+@dataclass
 class BsmBasketChoi2018(BsmBasketABC):
     """
     Choi (2018)'s pricing method for Basket/Spread/Asian options
@@ -565,8 +567,8 @@ class BsmBasketChoi2018(BsmBasketABC):
         - Choi J (2018) Sum of all Black-Scholes-Merton models: An efficient pricing method for spread, basket, and Asian options. Journal of Futures Markets 38:627–644. https://doi.org/10.1002/fut.21909
     """
 
-    n_quad = None
-    lam = 4.0
+    n_quad: int   = field(default=None, kw_only=True, metadata={'kind': 'numerical'})
+    lam:    float = field(default=4.0,  kw_only=True, metadata={'kind': 'numerical'})
 
     @classmethod
     def init_lowerbound(cls, sigma, rho=None, cor_m=None, cov_m=None, weight=None, intr=0.0, divr=0.0, is_fwd=False):
@@ -574,9 +576,14 @@ class BsmBasketChoi2018(BsmBasketABC):
         m.n_quad = 0
         return m
 
-    def set_num_params(self, n_quad=None, lam=3.0):
-        self.n_quad = n_quad
-        self.lam = lam
+    def configure(self, n_quad=None, lam=None):
+        if n_quad is not None:
+            self.n_quad = n_quad
+        if lam is not None:
+            self.lam = lam
+        return self
+
+    set_num_params = configure
 
     @staticmethod
     def householder(vv0):

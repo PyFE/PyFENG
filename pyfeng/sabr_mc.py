@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 import abc
 import warnings
 import numpy as np
@@ -7,6 +8,7 @@ import scipy.stats as spst
 import scipy.special as spsp
 from functools import partial
 import scipy.integrate as scint
+from dataclasses import dataclass, field
 from . import sabr
 from .sv_abc import CondMcBsmABC
 
@@ -15,6 +17,7 @@ from .sv_abc import CondMcBsmABC
 # 2: integrated/average variance (lognormal)
 # 5: asset return
 
+@dataclass
 class SabrMcABC(sabr.SabrABC, CondMcBsmABC):
 
     def vol_step(self, dt, log=False):
@@ -135,6 +138,7 @@ class SabrMcABC(sabr.SabrABC, CondMcBsmABC):
         return price
 
 
+@dataclass
 class SabrMcTimeDisc(SabrMcABC):
     """
     Conditional MC for SABR model (beta=0,1 or rho=0) with conditional Monte-Carlo simulation
@@ -264,6 +268,7 @@ class SabrMcTimeDisc(SabrMcABC):
         return None
 
 
+@dataclass
 class SabrMcCai2017Exact(SabrMcABC):
     """
     Cai et al. (2017)'s exact simulation of the SABR model
@@ -271,13 +276,20 @@ class SabrMcCai2017Exact(SabrMcABC):
     References:
         - Cai N, Song Y, Chen N (2017) Exact Simulation of the SABR Model. Oper Res 65:931–951. https://doi.org/10.1287/opre.2017.1617
     """
-    m_inv = 20
-    m_euler = 20
-    n_euler = 35
-    comb_coef = None
-    nn = None
+    m_inv:   int = field(default=20, kw_only=True, metadata={'kind': 'numerical'})
+    m_euler: int = field(default=20, kw_only=True, metadata={'kind': 'numerical'})
+    n_euler: int = field(default=35, kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, m_inv=20, m_euler=20, n_euler=35):
+    def _init_euler_coefs(self):
+        self.comb_coef = spsp.comb(self.m_euler, np.arange(0, self.m_euler+0.1)) * np.power(0.5, self.m_euler)
+        assert abs(self.comb_coef.sum()-1) < 1e-8
+        self.nn = np.arange(0, self.m_euler + self.n_euler + 0.1)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._init_euler_coefs()
+
+    def configure(self, n_path=None, dt=None, rn_seed=None, antithetic=None, m_inv=None, m_euler=None, n_euler=None):
         """
         Set MC parameters
 
@@ -290,13 +302,15 @@ class SabrMcCai2017Exact(SabrMcABC):
             m_euler: parameter m in Euler transformation E(m,n)
             n_euler: parameter n in Euler transformation E(m,n)
         """
-        self.m_inv = m_inv
-        self.m_euler = m_euler
-        self.n_euler = n_euler
-        self.comb_coef = spsp.comb(self.m_euler, np.arange(0, self.m_euler+0.1)) * np.power(0.5, self.m_euler)
-        assert abs(self.comb_coef.sum()-1) < 1e-8
-        self.nn = np.arange(0, self.m_euler + self.n_euler + 0.1)
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
+        if m_inv is not None:
+            self.m_inv = m_inv
+        if m_euler is not None:
+            self.m_euler = m_euler
+        if n_euler is not None:
+            self.n_euler = n_euler
+        super().configure(n_path, dt, rn_seed, antithetic)
+        self._init_euler_coefs()
+        return self
 
 
     def cond_laplace(self, theta, vovn, sigma_t):

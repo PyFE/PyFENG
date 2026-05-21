@@ -1,6 +1,7 @@
 import warnings
 import numpy as np
 import scipy.special as spsp
+from dataclasses import dataclass, field
 from .sv_abc import CondMcBsmABC
 from .opt_abc import OptABC
 from . import bsm
@@ -81,15 +82,19 @@ class GarchUncorrBaroneAdesi2004(GarchParams, OptABC):
         return price
 
 
+@dataclass
 class GarchMcTimeDisc(GarchParams, CondMcBsmABC):
     """
     Garch model with conditional Monte-Carlo simulation
     The SDE of SV is: dv_t = mr * (theta - v_t) dt + vov * v_t dB_T
     """
 
-    scheme = 1  #
+    scheme: int = field(default=1, kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_path=10000, dt=0.05, rn_seed=None, antithetic=True, scheme=1):
+    def __post_init__(self):
+        super().__post_init__()
+
+    def configure(self, n_path=None, dt=None, rn_seed=None, antithetic=None, scheme=None):
         """
         Set MC parameters
 
@@ -103,8 +108,10 @@ class GarchMcTimeDisc(GarchParams, CondMcBsmABC):
         References:
             - Andersen L (2008) Simple and efficient simulation of the Heston stochastic volatility model. Journal of Computational Finance 11:1–42. https://doi.org/10.21314/JCF.2008.189
         """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        self.scheme = scheme
+        super().configure(n_path, dt, rn_seed, antithetic)
+        if scheme is not None:
+            self.scheme = scheme
+        return self
 
     def vol_step_euler(self, dt, var_0, milstein=True):
         """

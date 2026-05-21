@@ -1,8 +1,10 @@
 import abc
+from dataclasses import dataclass
 import warnings
 import numpy as np
 import scipy.special as spsp
 import scipy.integrate as scint
+from dataclasses import dataclass, field
 from .sv_abc import CondMcBsmABC
 from .opt_abc import OptABC
 from . import bsm
@@ -368,6 +370,7 @@ class OusvUncorrBallRoma1994(OusvABC):
         return price
 
 
+@dataclass
 class OusvMcABC(OusvABC, CondMcBsmABC):
 
     @abc.abstractmethod
@@ -520,6 +523,7 @@ class OusvMcABC(OusvABC, CondMcBsmABC):
         return var_r / texp  # annualized
 
 
+@dataclass
 class OusvMcTimeDisc(OusvMcABC):
     """
     OUSV model with conditional Monte-Carlo simulation
@@ -580,6 +584,7 @@ class OusvMcTimeDisc(OusvMcABC):
         return vol_t, avgvar, avgvol
 
 
+@dataclass
 class OusvMcChoi2025KL(OusvMcABC):
     """
     Exact Monte Carlo simulation for the OUSV model using Karhunen–Loève (KL) expansions.
@@ -617,7 +622,7 @@ class OusvMcChoi2025KL(OusvMcABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.OusvMcChoi2025KL(sigma=0.2, vov=0.1, mr=4, rho=-0.7, theta=0.2)
-        >>> m.set_num_params(n_path=100000, dt=None, rn_seed=42, n_sin=4)
+        >>> m.configure(n_path=100000, dt=None, rn_seed=42, n_sin=4)
         >>> m.price(np.arange(80, 121, 10), spot=100, texp=1)
 
     References:
@@ -627,9 +632,14 @@ class OusvMcChoi2025KL(OusvMcABC):
           https://doi.org/10.1016/j.orl.2025.107280
     """
 
-    n_sin = 2
+    n_sin: int = field(default=2, kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, n_sin=2):
+    def __post_init__(self):
+        if self.n_sin % 2 != 0:
+            raise ValueError(f"n_sin must be an even integer, got {self.n_sin}.")
+        super().__post_init__()
+
+    def configure(self, n_path=None, dt=None, rn_seed=None, antithetic=None, n_sin=None):
         """
         Set Monte Carlo parameters.
 
@@ -643,11 +653,13 @@ class OusvMcChoi2025KL(OusvMcABC):
                 even integer). Higher values reduce the truncation error at the
                 cost of slightly more computation. Default is 2.
         """
-        if n_sin % 2 != 0:
-            raise ValueError(f"n_sin must be an even integer, got {n_sin}.")
-        self.n_sin = n_sin
+        if n_sin is not None:
+            if n_sin % 2 != 0:
+                raise ValueError(f"n_sin must be an even integer, got {n_sin}.")
+            self.n_sin = n_sin
 
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
+        super().configure(n_path, dt, rn_seed, antithetic)
+        return self
 
     @classmethod
     def _a2sum(cls, mr_t, ns=0, odd=None):
@@ -928,14 +940,14 @@ class OusvMcChoi2025KL(OusvMcABC):
 
             if self.antithetic:
                 n_path_half = int(n_path//2)
-                z_sin = self.rng_spawn[2].standard_normal(size=(n_path_half, n_sin)).T
+                z_sin = self.rngs[2].standard_normal(size=(n_path_half, n_sin)).T
                 z_sin = np.stack([z_sin, -z_sin], axis=-1).reshape((n_sin, n_path))
 
-                z_gpqr = self.rng_spawn[1].standard_normal(size=(n_path_half, 4)).T
+                z_gpqr = self.rngs[1].standard_normal(size=(n_path_half, 4)).T
                 z_gpqr = np.stack([z_gpqr, -z_gpqr], axis=-1).reshape((4, n_path))
             else:
-                z_sin = self.rng_spawn[2].standard_normal(size=(n_path, n_sin)).T
-                z_gpqr = self.rng_spawn[1].standard_normal(size=(n_path, 4)).T
+                z_sin = self.rngs[2].standard_normal(size=(n_path, n_sin)).T
+                z_gpqr = self.rngs[1].standard_normal(size=(n_path, 4)).T
 
             # Create views to array rows
             z_g = z_gpqr[0, :]
@@ -1049,7 +1061,7 @@ class OusvMcChoi2025KL(OusvMcABC):
 
         if zn is None:
             vol_t = self.vol_step(dt, vol_0, nz_theta=False)
-            zn = self.rng_spawn[2].standard_normal(size=(self.n_sin, self.n_path))
+            zn = self.rngs[2].standard_normal(size=(self.n_sin, self.n_path))
             n_sin, n_path = self.n_sin, self.n_path
         else:
             vol_t = self.vol_step(dt, vol_0, zn[0, :], nz_theta=False)

@@ -1,10 +1,12 @@
 import abc
+from dataclasses import dataclass
 import warnings
 import numpy as np
 import scipy.stats as spst
 import scipy.interpolate as spinterp
 from scipy import special as spsp
 import functools
+from dataclasses import dataclass, field
 from .sv_abc import CondMcBsmABC
 from .heston import HestonABC
 from .mgf2mom import Mgf2Mom
@@ -18,6 +20,7 @@ from .mgf2mom import Mgf2Mom
 # 5: asset return
 
 
+@dataclass
 class HestonMcABC(HestonABC, CondMcBsmABC):
     scheme = None
     correct_fwd = False
@@ -37,9 +40,9 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
         if dist.lower() == 'ig':
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
-            avgvar = self.rng_spawn[2].wald(mean=mean, scale=mean / var_scaled)
+            avgvar = self.rngs[2].wald(mean=mean, scale=mean / var_scaled)
         elif dist.lower() == 'ga':
-            avgvar = var_scaled * mean * self.rng_spawn[2].standard_gamma(shape=1 / var_scaled)
+            avgvar = var_scaled * mean * self.rngs[2].standard_gamma(shape=1 / var_scaled)
         elif dist.lower() == 'ln':
             scale = np.sqrt(np.log1p(var_scaled))
             avgvar = mean * np.exp(scale * (self.rv_normal(spawn=2) - scale / 2))
@@ -351,6 +354,7 @@ class HestonMcABC(HestonABC, CondMcBsmABC):
         return m_total, v_total / m_total**2
 
 
+@dataclass
 class HestonMcGlassermanKim2011(HestonMcABC):
     """
     Exact simulation using the gamma series based on Glasserman & Kim (2011)
@@ -364,7 +368,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         >>> strike = np.array([60, 70, 100, 140])
         >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
         >>> m = pf.HestonMcGlassermanKim2011(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e5, kk=4, rn_seed=123456)
+        >>> m.configure(n_path=1e5, kk=4, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.35153812, 35.86029054, 13.17026256,  0.29550527])
@@ -372,11 +376,13 @@ class HestonMcGlassermanKim2011(HestonMcABC):
     """
 
     dist = 'ga'  # distribution for the truncated series
-    kk = 1  # K for series truncation.
     tabulate_x2_z = False
+    kk: int = field(default=1, kw_only=True, metadata={'kind': 'numerical'})
 
+    def __post_init__(self):
+        super().__post_init__()
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, kk=1):
+    def configure(self, n_path=None, dt=None, rn_seed=None, antithetic=None, kk=None):
         """
         Set MC parameters
 
@@ -387,8 +393,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             kk: truncation index
 
         """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        self.kk = kk
+        super().configure(n_path, dt, rn_seed, antithetic)
+        if kk is not None:
+            self.kk = kk
+        return self
 
     def cond_avgvar_mgf(self, aa, dt, var_0, var_t):
         """
@@ -556,14 +564,14 @@ class HestonMcGlassermanKim2011(HestonMcABC):
             x1/dt
         """
         gamma_n, lambda_n = self.gamma_lambda(dt, self.kk)
-        pois = self.rng_spawn[3].poisson(lam=(var_0 + var_t) * lambda_n[:, None])  # (kk, n_path)
+        pois = self.rngs[3].poisson(lam=(var_0 + var_t) * lambda_n[:, None])  # (kk, n_path)
 
-        rv_exp_sum = self.rng_spawn[2].standard_gamma(shape=pois)
+        rv_exp_sum = self.rngs[2].standard_gamma(shape=pois)
         x1 = np.sum(rv_exp_sum / gamma_n[:, None], axis=0)
 
         trunc_m, trunc_vs = self.x1star_avgvar_mv(dt, kk=self.kk)
         # we could call self.draw_from_mv, but we don't to make the code simple.
-        x1 += trunc_vs * trunc_m * self.rng_spawn[2].standard_gamma((var_0 + var_t) / trunc_vs)
+        x1 += trunc_vs * trunc_m * self.rngs[2].standard_gamma((var_0 + var_t) / trunc_vs)
         return x1
 
     def x2_cdf_points_aw(self, dt, shape):
@@ -656,20 +664,20 @@ class HestonMcGlassermanKim2011(HestonMcABC):
 
         gamma_n, _ = self.gamma_lambda(dt, kk=self.kk)
 
-        gamma_rv = self.rng_spawn[2].standard_gamma(shape, size=(self.kk, size))
+        gamma_rv = self.rngs[2].standard_gamma(shape, size=(self.kk, size))
         x2 = np.sum(gamma_rv / gamma_n[:, None], axis=0)
 
         # remainder (truncated) terms
         trunc_m, trunc_vs = self.x2star_avgvar_mv(dt, self.kk)
         # we could call self.draw_from_mv, but we don't to make the code simple.
         # trunc_vs * trunc_m (scale) and shape / trunc_vs are scalar values
-        x2 += trunc_vs * trunc_m * self.rng_spawn[2].standard_gamma(shape / trunc_vs, size=size)
+        x2 += trunc_vs * trunc_m * self.rngs[2].standard_gamma(shape / trunc_vs, size=size)
 
         return x2
 
     def cond_states_step(self, dt, var_0):
 
-        var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
+        var_t = self.cir.draw_ncx2(dt, var_0, self.rngs[0])
         eta = self.draw_eta(dt, var_0, var_t)
 
         # sample int_var(integrated variance): Gamma expansion / transform inversion
@@ -678,10 +686,10 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         avgvar = self.draw_x1(dt, var_0, var_t)
         if self.tabulate_x2_z:
             interp_obj = self.x2_icdf_interp(dt, self.cir.chi_dim() / 2, k1=self.params_hash())
-            avgvar += interp_obj(self.rng_spawn[2].uniform(size=self.n_path))
+            avgvar += interp_obj(self.rngs[2].uniform(size=self.n_path))
 
             interp_obj = self.x2_icdf_interp(dt, 2, k1=self.params_hash())
-            zz = interp_obj(self.rng_spawn[2].uniform(size=eta.sum()))
+            zz = interp_obj(self.rngs[2].uniform(size=eta.sum()))
         else:
             avgvar += self.draw_x2(dt, self.cir.chi_dim() / 2, size=self.n_path)
             zz = self.draw_x2(dt, 2.0, size=eta.sum())
@@ -700,6 +708,7 @@ class HestonMcGlassermanKim2011(HestonMcABC):
         return var_t, avgvar, {}
 
 
+@dataclass
 class HestonMcAndersen2008(HestonMcABC):
     """
     Heston model with conditional Monte-Carlo simulation
@@ -784,15 +793,15 @@ class HestonMcAndersen2008(HestonMcABC):
             milstein = (self.scheme == 1)
             for i in range(n_dt):
                 # Euler (or Milstein) scheme
-                var_t = self.cir.draw_euler(dt[i], var_t, self.rng_spawn[0], milstein=milstein)
+                var_t = self.cir.draw_euler(dt[i], var_t, self.rngs[0], milstein=milstein)
                 var_path[i + 1, :] = var_t
         elif self.scheme == 2:
             for i in range(n_dt):
-                var_t = self.cir.draw_ncx2(dt[i], var_t, self.rng_spawn[0])
+                var_t = self.cir.draw_ncx2(dt[i], var_t, self.rngs[0])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 3:
             for i in range(n_dt):
-                var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rng_spawn[0], self.rng_spawn[1])
+                var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rngs[0], self.rngs[1])
                 var_path[i + 1, :] = var_t
         elif self.scheme == 4:
             for i in range(n_dt):
@@ -808,11 +817,11 @@ class HestonMcAndersen2008(HestonMcABC):
         extra = {}
         if self.scheme < 2:
             milstein = (self.scheme == 1)
-            var_t = self.cir.draw_euler(dt, var_0, self.rng_spawn[0], milstein=milstein)
+            var_t = self.cir.draw_euler(dt, var_0, self.rngs[0], milstein=milstein)
         elif self.scheme == 2:
-            var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
+            var_t = self.cir.draw_ncx2(dt, var_0, self.rngs[0])
         elif self.scheme == 3:
-            var_t, _ = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
+            var_t, _ = self.cir.draw_pois_gamma(dt, var_0, self.rngs[0], self.rngs[1])
         elif self.scheme == 4:
             var_t, m_corr = self.var_step_qe(dt, var_0)
             extra = {'qe_m_corr': m_corr}
@@ -825,6 +834,7 @@ class HestonMcAndersen2008(HestonMcABC):
         return var_t, avgvar, extra
 
 
+@dataclass
 class HestonMcChoiKwok2023PoisTd(HestonMcABC):
     """
     Heston simulation scheme Poisson-conditioned time discretization quadrature
@@ -856,14 +866,14 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
         var_t = np.full(self.n_path, var_0)
 
         for i in range(n_dt):
-            var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rng_spawn[0], self.rng_spawn[1])
+            var_t, _ = self.cir.draw_pois_gamma(dt[i], var_t, self.rngs[0], self.rngs[1])
             var_path[i + 1, :] = var_t
 
         return var_path
 
     def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
+        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rngs[0], self.rngs[1])
         avgvar_m, avgvar_vs = self.cond_avgvar_mv(dt, var_0, var_t, pois=pois, kk=0)
         extra = {'pois_avgvar_v': avgvar_vs * avgvar_m**2}
 
@@ -896,6 +906,7 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
     #     return unex / var
 
 
+@dataclass
 class HestonMcTseWan2013(HestonMcABC):
     """
     Almost exact MC for Heston model.
@@ -917,13 +928,14 @@ class HestonMcTseWan2013(HestonMcABC):
     dist = 'ig'  # can override with 'ga' 'ln' 'n'
 
     def cond_states_step(self, dt, var_0):
-        var_t = self.cir.draw_ncx2(dt, var_0, self.rng_spawn[0])
+        var_t = self.cir.draw_ncx2(dt, var_0, self.rngs[0])
         avgvar_m, avgvar_vs = self.cond_avgvar_mv(dt, var_0, var_t, pois=None, kk=0)
         avgvar = self.draw_from_mv(avgvar_m, avgvar_vs, dist=self.dist)
 
         return var_t, avgvar, {}
 
 
+@dataclass
 class HestonMcChoiKwok2023PoisGe(HestonMcABC):
     """
     Poisson-conditioned exact simulation scheme from Choi & Kwok (2023).
@@ -939,7 +951,7 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
         >>> strike = np.array([60, 70, 100, 140])
         >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
         >>> m = pf.HestonMcChoiKwok2023PoisGe(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e5, kk=4, rn_seed=123456)
+        >>> m.configure(n_path=1e5, kk=4, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.35753578, 35.8767866 , 13.12277647,  0.29461611])
@@ -947,9 +959,12 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
     """
 
     dist = 'ig'  # distribution for series truncation
-    kk = 1  # K for series truncation.
+    kk: int = field(default=1, kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_path=10000, dt=None, rn_seed=None, antithetic=True, kk=1):
+    def __post_init__(self):
+        super().__post_init__()
+
+    def configure(self, n_path=None, dt=None, rn_seed=None, antithetic=None, kk=None):
         """
         Set MC parameters
 
@@ -959,8 +974,10 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
             rn_seed: random number seed
             kk: truncation index
         """
-        super().set_num_params(n_path, dt, rn_seed, antithetic)
-        self.kk = kk
+        super().configure(n_path, dt, rn_seed, antithetic)
+        if kk is not None:
+            self.kk = kk
+        return self
 
     def draw_x123(self, dt, var_sum, shape_sum):
         """
@@ -977,8 +994,8 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
         gamma_n, lambda_n = self.gamma_lambda(dt, kk=self.kk)
 
         if self.kk > 0:
-            pois = self.rng_spawn[3].poisson(lam=var_sum * lambda_n[:, None])
-            x123 = np.sum(self.rng_spawn[2].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
+            pois = self.rngs[3].poisson(lam=var_sum * lambda_n[:, None])
+            x123 = np.sum(self.rngs[2].standard_gamma(shape=pois + shape_sum) / gamma_n[:, None], axis=0)
         else:
             x123 = np.zeros_like(var_sum)
 
@@ -992,7 +1009,7 @@ class HestonMcChoiKwok2023PoisGe(HestonMcABC):
 
     def cond_states_step(self, dt, var_0):
 
-        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rng_spawn[0], self.rng_spawn[1])
+        var_t, pois = self.cir.draw_pois_gamma(dt, var_0, self.rngs[0], self.rngs[1])
         shape = 0.5*self.cir.chi_dim() + 2*pois
 
         # self.draw_x123 returns the average by dt. Need to convert to the int variance by multiplying texp

@@ -50,12 +50,15 @@ from typing import ClassVar
 def _params_kw(obj) -> dict:
     """Return a dict of all *init* fields, keyword-only fields last.
 
-    Excludes ``field(init=False)`` entries (precomputed constants).
+    Excludes ``field(init=False)`` entries (precomputed constants) and
+    fields with ``metadata={'kind': 'numerical'}`` (numerical/MC parameters).
     Keyword-only fields (``intr``, ``divr``, ``is_fwd``) are sorted to the end
     so the dict reads in natural model-parameter order.
     """
-    positional = {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj) if f.init and not f.kw_only}
-    kw_only    = {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj) if f.init and f.kw_only}
+    def _is_model(f):
+        return f.init and f.metadata.get('kind') != 'numerical'
+    positional = {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj) if _is_model(f) and not f.kw_only}
+    kw_only    = {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj) if _is_model(f) and f.kw_only}
     return {**positional, **kw_only}
 
 
@@ -81,6 +84,12 @@ class BaseParams:
     # None (default) means derive from model_type: ``{model_type.lower()}_benchmark.xlsx``.
     # Override with a literal filename in subclasses that share another model's benchmark file.
     _benchmark_file: ClassVar[str] = None
+
+    def __post_init__(self):
+        # Cooperative base: propagate to the next __post_init__ in the MRO if present.
+        _next = getattr(super(), '__post_init__', None)
+        if _next is not None:
+            _next()
 
     def params_kw(self) -> dict:
         """Model parameters as a keyword-argument dictionary."""
@@ -215,6 +224,7 @@ class CevParams(BaseParams):
             raise ValueError(f"beta must be > 0, got {self.beta}")
         if self.beta == 1.0:
             raise ValueError(f"beta = 1 is not allowed (use the BSM model instead)")
+        super().__post_init__()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -239,7 +249,9 @@ class SabrParams(CevParams):
     rho: float = 0.0
 
     def __post_init__(self):
-        pass  # SABR allows beta=0 (Normal) and beta=1 (lognormal)
+        # SABR allows beta=0 (Normal) and beta=1 (lognormal); skip CevParams validation.
+        # Call BaseParams.__post_init__ directly to continue the cooperative chain.
+        BaseParams.__post_init__(self)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -263,6 +275,7 @@ class SvParams(BaseParams):
     def __post_init__(self):
         if self.theta is None:
             self.theta = self.sigma
+        super().__post_init__()
 
 
 
