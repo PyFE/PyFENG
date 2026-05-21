@@ -31,7 +31,7 @@ def test_sabr_adi_benchop(set_no):
     Tolerance: abs=3e-3 (consistent with the BENCHOP-SLV paper error budget).
     """
     m, df, info = pf.SabrFinDiff.init_benchmark(set_no)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args   = info["args_pricing"]
     prices = m.price(**args)
@@ -59,7 +59,7 @@ def test_heston_adi_benchop():
     tolerances require Richardson extrapolation or finer grids.
     """
     m, df, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args   = info["args_pricing"]
     prices = m.price(**args)
@@ -78,7 +78,7 @@ def test_heston_adi_benchop():
 def test_sabr_put_call_parity():
     """SABR put-call parity: C − P = S₀ − K (r = 0)."""
     m, _, info = pf.SabrFinDiff.init_benchmark(20)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args = info["args_pricing"]
     S0 = args["spot"]; K = float(args["strike"][1])  # ATM strike
@@ -92,7 +92,7 @@ def test_sabr_put_call_parity():
 def test_heston_put_call_parity():
     """Heston put-call parity at ATM: C − P = S₀ − K (r = 0)."""
     m, _, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args = info["args_pricing"]
     S0 = float(args["spot"]); K = float(args["strike"][1])  # ATM strike (K=100)
@@ -110,7 +110,7 @@ def test_heston_put_call_parity():
 def test_sabr_array_strikes():
     """price() should accept an ndarray of strikes and return the same shape."""
     m, _, info = pf.SabrFinDiff.init_benchmark(20)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args   = info["args_pricing"]
     prices = m.price(**args)
@@ -134,14 +134,12 @@ def test_degenerate_to_cev():
     strikes = np.array([0.8, 1.0, 1.2])
 
     # SABR with vov→0: effective CEV vol = m_sabr.sigma
-    m_sabr = pf.SabrFinDiff(sigma=0.3, vov=1e-4, rho=0.0, beta=beta)
-    m_sabr.set_num_params(n_grid=(80, 80, 40))
+    m_sabr = pf.SabrFinDiff(sigma=0.3, vov=1e-4, rho=0.0, beta=beta).configure(n_grid=(80, 80, 40))
     p_sabr = m_sabr.price(strikes, S0, texp, cp=1)
 
     # HestonCev with vov→0, strong mr: variance frozen at sigma=theta,
     # effective CEV vol = sqrt(m_hcev.sigma)
-    m_hcev = pf.HestonCevFinDiff(sigma=0.09, vov=1e-4, mr=100.0, theta=0.09, rho=0.0, beta=beta)
-    m_hcev.set_num_params(n_grid=(80, 80, 40))
+    m_hcev = pf.HestonCevFinDiff(sigma=0.09, vov=1e-4, mr=100.0, theta=0.09, rho=0.0, beta=beta).configure(n_grid=(80, 80, 40))
     p_hcev = m_hcev.price(strikes, S0, texp, cp=1)
 
     # Both converge to the same CEV: sigma_cev = m_sabr.sigma = sqrt(m_hcev.sigma)
@@ -159,7 +157,7 @@ def test_degenerate_to_cev():
 def test_heston_positive_price():
     """Heston ATM call is positive and finite."""
     m, _, info = pf.HestonFinDiff.init_benchmark(10)
-    m.set_num_params(n_grid=(80, 80, 40))
+    m.configure(n_grid=(80, 80, 40))
 
     args  = info["args_pricing"]
     price = m.price(float(args["strike"][1]), float(args["spot"]), args["texp"], cp=1)

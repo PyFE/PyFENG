@@ -164,8 +164,7 @@ class TestCevGreeks(unittest.TestCase):
         ]
         for params in cases:
             m_a = pf.Cev(**params)
-            m_mc = pf.CevMc(**params)
-            m_mc.set_num_params(n_path=200_000, dt=None, rn_seed=42)
+            m_mc = pf.CevMc(**params).configure(n_path=200_000, dt=None, rn_seed=42)
 
             for cp in (1, -1):
                 p_a  = m_a.price(strikes, spot, texp, cp)

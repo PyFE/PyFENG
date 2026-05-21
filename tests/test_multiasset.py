@@ -119,8 +119,7 @@ class TestMultiAsset(unittest.TestCase):
         strikes = np.arange(80, 121, 10)
 
         # Test BsmNd
-        m = pf.BsmNdMc(sigma, rho=0.5, rn_seed=1234)
-        m.simulate(tobs=[texp], n_path=20000)
+        m = pf.BsmNdMc(sigma, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
         p = []
         for strike in strikes:
             p.append(m.price_european(spot, texp, payoff))
@@ -129,8 +128,7 @@ class TestMultiAsset(unittest.TestCase):
         np.testing.assert_almost_equal(p, p2)
 
         # Test NormNd
-        m = pf.NormNdMc(sigma * spot, rho=0.5, rn_seed=1234)
-        m.simulate(tobs=[texp], n_path=20000)
+        m = pf.NormNdMc(sigma * spot, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
         p = []
         for strike in strikes:
             p.append(m.price_european(spot, texp, payoff))
@@ -183,8 +181,7 @@ class TestBsmBasketChoi2018(unittest.TestCase):
             (0.20, 0.10), rho=0.50,
             weight=np.array([1.0, -1.0]),
             intr=0.10, divr=0.05,
-        )
-        m.set_num_params(n_quad=[4])
+        ).configure(n_quad=[4])
         strike = np.arange(0.0, 4.1, 0.4)
         result = m.price(strike, np.array([100.0, 96.0]), texp=1.0)
         result2 = np.array([
@@ -207,8 +204,7 @@ class TestBsmBasketChoi2018(unittest.TestCase):
         ])
         result = np.zeros(len(rhos))
         for i, rho in enumerate(rhos):
-            m = pf.BsmBasketChoi2018((0.15, 0.30), rho=rho, weight=np.array([1.0, -1.0]))
-            m.set_num_params(lam=9)
+            m = pf.BsmBasketChoi2018((0.15, 0.30), rho=rho, weight=np.array([1.0, -1.0])).configure(lam=9)
             result[i] = m.price(100.0, spot, texp=1.0)
         np.testing.assert_almost_equal(result, result2, decimal=6)
 
@@ -218,8 +214,7 @@ class TestBsmBasketChoi2018(unittest.TestCase):
         N=4, T=5, S=100, w=1/4, sigma=40%, rho=50%, r=q=0.
         Fast prices with lam=9 differ from converged prices by at most 1.5e-4.
         """
-        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.5)
-        m.set_num_params(lam=9)
+        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.5).configure(lam=9)
         strike = np.arange(50, 151, 10, dtype=float)
         result = m.price(strike, 100.0 * np.ones(4), texp=5.0)
         result2 = np.array([
@@ -242,14 +237,12 @@ class TestBsmBasketChoi2018(unittest.TestCase):
         result2 = np.array([17.7569163, 21.6920965, 25.0292992, 28.0073695, 32.0412265])
         result = np.zeros(len(rhos))
         for i, rho in enumerate(rhos):
-            m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=rho)
-            m.set_num_params(lam=9)
+            m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=rho).configure(lam=9)
             result[i] = m.price(100.0, spot, texp=5.0)
         np.testing.assert_almost_equal(result, result2, decimal=3)
 
         # rho=0.95: M=8, coarser — test to 2 decimal places only
-        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.95)
-        m.set_num_params(lam=9)
+        m = pf.BsmBasketChoi2018(0.4 * np.ones(4), rho=0.95).configure(lam=9)
         np.testing.assert_almost_equal(m.price(100.0, spot, texp=5.0), 33.9186874, decimal=2)
 
 

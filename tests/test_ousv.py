@@ -62,7 +62,7 @@ class TestOusvKL(unittest.TestCase):
         m, p, rv = pf.OusvMcChoi2025KL.init_benchmark(sheet_no)
         n_sin = 6
         n_path = 50
-        m.set_num_params(n_path=n_path, rn_seed=123456, n_sin=4, dt=None)
+        m.configure(n_path=n_path, rn_seed=123456, n_sin=4, dt=None)
 
         n_step = 10000
         t_grid = np.arange(0, n_step + 1) / n_step

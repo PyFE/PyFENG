@@ -2,6 +2,7 @@ import numpy as np
 import scipy.stats as spst
 import scipy.special as spsp
 import scipy.optimize as spop
+from dataclasses import dataclass, field
 
 from .opt_abc import OptABC
 from .util import MathFuncs, MathConsts
@@ -223,6 +224,7 @@ class Nsvh1(NsvhABC):
         self.sigma = np.sqrt(2 * var / ((ww_root - 1) * m2base)) * self.vov
 
 
+@dataclass
 class NsvhMc(NsvhABC):
     """
     Monte-Carlo model of Hyperbolic Normal Stochastic Volatility (NSVh) model.
@@ -249,17 +251,28 @@ class NsvhMc(NsvhABC):
         array([-0.00328887,  0.00523714,  0.00808885,  0.0069694 ,  0.00205566])
     """
 
-    n_path = int(16e4)
-    rn_seed = None
-    rng = np.random.default_rng(None)
-    antithetic = True
+    n_path:     int  = field(default=160000, kw_only=True, metadata={'kind': 'numerical'})
+    rn_seed:    int  = field(default=None,   kw_only=True, metadata={'kind': 'numerical'})
+    antithetic: bool = field(default=True,   kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, n_path=1e6, rn_seed=None, antithetic=True):
-        self.n_path = int(n_path)
-        self.rn_seed = rn_seed
-        self.antithetic = antithetic
-        self.rn_seed = rn_seed
-        self.rng = np.random.default_rng(rn_seed)
+    def __post_init__(self):
+        super().__post_init__()
+        self.rngs = [np.random.default_rng(np.random.SeedSequence(self.rn_seed).spawn(1)[0])]
+
+    @property
+    def rng(self):
+        return self.rngs[0]
+
+    def configure(self, n_path=None, rn_seed=None, antithetic=None):
+        if n_path is not None:
+            self.n_path = int(n_path)
+        if rn_seed is not None:
+            self.rn_seed = rn_seed
+        if antithetic is not None:
+            self.antithetic = antithetic
+        self.__post_init__()
+        return self
+
 
     def mc_vol_price(self, texp):
         """
@@ -278,7 +291,7 @@ class NsvhMc(NsvhABC):
         vol_var = self.vov**2 * texp
         vol_std = np.sqrt(vol_var)
 
-        z_rn = self.rng.normal(size=(int(self.n_path / 2), 3))
+        z_rn = self.rngs[0].normal(size=(int(self.n_path / 2), 3))
         z_rn = np.stack([z_rn, -z_rn], axis=1).reshape((-1, 3))
         z_rn[:, 2] += 0.5 * (self.lam - 1) * vol_std  # add shift
 

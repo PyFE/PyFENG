@@ -9,10 +9,12 @@ import abc
 import numpy as np
 import scipy.special as spsp
 import scipy.integrate as spint
+from dataclasses import dataclass, field
 from .sv_abc import CondMcBsmABC
 from .heston_rough import RoughHestonABC
 
 
+@dataclass
 class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
     """
     Abstract base class for Monte Carlo simulation of the rough Heston model.
@@ -34,21 +36,27 @@ class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
         alpha  → α    (roughness exponent; negative for rough paths)
     """
 
-    def __init__(self, sigma, vov, rho, mr, theta, alpha, intr=0.0, divr=0.0) -> None:
-        """
-        Args:
-            sigma: initial variance V_0 > 0
-            vov:   vol-of-vol κε > 0 (product of mean-reversion speed and vol-of-vol ratio)
-            rho:   correlation between asset and variance Brownian motions, ρ ∈ (-1, 1)
-            mr:    mean-reversion speed κ > 0
-            theta: long-run variance θ > 0
-            alpha: roughness exponent α = H - 1/2 ∈ (-1/2, 0); H < 1/2 gives rough paths
-            intr:  risk-free interest rate r (annualised, default 0)
-            divr:  continuous dividend yield q (annualised, default 0)
-        """
-        super().__init__(sigma, vov, rho, mr, theta, alpha, intr=intr, divr=divr)
+    n_ts:       int  = field(default=1000,  kw_only=True, metadata={'kind': 'numerical'})
+    n_path:     int  = field(default=10000, kw_only=True, metadata={'kind': 'numerical'})
+    rn_seed:    int  = field(default=None,  kw_only=True, metadata={'kind': 'numerical'})
+    antithetic: bool = field(default=True,  kw_only=True, metadata={'kind': 'numerical'})
 
-    def set_num_params(self, texp, n_path=10000, n_ts=1000, rn_seed=None, antithetic=True):
+    def __post_init__(self):
+        super().__post_init__()
+        # Precomputed Gamma-function values used repeatedly in Eqs. (8), (17)–(20)
+        self._gamma_a   = spsp.gamma(self.alpha)
+        self._gamma_1ma = spsp.gamma(1 - self.alpha)   # Γ(1-α)
+        self._gamma_2ma = spsp.gamma(2 - self.alpha)   # Γ(2-α) = (1-α)·Γ(1-α)
+        self._gamma_1pa = spsp.gamma(1 + self.alpha)   # Γ(1+α)
+        seed_seq = np.random.SeedSequence(self.rn_seed)
+        self.rngs = [np.random.default_rng(s) for s in seed_seq.spawn(7)]
+        self.result = {}
+
+    @property
+    def rng(self):
+        return self.rngs[0]
+
+    def configure(self, texp, n_ts=None, n_path=None, rn_seed=None, antithetic=None):
         """
         Set numerical simulation parameters and precompute frequently used constants.
 
@@ -59,20 +67,25 @@ class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
             rn_seed: random seed for reproducibility (default None)
             antithetic: use antithetic variates for variance reduction (default True)
         """
-        super().set_num_params(n_path, n_ts, rn_seed, antithetic)
+        if n_ts is not None:
+            self.n_ts = int(n_ts)
+        if n_path is not None:
+            self.n_path = int(n_path)
+        if rn_seed is not None:
+            self.rn_seed = rn_seed
+        if antithetic is not None:
+            self.antithetic = antithetic
+
+        self.__post_init__()
 
         self.texp = texp
-        self.n_ts = int(n_ts)
-        self.dt = self.texp / self.n_ts          # τ = T/N
-        self.tgrid = np.linspace(0, self.texp, self.n_ts + 1)
-
-        # Precomputed Gamma-function values used repeatedly in Eqs. (8), (17)–(20)
-        self._gamma_a = spsp.gamma(self.alpha)
-        self._gamma_1ma = spsp.gamma(1 - self.alpha)   # Γ(1-α)
-        self._gamma_2ma = spsp.gamma(2 - self.alpha)   # Γ(2-α) = (1-α)·Γ(1-α)
-        self._gamma_1pa = spsp.gamma(1 + self.alpha)   # Γ(1+α)
+        self.dt = texp / self.n_ts               # τ = T/N
+        self.tgrid = np.linspace(0, texp, self.n_ts + 1)
+        return self
 
 
+
+@dataclass
 class RoughHestonMcMaWu2022(RoughHestonMcABC):
     """
     Monte Carlo simulation of the rough Heston model using the fast algorithm of Ma & Wu (2022).
@@ -105,7 +118,7 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
     """
 
     def __init__(self, sigma, vov, rho, mr, theta, alpha, intr=0.0, divr=0.0) -> None:
-        super().__init__(sigma, vov, rho, mr, theta, alpha, intr, divr)
+        super().__init__(sigma, vov, rho, mr, theta, alpha, intr=intr, divr=divr)
 
     def f(self, V_s):
         """
@@ -151,8 +164,8 @@ class RoughHestonMcMaWu2022(RoughHestonMcABC):
             Z_t1: shape (n_ts, n_path), i.i.d. N(0,1) increments for the variance BM B
             W_t:  shape (n_ts, n_path), correlated N(0,1) increments for the asset BM W
         """
-        Z_t1 = self.rng_spawn[0].normal(size=(self.n_ts, self.n_path))
-        W_t = self.rho * Z_t1 + np.sqrt(1 - self.rho**2) * self.rng_spawn[1].normal(size=(self.n_ts, self.n_path))
+        Z_t1 = self.rngs[0].normal(size=(self.n_ts, self.n_path))
+        W_t = self.rho * Z_t1 + np.sqrt(1 - self.rho**2) * self.rngs[1].normal(size=(self.n_ts, self.n_path))
         return Z_t1, W_t
     
     def term_1(self, t_n, t_k):

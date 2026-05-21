@@ -1,6 +1,7 @@
 import scipy.stats as spst
 import scipy.special as spsp
 import numpy as np
+from dataclasses import dataclass, field
 from .opt_abc import OptABC, OptAnalyticABC, MassZeroABC
 from . import sv_abc as sv
 from .params import CevParams
@@ -292,6 +293,7 @@ class Cev(CevParams, OptAnalyticABC, MassZeroABC):
         return -theta
 
 
+@dataclass
 class CevMc(CevParams, OptABC):
     """
     Constant Elasticity of Variance (CEV) model with exact Monte-Carlo method (Kang, 2014)
@@ -303,7 +305,7 @@ class CevMc(CevParams, OptABC):
         >>> import numpy as np
         >>> import pyfeng as pf
         >>> m = pf.CevMc(sigma=0.2*10, beta=0.5, intr=0.05, divr=0.1)
-        >>> m.set_num_params(n_path=160000, dt=None, rn_seed=123456)
+        >>> m.configure(n_path=160000, dt=None, rn_seed=123456)
         >>> m.price(np.arange(80, 121, 10), spot=100, texp=1.2)
         array([16.03769545,  9.88906886,  5.51705317,  2.78576033,  1.27297844])
 
@@ -311,15 +313,24 @@ class CevMc(CevParams, OptABC):
             - Kang C (2014) Simulation of the Shifted Poisson Distribution with an Application to the CEV Model. Management Science and Financial Engineering 20:27–32. https://doi.org/10.7737/MSFE.2014.20.1.027
     """
 
-    dt = 0.05
-    n_path = 10000
-    rn_seed = None
-    rng = np.random.default_rng(None)
-    correct_fwd = False
+    n_path:  int   = field(default=10000, kw_only=True, metadata={'kind': 'numerical'})
+    dt:      float = field(default=0.05,  kw_only=True, metadata={'kind': 'numerical'})
+    rn_seed: int   = field(default=None,  kw_only=True, metadata={'kind': 'numerical'})
+    correct_fwd: bool = field(default=False, kw_only=True, metadata={'kind': 'numerical'})
 
     tobs = sv.CondMcBsmABC.tobs
 
-    def set_num_params(self, n_path=10000, dt=0.25, rn_seed=None):
+    def __post_init__(self):
+        super().__post_init__()
+        seed_seq = np.random.SeedSequence(self.rn_seed)
+        self.rngs = [np.random.default_rng(s) for s in seed_seq.spawn(7)]
+        self.result = {}
+
+    @property
+    def rng(self):
+        return self.rngs[0]
+
+    def configure(self, n_path=None, dt=None, rn_seed=None):
         """
         Set MC parameters
 
@@ -328,10 +339,15 @@ class CevMc(CevParams, OptABC):
             dt: time step for Euler/Milstein steps
             rn_seed: random number seed
         """
-        self.n_path = int(n_path)
-        self.dt = dt
-        self.rn_seed = rn_seed
-        self.rng = np.random.default_rng(rn_seed)
+        if n_path is not None:
+            self.n_path = int(n_path)
+        if dt is not None:
+            self.dt = dt
+        if rn_seed is not None:
+            self.rn_seed = rn_seed
+        self.__post_init__()
+        return self
+
 
     def price_step(self, spot, dt):
         """
@@ -354,7 +370,7 @@ class CevMc(CevParams, OptABC):
 
         var = (betac * self.sigma)**2 * dt * spsp.exprel(2*(self.intr-self.divr)*betac*dt)
         z0 = np.power(s_t[nz_idx], 2*betac) / var
-        rv_gam = 2 * self.rng.standard_gamma(1/(2*betac), size=len(z0))
+        rv_gam = 2 * self.rngs[0].standard_gamma(1/(2*betac), size=len(z0))
         pois_lam = (z0 - rv_gam) / 2
 
         # index for negative poisson value so that s_t becomes zero in this step
@@ -366,7 +382,7 @@ class CevMc(CevParams, OptABC):
             nz_idx[tmp_idx] = False
             s_t[~nz_idx] = 0.0
 
-        zt = 2 * self.rng.standard_gamma(self.rng.poisson(pois_lam) + 1)
+        zt = 2 * self.rngs[0].standard_gamma(self.rngs[0].poisson(pois_lam) + 1)
         s_t[nz_idx] = np.power(var * zt, 1/(2*betac))
         return s_t
 
