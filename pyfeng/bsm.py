@@ -302,7 +302,7 @@ class Bsm(BsmParams, OptAnalyticABC):
         p_min = bsm_model.price(strike_std, 1.0, texp, cp)
         bsm_model.sigma = np.inf
         p_max = bsm_model.price(strike_std, 1.0, texp, cp)
-        scalar_output = np.isscalar(p_min) and np.isscalar(price_std)
+        bcast = np.broadcast_shapes(np.shape(p_min), np.shape(price_std))
 
         # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
         # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
@@ -350,8 +350,7 @@ class Bsm(BsmParams, OptAnalyticABC):
             _sigma,
         )
 
-        if scalar_output:
-            _sigma = _sigma.item()
+        _sigma = _sigma.reshape(bcast)
 
         if setval:
             self.sigma = _sigma

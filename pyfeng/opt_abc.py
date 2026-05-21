@@ -105,17 +105,16 @@ class OptABC(abc.ABC):
         model.sigma = self.IMPVOL_MAXVOL
         p_max = model.price(kk, 1, texp, cp)
 
-        scalar_output = np.isscalar(price) and np.isscalar(p_min)
-        ones_like = np.ones_like(np.atleast_1d(price + p_min))
+        bcast = np.broadcast_shapes(np.shape(price), np.shape(p_min))
+        out_shape = np.broadcast_shapes((1,), bcast)  # atleast_1d anchor
 
-        sigma = np.empty(ones_like.shape).flatten()
-        sigma.fill(np.nan)
-        price_flat = (ones_like * price_std).flatten()
-        p_min = (ones_like * p_min).flatten()
-        p_max = (ones_like * p_max).flatten()
-        texp_flat = (ones_like * texp).flatten()
-        kk_flat = (ones_like * kk).flatten()
-        cp_flat = (ones_like * cp).flatten()
+        sigma = np.full(out_shape, np.nan).flatten()
+        price_flat = np.broadcast_to(price_std, out_shape).flatten()
+        p_min = np.broadcast_to(p_min, out_shape).flatten()
+        p_max = np.broadcast_to(p_max, out_shape).flatten()
+        texp_flat = np.broadcast_to(texp, out_shape).flatten()
+        kk_flat = np.broadcast_to(kk, out_shape).flatten()
+        cp_flat = np.broadcast_to(cp, out_shape).flatten()
 
         def iv_func(_sigma):
             model.sigma = _sigma
@@ -142,10 +141,7 @@ class OptABC(abc.ABC):
                     warnings.warn(warn_msg, Warning)
             """
 
-        if scalar_output:
-            sigma = sigma[0]
-        else:
-            sigma = sigma.reshape(ones_like.shape)
+        sigma = sigma.reshape(bcast)
         if setval:
             self.sigma = sigma
         return sigma

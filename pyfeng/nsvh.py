@@ -314,7 +314,7 @@ class NsvhMc(NsvhABC):
         fwd, df, _ = self._fwd_df_divf(spot, texp)
         mc_path = self.mc_vol_price(texp)
         strike_std = strike - fwd
-        scalar_output = np.isscalar(strike_std)
+        scalar_output = np.ndim(strike_std) == 0
         cp *= np.ones_like(strike_std)
 
         price = np.array([np.mean(np.fmax(cp[k] * (mc_path[1] - strike_std[k]), 0)) for k in range(len(strike_std))])
@@ -386,10 +386,10 @@ class NsvhGaussQuad(NsvhABC):
 
         #### effective strike
         strike_eff = (self.vov/self.sigma) * (strike - fwd)
-        scalar_output = np.isscalar(strike_eff)
+        scalar_output = np.ndim(strike_eff) == 0
 
         strike_eff, cp = np.broadcast_arrays(np.atleast_1d(strike_eff), cp)
-        
+
         u_hat = (z_value + 0.5 * self.lam * vovn)  # column (z direction)
         exp_plus = np.exp(vovn * u_hat/2)
         z_star_cosh = (exp_plus**2 + 1/exp_plus**2)/2
@@ -441,7 +441,7 @@ class NsvhGaussQuad(NsvhABC):
 
         #### effective strike
         strike_eff = (self.vov / self.sigma) * (strike - fwd)
-        scalar_output = np.isscalar(strike_eff)
+        scalar_output = np.ndim(strike_eff) == 0
 
         strike_eff, cp = np.broadcast_arrays(np.atleast_1d(strike_eff), cp)
 

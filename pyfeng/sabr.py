@@ -610,7 +610,7 @@ class SabrChoiWu2021P(SabrChoiWu2021H, MassZeroABC):
         kk = strike / fwd  # standardized strike
 
         # explicitly make np.array even if args are all scalar or list
-        scalar_output = np.isscalar(kk)
+        scalar_output = np.ndim(kk) == 0
         kk = np.atleast_1d(kk)
 
         ## Eq 32 (leading order)

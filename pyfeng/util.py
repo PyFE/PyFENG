@@ -120,7 +120,7 @@ class MathFuncs:
         """
         if not np.all(x > -1.0):
             raise ValueError("x must be greater than -1.0.")
-        rv = np.ones_like(x + a, dtype=float)
+        rv = np.ones(np.broadcast_shapes(np.shape(x), np.shape(a)), dtype=float)
         np.divide(np.expm1(a * np.log1p(x)), a * x, out=rv, where=(x != 0.0) & (a != 0.0))
         np.divide(np.log1p(x), x, out=rv, where=(x != 0.0) & (a == 0.0))
         return rv
