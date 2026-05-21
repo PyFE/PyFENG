@@ -119,8 +119,7 @@ class TestMultiAsset(unittest.TestCase):
         strikes = np.arange(80, 121, 10)
 
         # Test BsmNd
-        m = pf.BsmNdMc(sigma, rho=0.5, rn_seed=1234)
-        m.simulate(tobs=[texp], n_path=20000)
+        m = pf.BsmNdMc(sigma, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
         p = []
         for strike in strikes:
             p.append(m.price_european(spot, texp, payoff))
@@ -129,8 +128,7 @@ class TestMultiAsset(unittest.TestCase):
         np.testing.assert_almost_equal(p, p2)
 
         # Test NormNd
-        m = pf.NormNdMc(sigma * spot, rho=0.5, rn_seed=1234)
-        m.simulate(tobs=[texp], n_path=20000)
+        m = pf.NormNdMc(sigma * spot, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
         p = []
         for strike in strikes:
             p.append(m.price_european(spot, texp, payoff))

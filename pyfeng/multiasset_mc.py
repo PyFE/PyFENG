@@ -1,24 +1,20 @@
 import numpy as np
 from .params import MaParams
-from .opt_abc import OptABC
 
 
-class BsmNdMc(MaParams, OptABC):
+class BsmNdMc(MaParams):
     """
     Monte-Carlo simulation of multiasset (N-d) BSM (geometric Brownian Motion)
 
     Examples:
         >>> import pyfeng as pf
-        >>> spot = np.ones(4)*100
-        >>> sigma = np.ones(4)*0.4
+        >>> spot = np.ones(4) * 100
+        >>> sigma = np.ones(4) * 0.4
         >>> texp = 5
-        >>> payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
+        >>> payoff = lambda x: np.fmax(np.mean(x, axis=1) - strike, 0)  # Basket option
         >>> strikes = np.arange(80, 121, 10)
-        >>> m = pf.BsmNdMc(sigma, cor=0.5, rn_seed=1234)
-        >>> m.simulate(n_path=20000, tobs=[texp])
-        >>> p = []
-        >>> for strike in strikes:
-        >>>    p.append(m.price_european(spot, texp, payoff))
+        >>> m = pf.BsmNdMc(sigma, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
+        >>> p = [m.price_european(spot, texp, payoff) for strike in strikes]
         >>> np.array(p)
         array([36.31612946, 31.80861014, 27.91269315, 24.55319506, 21.62677625])
     """
@@ -26,20 +22,36 @@ class BsmNdMc(MaParams, OptABC):
     spot = np.ones(2)
     sigma = np.ones(2) * 0.1
 
-    # MC params
-    rn_seed = None
-    rng = None
-    antithetic = True
-
-    # tobs and path stored in the class
-    n_path = 0
-    path = tobs = None
-
     def __init__(self, sigma, rho=None, cor_m=None, cov_m=None, intr=0.0, divr=0.0, rn_seed=None, antithetic=True):
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.antithetic = antithetic
+        # per-instance simulation state (not class-level, to avoid shared-state bug)
+        self.n_path = 0
+        self.path = None
+        self.tobs = None
         super().__init__(sigma, rho=rho, cor_m=cor_m, cov_m=cov_m, intr=intr, divr=divr, is_fwd=False)
+
+    def configure(self, n_path=None, rn_seed=None, antithetic=None):
+        """
+        Set numerical simulation parameters.
+
+        Args:
+            n_path: number of MC paths
+            rn_seed: random seed (reseeds the RNG when provided)
+            antithetic: use antithetic variates (default True)
+
+        Returns:
+            self  (for method chaining)
+        """
+        if n_path is not None:
+            self.n_path = int(n_path)
+        if rn_seed is not None:
+            self.rn_seed = rn_seed
+            self.rng = np.random.default_rng(rn_seed)
+        if antithetic is not None:
+            self.antithetic = antithetic
+        return self
 
     def _bm_incr(self, tobs, n_path):
         """
@@ -50,15 +62,15 @@ class BsmNdMc(MaParams, OptABC):
             n_path: number of paths to simulate
 
         Returns:
-            price path (time, path, asset)
+            BM increments (time, path, asset)
         """
         dt = np.diff(np.atleast_1d(tobs), prepend=0)
         n_t = len(dt)
 
         n_path_gen = n_path // 2 if self.antithetic else n_path
 
-        # generate random number in the order of path, time, asset and transposed
-        # in this way, the same paths are generated when increasing n_path
+        # generate random numbers in (path, time, asset) order then transpose;
+        # this ensures the same paths are produced when n_path is increased
         bm_incr = self.rng.standard_normal((n_path_gen, n_t, self.n_asset)).transpose((1, 0, 2))
         np.multiply(bm_incr, np.sqrt(dt[:, None, None]), out=bm_incr)
         bm_incr = np.dot(bm_incr, self.chol_m.T)
@@ -69,59 +81,65 @@ class BsmNdMc(MaParams, OptABC):
 
         return bm_incr
 
-    def simulate(self, tobs, n_path, store=True):
+    def simulate(self, tobs, store=True):
         """
-        Simulate the price paths and store in the class.
-        The initial prices are normalized to 0 and spot should be multiplied later.
+        Build simulated price paths.
+
+        The number of paths is taken from ``self.n_path`` (set via
+        :meth:`configure`).  The initial price is normalised to 1; multiply
+        by ``spot`` when evaluating payoffs.
 
         Args:
-            tobs: array of observation times
-            n_path: number of paths to simulate
-            store: if True (default), store path, tobs, and n_path in the class
+            tobs: observation times (scalar or array)
+            store: if True (default), store path and tobs; return self.
+                   if False, return the path array without storing.
 
         Returns:
-            price path (time, path, asset) if store is False
-        """
+            self when store=True (for method chaining), or
+            path array (time, path, asset) when store=False.
 
-        # (n_t, n_path, n_asset) * (n_asset, n_asset)
+        Raises:
+            ValueError: if n_path has not been set via configure().
+        """
+        if not self.n_path:
+            raise ValueError("n_path is not set. Call configure(n_path=...) first.")
+
         tobs = np.atleast_1d(tobs)
-        path = self._bm_incr(tobs=tobs, n_path=n_path)
-        # Add drift and convexity
+        path = self._bm_incr(tobs=tobs, n_path=self.n_path)
+        # drift + convexity correction
         dt = np.diff(tobs, prepend=0)
         path += (self.intr - self.divr - 0.5 * self.sigma ** 2) * dt[:, None, None]
         np.cumsum(path, axis=0, out=path)
         np.exp(path, out=path)
 
         if store:
-            self.n_path = n_path
             self.path = path
             self.tobs = tobs
+            return self
         else:
             return path
 
     def price_european(self, spot, texp, payoff):
         """
-        The European price of that payoff at the expiry.
+        Price a European payoff using stored paths.
 
         Args:
             spot: array of spot prices
-            texp: time-to-expiry
-            payoff: payoff function applicable to the time-slice of price path
+            texp: time-to-expiry (must be one of the stored tobs)
+            payoff: function of the (path, asset) slice at texp
 
         Returns:
-            The MC price of the payoff
+            discounted MC price
         """
-        if self.n_path == 0:
-            raise ValueError("Simulated paths are not available. Run simulate() first.")
+        if self.path is None:
+            raise ValueError("No paths stored. Call simulate() first.")
 
-        # check if texp is in tobs
         ind, *_ = np.where(np.isclose(self.tobs, texp))
         if len(ind) == 0:
             raise ValueError(f"Stored tobs does not contain t={texp}")
 
         path = self.path[ind[0], ] * spot
-        price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
-        return price
+        return np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
 
 
 class NormNdMc(BsmNdMc):
@@ -130,64 +148,65 @@ class NormNdMc(BsmNdMc):
 
     Examples:
         >>> import pyfeng as pf
-        >>> spot = np.ones(4)*100
-        >>> sigma = np.ones(4)*0.4
+        >>> spot = np.ones(4) * 100
+        >>> sigma = np.ones(4) * 0.4
         >>> texp = 5
-        >>> payoff = lambda x: np.fmax(np.mean(x,axis=1) - strike, 0) # Basket option
+        >>> payoff = lambda x: np.fmax(np.mean(x, axis=1) - strike, 0)  # Basket option
         >>> strikes = np.arange(80, 121, 10)
-        >>> m = pf.NormNdMc(sigma*spot, cor=0.5, rn_seed=1234)
-        >>> m.simulate(tobs=[texp], n_path=20000)
-        >>> p = []
-        >>> for strike in strikes:
-        >>>    p.append(m.price_european(spot, texp, payoff))
+        >>> m = pf.NormNdMc(sigma * spot, rho=0.5).configure(n_path=20000, rn_seed=1234).simulate([texp])
+        >>> p = [m.price_european(spot, texp, payoff) for strike in strikes]
         >>> np.array(p)
         array([39.42304794, 33.60383167, 28.32667559, 23.60383167, 19.42304794])
     """
 
-    def simulate(self, tobs, n_path, store=True):
+    def simulate(self, tobs, store=True):
         """
-        Simulate the price paths and store in the class.
-        The initial prices are normalized to 0 and spot should be added later.
+        Build simulated price paths (arithmetic BM; add spot to get absolute prices).
 
         Args:
-            tobs: array of observation times
-            n_path: number of paths to simulate
-            store: if True (default), store path, tobs, and n_path in the class
+            tobs: observation times (scalar or array)
+            store: if True (default), store path and tobs; return self.
+                   if False, return the path array without storing.
 
         Returns:
-            price path (time, path, asset) if store is False
+            self when store=True (for method chaining), or
+            path array (time, path, asset) when store=False.
+
+        Raises:
+            ValueError: if n_path has not been set via configure().
         """
+        if not self.n_path:
+            raise ValueError("n_path is not set. Call configure(n_path=...) first.")
+
         tobs = np.atleast_1d(tobs)
-        path = self._bm_incr(tobs, n_path)
+        path = self._bm_incr(tobs, self.n_path)
         np.cumsum(path, axis=0, out=path)
 
         if store:
-            self.n_path = n_path
             self.path = path
             self.tobs = tobs
+            return self
         else:
             return path
 
     def price_european(self, spot, texp, payoff):
         """
-        The European price of that payoff at the expiry.
+        Price a European payoff using stored paths.
 
         Args:
             spot: array of spot prices
-            texp: time-to-expiry
-            payoff: payoff function applicable to the time-slice of price path
+            texp: time-to-expiry (must be one of the stored tobs)
+            payoff: function of the (path, asset) slice at texp
 
         Returns:
-            The MC price of the payoff
+            discounted MC price
         """
-        if self.n_path == 0:
-            raise ValueError("Simulated paths are not available. Run simulate() first.")
+        if self.path is None:
+            raise ValueError("No paths stored. Call simulate() first.")
 
-        # check if texp is in tobs
         ind, *_ = np.where(np.isclose(self.tobs, texp))
         if len(ind) == 0:
             raise ValueError(f"Stored tobs does not contain t={texp}")
 
         path = self.path[ind[0], ] + spot
-        price = np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
-        return price
+        return np.exp(-self.intr * texp) * np.mean(payoff(path), axis=0)
