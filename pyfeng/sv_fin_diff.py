@@ -163,7 +163,6 @@ class SvFinDiffABC(abc.ABC):
         self.__post_init__()
         return self
 
-    set_num_params = configure
 
     # ── Abstract interface ────────────────────────────────────────────────────
 

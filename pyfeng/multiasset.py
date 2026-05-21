@@ -583,7 +583,6 @@ class BsmBasketChoi2018(BsmBasketABC):
             self.lam = lam
         return self
 
-    set_num_params = configure
 
     @staticmethod
     def householder(vv0):

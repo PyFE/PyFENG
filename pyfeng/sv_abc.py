@@ -49,7 +49,6 @@ class CondMcBsmABC(OptABC):
         self.__post_init__()
         return self
 
-    set_num_params = configure
 
     def base_model(self, vol):
         return bsm.Bsm(vol, intr=self.intr, divr=self.divr, is_fwd=self.is_fwd)

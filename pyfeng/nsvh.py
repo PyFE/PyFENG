@@ -273,7 +273,6 @@ class NsvhMc(NsvhABC):
         self.__post_init__()
         return self
 
-    set_num_params = configure
 
     def mc_vol_price(self, texp):
         """

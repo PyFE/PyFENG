@@ -83,7 +83,6 @@ class RoughHestonMcABC(RoughHestonABC, CondMcBsmABC):
         self.tgrid = np.linspace(0, texp, self.n_ts + 1)
         return self
 
-    set_num_params = configure
 
 
 @dataclass

@@ -348,7 +348,6 @@ class CevMc(CevParams, OptABC):
         self.__post_init__()
         return self
 
-    set_num_params = configure
 
     def price_step(self, spot, dt):
         """
