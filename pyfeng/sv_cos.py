@@ -363,7 +363,7 @@ class CosABC(OptABC):
         Raises:
             ValueError: if ``pricing_formula`` is not recognised.
         """
-        scalar_out = np.isscalar(strike) and np.isscalar(cp)
+        scalar_out = np.ndim(strike) == 0 and np.ndim(cp) == 0
 
         if self.pricing_formula == 'lefloch':
             result = np.atleast_1d(self._price_lefloch(strike, spot, texp, cp))
@@ -690,7 +690,7 @@ class HestonCos(HestonABC, CosABC):
             if kurtosis_ratio > self.HIGH_KURTOSIS_RATIO:
                 half = self._resolve_L(texp) * float(np.sqrt(abs(c2)))
                 trunc = (float(c1) - half, float(c1) + half)
-                scalar_out = np.isscalar(strike) and np.isscalar(cp)
+                scalar_out = np.ndim(strike) == 0 and np.ndim(cp) == 0
                 result = np.atleast_1d(
                     self._price_lefloch(strike, spot, texp, cp, trunc_range=trunc)
                 )
@@ -705,7 +705,7 @@ class HestonCos(HestonABC, CosABC):
             return CosABC.price(self, strike, spot, texp, cp=cp)
 
         fwd, df, _ = self._fwd_df_divf(spot, texp)
-        scalar_out = np.isscalar(strike) and np.isscalar(cp)
+        scalar_out = np.ndim(strike) == 0 and np.ndim(cp) == 0
 
         a_arr, b_arr = self._integration_range(strike, spot, texp)
         half = self._resolve_L(texp) * self._sigma_h()

@@ -125,7 +125,7 @@ class CondMcBsmABC(OptABC):
     def price(self, strike, spot, texp, cp=1):
 
         kk = strike / spot
-        scalar_output = np.isscalar(kk)
+        scalar_output = np.ndim(kk) == 0
         kk = np.atleast_1d(kk)
         cp = np.atleast_1d(cp)
 
@@ -159,7 +159,7 @@ class CondMcBsmABC(OptABC):
         Returns:
             variance option price
         """
-        scalar_output = np.isscalar(strike)
+        scalar_output = np.ndim(strike) == 0
         strike = np.atleast_1d(strike)
         p = np.zeros_like(strike)
         var = self.return_var_realized(texp)
@@ -230,7 +230,7 @@ class SvMixtureABC(OptABC):
     def price(self, strike, spot, texp, cp=1):
 
         kk = strike / spot
-        scalar_output = np.isscalar(kk)
+        scalar_output = np.ndim(kk) == 0
         kk = np.atleast_1d(kk)
 
         spot_cond, sigma_cond, ww = self.cond_spot_sigma(texp)
