@@ -92,7 +92,7 @@ class Bsm(BsmParams, OptAnalyticABC):
             type: 0 for price, 1 for price-to-vega (default), -1 for vega, 2 for price-to-delta
 
         References:
-            Choi J, Huh J, and Su N (2025) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+            Choi J, Huh J, and Su N (2025) Tighter "Uniform Bounds for Black-Scholes Implied Volatility" and the applications to root-finding
 
         Returns:
             scaled price (ratio) value
@@ -277,9 +277,12 @@ class Bsm(BsmParams, OptAnalyticABC):
                - drift \
                - self.sigma / (2 * texp) * self.vega(strike, spot, texp, cp)
 
-    def impvol_naive(self, price, strike, spot, texp, cp=1, setval=False, n_iter=32):
+    def impvol(self, price, strike, spot, texp, cp=1, setval=False, n_iter=8):
         """
-        BSM implied volatility with Newton's method.
+        BSM implied volatility via Newton's method in log-price space.
+
+        Converges in ~4 iterations for typical inputs.  The initial guess is
+        the tight lower bound from Choi, Huh & Su (2025).
 
         Args:
             price: option price
@@ -287,91 +290,12 @@ class Bsm(BsmParams, OptAnalyticABC):
             spot: spot (or forward) price
             texp: time to expiry
             cp: 1/-1 for call/put option
-            setval: if True, sigma is set with the solved implied volatility
-
-        Returns:
-            implied volatility
-        """
-
-        fwd, df, divf = self._fwd_df_divf(spot, texp)
-
-        strike_std = strike/fwd  # strike / fwd
-        price_std = price/df/fwd  # forward price / fwd
-
-        bsm_model = Bsm(0, is_fwd=True)
-        p_min = bsm_model.price(strike_std, 1.0, texp, cp)
-        bsm_model.sigma = np.inf
-        p_max = bsm_model.price(strike_std, 1.0, texp, cp)
-        bcast = np.broadcast_shapes(np.shape(p_min), np.shape(price_std))
-
-        # Exclude optoin price below intrinsic value or above max value (1 for call or k for put)
-        # ind_solve can be scalar or array. scalar can be fine in np.abs(p_err[ind_solve])
-        ind_solve = (price_std - p_min > self.IMPVOL_TOL) & (p_max - price_std > self.IMPVOL_TOL)
-
-        # initial guess = inflection point in sigma (volga=0)
-        _sigma = np.broadcast_to(np.sqrt(2*np.abs(np.log(strike_std))/texp), np.shape(ind_solve)).copy()
-
-        bsm_model.sigma = _sigma
-        p_err = bsm_model.price(strike_std, 1.0, texp, cp) - price_std
-        # print(np.sign(p_err), _sigma)
-
-        if np.any(ind_solve):
-            for k in range(n_iter):  # usually iteration ends less than 10
-                vega = bsm_model.vega(strike_std, 1.0, texp, cp)
-                _sigma -= p_err/vega
-                bsm_model.sigma = _sigma
-                p_err = bsm_model.price(strike_std, 1.0, texp, cp) - price_std
-                p_err_max = np.amax(np.abs(p_err[ind_solve]))
-                # print(k, p_err_max, _sigma)
-
-                # ignore the error of the elements with ind_solve = False
-                if p_err_max < self.IMPVOL_TOL:
-                    break
-            #print(k)
-
-            if p_err_max >= self.IMPVOL_TOL:
-                warn_msg = f"impvol_newton did not converged within {k} iterations: max error = {p_err_max}"
-                warnings.warn(warn_msg, Warning)
-
-        # Put Nan for the out-of-bound option prices
-        _sigma = np.where(ind_solve, _sigma, np.nan)
-
-        # Though not error is above tolerance, if the price is close to min or max, set 0 or inf
-        _sigma = np.where(
-            (np.abs(p_err) >= self.IMPVOL_TOL)
-            & (np.abs(price_std - p_min) <= self.IMPVOL_TOL),
-            0,
-            _sigma,
-        )
-        _sigma = np.where(
-            (np.abs(p_err) >= self.IMPVOL_TOL)
-            & (np.abs(price_std - p_max) <= self.IMPVOL_TOL),
-            np.inf,
-            _sigma,
-        )
-
-        _sigma = _sigma.reshape(bcast)
-
-        if setval:
-            self.sigma = _sigma
-
-        return _sigma
-
-
-    def impvol_log(self, price, strike, spot, texp, cp=1, setval=False, n_iter=8):
-        """
-        BSM implied volatility with Newton's method with log price
-
-        Args:
-            price: option price
-            strike: strike price
-            spot: spot (or forward) price
-            texp: time to expiry
-            cp: 1/-1 for call/put option
-            setval: if True, sigma is set with the solved implied volatility
+            setval: if True, sets self.sigma to the solved implied volatility
+            n_iter: maximum Newton iterations (default 8; rarely needs more than 5)
 
         References:
-            Choi J, Huh J, and Su N (2025) Tighter “Uniform Bounds for Black-Scholes Implied Volatility” and the applications to root-finding
+            Choi J, Huh J, and Su N (2025) Tighter Uniform Bounds for
+            Black-Scholes Implied Volatility and the applications to root-finding.
 
         Returns:
             implied volatility
@@ -418,8 +342,6 @@ class Bsm(BsmParams, OptAnalyticABC):
             self.sigma = sigma
 
         return sigma
-
-    impvol = impvol_log
 
     def vol_smile(self, strike, spot, texp, cp=None, model="bsm"):
         """
