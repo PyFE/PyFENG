@@ -573,19 +573,22 @@ class BsmBasket1Bm(BsmBasketABC):
         return price
 
 
-class BsmBasketJsu(BsmBasketABC):
+class BsmBasketNsvh1(BsmBasketABC):
     """
+    Basket option pricing under the multiasset BSM model via Johnson's SU distribution,
+    equivalent to the NSVh model with lambda = 1 (Nsvh1).
 
-    Johnson's SU distribution approximation for Basket option pricing under the multiasset BSM model.
-
-    Note: Johnson's SU distribution is the solution of NSVh with NSVh with lambda = 1.
+    The basket's first four moments are matched to a Johnson's SU distribution, whose
+    call price is available in closed form via :class:`Nsvh1`.  This is the ``MP-4M``
+    method of Krekel et al. (2004).
 
     References:
         - Posner SE, Milevsky MA (1998) Valuing exotic options by approximating the SPD
-        with higher moments. The Journal of Financial Engineering 7(2). https://ssrn.com/abstract=108539
+          with higher moments. The Journal of Financial Engineering 7(2).
+          https://ssrn.com/abstract=108539
 
         - Choi J, Liu C, Seo BK (2019) Hyperbolic normal stochastic volatility model.
-        Journal of Futures Markets 39(2):186–204. https://doi.org/10.1002/fut.21967
+          Journal of Futures Markets 39(2):186–204. https://doi.org/10.1002/fut.21967
 
     """
 

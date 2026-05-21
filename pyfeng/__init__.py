@@ -48,7 +48,7 @@ from .multiasset import (
     BsmMax2,
     BsmBasketMilevsky1998,
     BsmBasket1Bm, BsmBasketChoi2018,
-    BsmBasketJsu,
+    BsmBasketNsvh1,
 )
 
 from .multiasset_mc import BsmNdMc, NormNdMc
