@@ -81,7 +81,7 @@ class TestSabr(unittest.TestCase):
         """
         for k in [19, 20]:  # can test 22 (Korn&Tang) also, but difficult to pass
             m, df, rv = pf.SabrMcTimeDisc.init_benchmark(k)
-            m.set_num_params(n_path=5e4, dt=0.05, rn_seed=1234)
+            m.configure(n_path=5e4, dt=0.05, rn_seed=1234)
             p = m.price(**rv["args_pricing"])
             np.testing.assert_allclose(p, rv["val"], rtol=1e-3)
 

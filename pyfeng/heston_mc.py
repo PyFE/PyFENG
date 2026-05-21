@@ -725,8 +725,7 @@ class HestonMcAndersen2008(HestonMcABC):
         >>> import pyfeng as pf
         >>> strike = np.array([60, 70, 100, 140])
         >>> sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
-        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
+        >>> m = pf.HestonMcAndersen2008(sigma, vov=vov, mr=mr, rho=rho).configure(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.28356337, 35.80059515, 13.05391402,  0.29848727])
@@ -848,8 +847,7 @@ class HestonMcChoiKwok2023PoisTd(HestonMcABC):
         >>> strike = np.array([60, 70, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pf.HestonMcChoiKwok2023PoisTd(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
+        >>> m = pf.HestonMcChoiKwok2023PoisTd(sigma, vov=vov, mr=mr, rho=rho).configure(n_path=1e5, dt=1/8, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.32997507, 35.8497697, 13.08467014, 0.29577444
         array([44.36484309, 35.87571609, 13.08606262,  0.29620234])
@@ -919,8 +917,7 @@ class HestonMcTseWan2013(HestonMcABC):
         >>> strike = np.array([60, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pfex.HestonMcTseWan2013(sigma, vov=vov, mr=mr, rho=rho)
-        >>> m.set_num_params(n_path=1e4, rn_seed=123456)
+        >>> m = pfex.HestonMcTseWan2013(sigma, vov=vov, mr=mr, rho=rho).configure(n_path=1e4, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
         array([12.08981758,  0.33379748, 42.28798189])  # not close so far

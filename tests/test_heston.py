@@ -55,7 +55,7 @@ class TestHestonMc(unittest.TestCase):
         """
         for no in [1, 2, 3]:
             m, p, rv = pf.HestonMcAndersen2008.init_benchmark(no)
-            m.set_num_params(n_path=1e5, dt=1/8, rn_seed=123456)
+            m.configure(n_path=1e5, dt=1/8, rn_seed=123456)
             m.correct_fwd = False
 
             vol0 = pf.Bsm(None, intr=m.intr, divr=m.divr).impvol(rv['val'], **rv['args_pricing'])
@@ -65,14 +65,14 @@ class TestHestonMc(unittest.TestCase):
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
             m, *_ = pf.HestonMcGlassermanKim2011.init_benchmark(no)
-            m.set_num_params(n_path=1e5, rn_seed=123456, kk=10)
+            m.configure(n_path=1e5, rn_seed=123456, kk=10)
             m.correct_fwd = False
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
             m, *_ = pf.HestonMcTseWan2013.init_benchmark(no)
-            m.set_num_params(n_path=1e5, rn_seed=123456, dt=1)
+            m.configure(n_path=1e5, rn_seed=123456, dt=1)
             m.correct_fwd = False
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
@@ -80,12 +80,12 @@ class TestHestonMc(unittest.TestCase):
 
             m, *_ = pf.HestonMcChoiKwok2023PoisGe.init_benchmark(no)
             m.correct_fwd = False
-            m.set_num_params(n_path=1e5, rn_seed=123456, kk=10, dt=None)
+            m.configure(n_path=1e5, rn_seed=123456, kk=10, dt=None)
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
 
-            m.set_num_params(n_path=1e5, rn_seed=123456, kk=1, dt=1/4)
+            m.configure(n_path=1e5, rn_seed=123456, kk=1, dt=1/4)
             vol1 = m.vol_smile(**rv['args_pricing'])
             np.testing.assert_allclose(vol0, vol1, atol=5e-3)
             np.testing.assert_allclose(m.result['spot error'], 0, atol=2e-3)
@@ -96,7 +96,7 @@ class TestHestonMc(unittest.TestCase):
         """
         #sigma, vov, mr, rho, texp, spot = 0.04, 1, 0.5, -0.9, 10, 100
         m, *_ = pf.HestonMcChoiKwok2023PoisGe.init_benchmark(1)
-        m.set_num_params(n_path=32e4, rn_seed=123456, kk=8)
+        m.configure(n_path=32e4, rn_seed=123456, kk=8)
 
         for texp in (1.0, 3.0, 5.0):
             # analytic mean and variance
