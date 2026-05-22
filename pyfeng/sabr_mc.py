@@ -313,26 +313,45 @@ class SabrMcCai2017Exact(SabrMcABC):
         return self
 
 
-    def cond_laplace(self, theta, vovn, sigma_t):
+    def cond_invavgvar_mgf(self, uu, vovn, sigma_t):
         """
-        Eq. (15) of the paper
-        Return the laplace transform function
+        MGF of the conditional inverse average variance.
+        E[exp(uu / avgvar) | sigma_t],  converges for uu <= 0.
 
         Args:
-            theta: dummy variable
+            uu: MGF dummy variable (uu <= 0 for convergence)
             vovn: vov * sqrt(texp)
             sigma_t: normalized sigma final
 
         Returns:
-            (Laplace transform function)
+            MGF value at uu
         """
 
         x = np.log(sigma_t)
-        lam = theta * vovn**2
+        lam = -uu * vovn**2          # theta = -uu
         z = 0.5*sigma_t + (0.5 + lam)/sigma_t
         phi = np.log(z + np.sqrt(z**2 - 1))
 
-        return np.exp((x**2 - phi**2) / (2*vovn**2)) / theta
+        return np.exp((x**2 - phi**2) / (2*vovn**2))
+
+    def cond_invavgvar_cdf_laplace(self, theta, vovn, sigma_t):
+        """
+        Laplace transform of the conditional CDF of the inverse average variance,
+        Eq. (15) of the paper.
+        E[exp(-theta / avgvar) | sigma_t] / theta  =  cond_invavgvar_mgf(-theta) / theta.
+
+        This is the object inverted by the Euler–Bromwich scheme in inv_laplace
+        to recover the CDF value at a given point.
+
+        Args:
+            theta: Laplace dummy variable (theta > 0 for convergence)
+            vovn: vov * sqrt(texp)
+            sigma_t: normalized sigma final
+
+        Returns:
+            Laplace transform of CDF at theta
+        """
+        return self.cond_invavgvar_mgf(-theta, vovn, sigma_t) / theta
 
     def inv_laplace(self, u, vovn, sigma_t):
         """
@@ -349,7 +368,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         """
 
         ## index from 0 to m + n
-        ss_j = self.cond_laplace((self.m_inv - 2j * np.pi * self.nn[:, None]) / (2*u), vovn, sigma_t).real
+        ss_j = self.cond_invavgvar_cdf_laplace((self.m_inv - 2j * np.pi * self.nn[:, None]) / (2*u), vovn, sigma_t).real
         term1 = 0.5 * ss_j[0, :]
         ss_j[1::2, :] *= -1
         np.cumsum(ss_j, axis=0, out=ss_j)
@@ -424,7 +443,7 @@ class SabrMcCai2017Exact(SabrMcABC):
         cdf of a central chi2 distribution with x=A0, degree of freedom = 1/(1 - beta)
         '''
 
-        u_lst = self.rng.uniform(size=self.n_path)
+        u_lst = self.rv_uniform(spawn=3)
         forward_ls = np.zeros(self.n_path)
 
         for i in range(self.n_path):
