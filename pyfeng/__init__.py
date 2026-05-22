@@ -51,7 +51,7 @@ from .multiasset import (
     BsmBasketNsvh1,
 )
 
-from .multiasset_mc import BsmNdMc, NormNdMc
+from .multiasset_mc import BsmNdMc, NormNdMc, BsmBasketMc, NormBasketMc, BsmBasketGeoApproxMc
 
 # Asset Allocation
 from .assetalloc import RiskParity, RiskParitySCA

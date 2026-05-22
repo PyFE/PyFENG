@@ -246,6 +246,91 @@ class TestBsmBasketChoi2018(unittest.TestCase):
         np.testing.assert_almost_equal(m.price(100.0, spot, texp=5.0), 33.9186874, decimal=2)
 
 
+class TestMultiAssetMc(unittest.TestCase):
+    """
+    Tests for the MC basket pricers in multiasset_mc.py.
+
+    Methodology: average over ``N_SETS`` independent MC runs (seeds 0..N_SETS-1)
+    to obtain a stable estimator of the true price.  All tests are fully
+    deterministic (fixed seeds).
+
+    Tolerances are set at roughly 3× the standard error of the mean so that
+    flaky failures are extremely unlikely.
+    """
+
+    # Shared parameters — 4-asset equal-weight basket, BSM σ = 40 %, ρ = 0.5
+    SIGMA  = np.ones(4) * 0.4
+    SPOT   = np.ones(4) * 100.0
+    TEXP   = 5.0
+    STRIKES = np.array([80.0, 90.0, 100.0, 110.0, 120.0])
+    N_PATH = 10_000
+    N_SETS = 100
+
+    def _mc_mean_std(self, cls, kwargs, price_kwargs):
+        """Run N_SETS independent MC sets and return (mean, std) arrays over strikes."""
+        prices = np.zeros((self.N_SETS, len(self.STRIKES)))
+        for i in range(self.N_SETS):
+            m = cls(**kwargs).configure(n_path=self.N_PATH, rn_seed=i)
+            prices[i] = m.price(self.STRIKES, self.SPOT, self.TEXP, **price_kwargs)
+        return prices.mean(axis=0), prices.std(axis=0)
+
+    # ── BsmBasketGeoApproxMc vs BsmBasketGeoApprox ───────────────────────────
+
+    def test_BsmBasketGeoApproxMc_consistency(self):
+        """MC mean (100 sets × 10k paths) matches BsmBasketGeoApprox within 0.05."""
+        kwargs = dict(sigma=self.SIGMA, rho=0.5)
+        mc_mean, _ = self._mc_mean_std(pf.BsmBasketGeoApproxMc, kwargs, {})
+        analytic = pf.BsmBasketGeoApprox(**kwargs).price(self.STRIKES, self.SPOT, self.TEXP)
+        np.testing.assert_allclose(
+            mc_mean, analytic, atol=0.05,
+            err_msg="BsmBasketGeoApproxMc mean deviates from BsmBasketGeoApprox",
+        )
+
+    # ── NormBasketMc vs NormBasket ────────────────────────────────────────────
+
+    def test_NormBasketMc_consistency(self):
+        """MC mean (100 sets × 10k paths) matches NormBasket within 0.10."""
+        sigma_norm = self.SIGMA * self.SPOT[0]   # absolute vol: 40 pts
+        kwargs = dict(sigma=sigma_norm, rho=0.5)
+        mc_mean, _ = self._mc_mean_std(pf.NormBasketMc, kwargs, {})
+        analytic = pf.NormBasket(**kwargs).price(self.STRIKES, self.SPOT, self.TEXP)
+        np.testing.assert_allclose(
+            mc_mean, analytic, atol=0.10,
+            err_msg="NormBasketMc mean deviates from NormBasket",
+        )
+
+    # ── BsmBasketMc CV variance reduction ────────────────────────────────────
+
+    def test_BsmBasketMc_variance_reduction(self):
+        """
+        cv='geo' and cv='norm' must reduce MC std versus no CV.
+
+        Observed ratios (100 sets × 10k paths, ATM):
+            geo/none ≈ 0.23   →  threshold 0.40
+            norm/none ≈ 0.60  →  threshold 0.80
+        """
+        kwargs = dict(sigma=self.SIGMA, rho=0.5)
+        stds = {}
+        for cv in (None, 'geo', 'norm'):
+            _, stds[cv] = self._mc_mean_std(pf.BsmBasketMc, kwargs, dict(cv=cv))
+
+        # cv='geo' should be the most effective
+        np.testing.assert_array_less(
+            stds['geo'] / stds[None], np.full(len(self.STRIKES), 0.40),
+            err_msg="cv='geo' did not reduce std sufficiently vs no-CV",
+        )
+        # cv='norm' should also reduce variance
+        np.testing.assert_array_less(
+            stds['norm'] / stds[None], np.full(len(self.STRIKES), 0.80),
+            err_msg="cv='norm' did not reduce std sufficiently vs no-CV",
+        )
+        # cv='geo' should outperform cv='norm'
+        np.testing.assert_array_less(
+            stds['geo'], stds['norm'],
+            err_msg="cv='geo' should have lower std than cv='norm'",
+        )
+
+
 if __name__ == "__main__":
     print(f"Pyfeng loaded from {pf.__path__}")
     unittest.main()
